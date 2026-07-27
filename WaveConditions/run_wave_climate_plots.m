@@ -15,13 +15,18 @@
 %   <fig_dir>/fig_w1_scatter_<station>.{pdf,png,fig}
 %   <fig_dir>/fig_w2_spectrum_<station>.{pdf,png,fig}
 %   <fig_dir>/fig_w3_energy_<station>.{pdf,png,fig}
+%   <fig_dir>/fig_w6_surface_<station>.{pdf,png,fig}
 %   <fig_dir>/fig_w4_stations.{pdf,png,fig}
+%   <fig_dir>/fig_w5_histograms.{pdf,png,fig}
 %
 % ----- CONFIG (override before running to skip the defaults) -----------------
 % climate_dir = 'WIS_Output_WAM';    % where the *_climate_grid.mat files live
 % fig_dir     = 'WaveConditions_Results/WaveClimate';
 % stations    = {'ST63044','ST84040'};   % subset; default is all found
 % formats     = {'pdf','png'};           % default {'pdf','png','fig'}
+% sigma_factor = 0.75;   % W6 smoothing width, in climate-grid bin widths
+% station_labels = struct('ST63044', 'North Atlantic, NH', ...
+%                         'ST84040', 'Santa Barbara, CA');   % W5 column headers
 % -----------------------------------------------------------------------------
 
 this_dir = fileparts(mfilename('fullpath'));
@@ -39,6 +44,14 @@ if ~isfolder(fig_dir), mkdir(fig_dir); end
 cfg = struct('fig_dir', fig_dir);
 if exist('formats', 'var') && ~isempty(formats)
     cfg.plot.formats = formats;
+end
+if exist('station_labels', 'var') && ~isempty(station_labels)
+    cfg.station_labels = station_labels;
+end
+
+surf_opts = struct();
+if exist('sigma_factor', 'var') && ~isempty(sigma_factor)
+    surf_opts.sigma_factor = sigma_factor;
 end
 
 bar_line = repmat('=', 1, 78);
@@ -78,7 +91,12 @@ for i = 1:numel(listing)
     MWEC_WaveClimate_Plots.fig_w1_scatter(cg, cfg);
     MWEC_WaveClimate_Plots.fig_w2_spectrum(cg, cfg);
     MWEC_WaveClimate_Plots.fig_w3_energy(cg, cfg);
-    fprintf('W1 W2 W3 done\n');
+    MWEC_WaveClimate_Plots.fig_w6_energy_surface(cg, cfg, surf_opts);
+    fprintf('W1 W2 W3 W6 done\n');
+
+    q = MWEC_WaveClimate_Plots.energy_density(cg, surf_opts);
+    fprintf('          surface volume %.4f kW/m vs sum(p*J) %.4f kW/m  (%.2f%% apart)\n', ...
+            q.volume, q.P_wave, 100*abs(q.volume - q.P_wave)/max(q.P_wave, eps));
 
     if k.m0_err_pct > 1
         warning('run_wave_climate_plots:m0', ...
@@ -92,8 +110,13 @@ for i = 1:numel(listing)
                       k.n_cells_occupied}; %#ok<SAGROW>
 end
 
+if ~isempty(grids)
+    fprintf('\n  Marginal histograms (all stations) ... ');
+    MWEC_WaveClimate_Plots.fig_w5_histograms(grids, cfg);
+    fprintf('W5 done\n');
+end
 if numel(grids) > 1
-    fprintf('\n  Cross-station comparison ... ');
+    fprintf('  Cross-station comparison ... ');
     MWEC_WaveClimate_Plots.fig_w4_stations(grids, cfg);
     fprintf('W4 done\n');
 end

@@ -14,6 +14,8 @@ classdef MWEC_WaveClimate_Plots
 %     fig_w2_spectrum   S_ew(omega) decomposed by sea state + J(omega)
 %     fig_w3_energy     per-cell share of the resource + energy concentration
 %     fig_w4_stations   cross-station spectra and resource summary
+%     fig_w5_histograms T_e and H_s occurrence histograms, station per column
+%     fig_w6_energy_surface  3-D surface of probability-weighted wave energy
 %
 %   Usage
 %     cg = load('WIS_Output_WAM/ST63044_climate_grid.mat').climateGrid;
@@ -22,6 +24,45 @@ classdef MWEC_WaveClimate_Plots
 %   Schema: STABILITY_HANDOFF_PLAN v2.1.0 (empirical-only climate grids).
 
     methods (Static)
+
+        %% =================================================================
+        %%  STYLE  (serif house style for the W family)
+        %% =================================================================
+
+        function s = style()
+        %STYLE  Wong colorblind-safe palette on a Times New Roman body font.
+        %   Same geometry as MWEC_Tuning_Plots.style so the W and T figures
+        %   sit together in a document; only the typeface differs.  Keep the
+        %   'tex' interpreter everywhere — 'latex' would silently swap in
+        %   Computer Modern and break the typographic match.
+            s = MWEC_Tuning_Plots.style();
+            s.font   = MWEC_WaveClimate_Plots.serif_font();
+            s.fs.tick    = 9;   s.fs.label = 11;  s.fs.title = 11;
+            s.fs.sgtitle = 13;  s.fs.annot = 9;   s.fs.legend = 9;
+            s.fs.cell    = 6.5;                 % in-cell scatter-table numerals
+            s.c.mbar = [0, 0.4470, 0.7410];     % MATLAB default blue, as in the slide
+        end
+
+        function f = serif_font()
+        %SERIF_FONT  Times New Roman where installed, nearest metric clone otherwise.
+        %   listfonts costs ~1 s, so resolve once per session.
+            persistent chosen
+            if ~isempty(chosen), f = chosen; return; end
+            preferred = {'Times New Roman', 'Times', 'Liberation Serif', ...
+                         'Nimbus Roman', 'FreeSerif', 'DejaVu Serif'};
+            available = listfonts;
+            chosen = 'Times New Roman';
+            for i = 1:numel(preferred)
+                if any(strcmpi(available, preferred{i}))
+                    chosen = preferred{i};  break
+                end
+            end
+            if ~strcmp(chosen, 'Times New Roman')
+                warning('MWEC_WaveClimate_Plots:font', ...
+                        'Times New Roman not installed; using %s.', chosen);
+            end
+            f = chosen;
+        end
 
         %% =================================================================
         %%  DERIVED QUANTITIES  (station data only)
@@ -142,7 +183,7 @@ classdef MWEC_WaveClimate_Plots
         %   colour.  Unoccupied cells stay grid-grey so "never observed" never
         %   reads as "0.0%".
             if nargin < 2, cfg = struct(); end
-            s = MWEC_Tuning_Plots.style();
+            s = MWEC_WaveClimate_Plots.style();
             k = MWEC_WaveClimate_Plots.derive(cg);
 
             Ppct = cg.probability_grid * 100;
@@ -229,7 +270,7 @@ classdef MWEC_WaveClimate_Plots
         %   Overlaying raw per-cell spectra instead would bury S_ew, which is
         %   smaller than any single cell by construction (it is a p-weighted mean).
             if nargin < 2, cfg = struct(); end
-            s = MWEC_Tuning_Plots.style();
+            s = MWEC_WaveClimate_Plots.style();
             k = MWEC_WaveClimate_Plots.derive(cg);
 
             om = k.omega;  p = cg.probability_grid;
@@ -312,7 +353,7 @@ classdef MWEC_WaveClimate_Plots
         %   sea state is rarely the most energetic one, because flux scales as
         %   Hs^2 Te.  W1 answers "how often", this answers "how much".
             if nargin < 2, cfg = struct(); end
-            s = MWEC_Tuning_Plots.style();
+            s = MWEC_WaveClimate_Plots.style();
             k = MWEC_WaveClimate_Plots.derive(cg);
 
             Hs_c = cg.Hs_centers(:);  Te_c = cg.Te_centers(:);
@@ -379,7 +420,7 @@ classdef MWEC_WaveClimate_Plots
         %   one panel each — they are metres, seconds and kW/m, and sharing an
         %   axis between them would only make the tallest unit legible.
             if nargin < 2, cfg = struct(); end
-            s = MWEC_Tuning_Plots.style();
+            s = MWEC_WaveClimate_Plots.style();
             if ~iscell(cgs), cgs = {cgs}; end
             n = numel(cgs);
             if n == 0, return; end
@@ -443,6 +484,243 @@ classdef MWEC_WaveClimate_Plots
         end
 
         %% =================================================================
+        %%  W5 — Marginal histograms, one column per station
+        %% =================================================================
+
+        function fig_w5_histograms(cgs, cfg)
+        %FIG_W5_HISTOGRAMS  T_e and H_s occurrence histograms, station per column.
+        %
+        %   Axes are positioned by hand rather than by tiledlayout so the
+        %   columns line up exactly and the rotated H_s interval labels get the
+        %   room they need.
+        %
+        %   Resolution note: the bars are the climate grid's own bins —
+        %   dT_e = 1.0 s and dH_s = 0.5 m as built.  The per-record T_e values
+        %   are not retained in the grid, so a finer T_e histogram means
+        %   lowering dbinTe in run_buildClimateGrid.m and rebuilding from the
+        %   raw WIS files.
+        %
+        %   cfg.station_labels  optional struct mapping station id to the header
+        %                       text, e.g. struct('ST63044', 'North Atlantic, NH').
+            if nargin < 2, cfg = struct(); end
+            if ~iscell(cgs), cgs = {cgs}; end
+            n = numel(cgs);
+            if n == 0, return; end
+            s = MWEC_WaveClimate_Plots.style();
+
+            width_cm = min(6.4 * n + 1.4, 34);
+            fig = MWEC_Tuning_Plots.new_figure(s, [width_cm, 13.0]);
+
+            L = 0.070;  R = 0.015;  gap = 0.052;
+            colw = (1 - L - R - (n-1)*gap) / n;
+            y_te = 0.575;  y_hs = 0.175;  rowh = 0.235;
+
+            for i = 1:n
+                cg = cgs{i};
+                x0 = L + (i-1)*(colw + gap);
+                [sid, region, depth] = MWEC_WaveClimate_Plots.ident(cg);
+                label = MWEC_WaveClimate_Plots.station_label(sid, region, cfg);
+
+                p    = cg.probability_grid;
+                Te_c = cg.Te_centers(:);   Hs_c = cg.Hs_centers(:);
+                Te_e = cg.Te_edges(:);     Hs_e = cg.Hs_edges(:);
+                pct_Te = 100 * sum(p, 1).';       % nTe x 1
+                pct_Hs = 100 * sum(p, 2);         % nHs x 1
+
+                % --- column header ---
+                annotation(fig, 'textbox', [x0 - 0.012, 0.930, colw + 0.05, 0.055], ...
+                    'String', sprintf('%s:', label), 'FontName', s.font, ...
+                    'FontSize', s.fs.sgtitle, 'FontWeight', 'bold', ...
+                    'EdgeColor', 'none', 'VerticalAlignment', 'middle', ...
+                    'Interpreter', 'tex');
+                if isfinite(depth)
+                    annotation(fig, 'textbox', [x0 + 0.008, 0.882, colw + 0.05, 0.050], ...
+                        'String', sprintf('\\bullet  Water Depth: %.0f meters', depth), ...
+                        'FontName', s.font, 'FontSize', s.fs.label, ...
+                        'EdgeColor', 'none', 'VerticalAlignment', 'middle', ...
+                        'Interpreter', 'tex');
+                end
+
+                % --- T_e histogram ---
+                ax = axes(fig, 'Position', [x0, y_te, colw, rowh]); %#ok<LAXES>
+                MWEC_WaveClimate_Plots.style_hist_axes(ax, s);
+                bar(ax, Te_c, pct_Te, 1.0, 'FaceColor', s.c.mbar, 'EdgeColor', 'none');
+                hold(ax, 'on');
+                % continuous reconstruction of the same marginal, for shape
+                Te_f = linspace(0, Te_e(end), 400).';
+                dT = median(diff(Te_e));
+                K = MWEC_WaveClimate_Plots.reflected_gaussian(Te_f, Te_c, 0.50*dT);
+                plot(ax, Te_f, 100 * dT * (K * (pct_Te/100)), '-', ...
+                     'Color', s.c.grey, 'LineWidth', s.lw.secondary);
+                xlim(ax, [0, Te_e(end)]);
+                ylim(ax, [0, 1.15 * max(pct_Te)]);
+                xlabel(ax, 'T_e  (s)', 'FontSize', s.fs.label);
+                if i == 1, ylabel(ax, 'Occurrence  (%)', 'FontSize', s.fs.label); end
+
+                % --- H_s histogram ---
+                ax = axes(fig, 'Position', [x0, y_hs, colw, rowh]); %#ok<LAXES>
+                MWEC_WaveClimate_Plots.style_hist_axes(ax, s);
+                bar(ax, 1:numel(Hs_c), pct_Hs, 0.86, 'FaceColor', s.c.mbar, 'EdgeColor', 'none');
+                ticks = cell(numel(Hs_c), 1);
+                for b = 1:numel(Hs_c)
+                    ticks{b} = sprintf('[%.1f, %.1f]', Hs_e(b), Hs_e(b+1));
+                end
+                set(ax, 'XTick', 1:numel(Hs_c), 'XTickLabel', ticks, ...
+                        'XTickLabelRotation', 30, 'XLim', [0.4, numel(Hs_c) + 0.6]);
+                ylim(ax, [0, 1.15 * max(pct_Hs)]);
+                xlabel(ax, 'H_s  (m)', 'FontSize', s.fs.label);
+                if i == 1, ylabel(ax, 'Occurrence  (%)', 'FontSize', s.fs.label); end
+            end
+
+            MWEC_Tuning_Plots.save_fig(fig, 'fig_w5_histograms', cfg);
+        end
+
+        function style_hist_axes(ax, s)
+        %STYLE_HIST_AXES  Boxed, inward-ticked axes — the slide's convention.
+            set(ax, 'FontName', s.font, 'FontSize', s.fs.tick, 'LineWidth', s.lw.axes, ...
+                    'TickDir', 'in', 'TickLength', [0.015, 0.015], 'Box', 'on', ...
+                    'Layer', 'top', 'XGrid', 'off', 'YGrid', 'off');
+        end
+
+        %% =================================================================
+        %%  W6 — 3-D energy-density surface
+        %% =================================================================
+
+        function fig_w6_energy_surface(cg, cfg, opts)
+        %FIG_W6_ENERGY_SURFACE  Probability-weighted wave energy over (T_e, H_s).
+        %
+        %   Z is the probability-weighted energy flux per unit of the (H_s,T_e)
+        %   plane, so the volume under the surface is the station's total
+        %   resource in kW/m.  Each cell's flux comes from the spectral form
+        %       J_ij = rho g^2 / 2 * integral S_ij(w)/w dw
+        %   over that cell's stored empirical spectrum, never from the
+        %   parametric rho g^2 Hs^2 Te / (64 pi).
+        %
+        %   The stored grid is only 4-8 H_s bins by 12-16 T_e bins, so surfing
+        %   it raw gives a staircase.  Smoothing convolves the per-cell weights
+        %   p_ij*J_ij with a Gaussian of one bin width, reflected about H_s = 0
+        %   and T_e = 0 so no energy leaks to negative values.  Convolution
+        %   preserves the integral exactly: the printed volume is the check.
+        %
+        %   opts.smooth        true (default) for the density surface, false to
+        %                      surf the native cells in kW/m
+        %   opts.sigma_factor  kernel width in bin widths (default 0.75)
+        %   opts.n_Hs/opts.n_Te  fine-grid resolution (default 181 x 241)
+            if nargin < 2, cfg  = struct(); end
+            if nargin < 3, opts = struct(); end
+            if ~isfield(opts, 'smooth'), opts.smooth = true; end
+            s = MWEC_WaveClimate_Plots.style();
+
+            fig = MWEC_Tuning_Plots.new_figure(s, [16.0, 12.5]);
+            ax = axes(fig);
+            set(ax, 'FontName', s.font, 'FontSize', s.fs.tick, 'LineWidth', s.lw.axes, ...
+                    'Box', 'on', 'BoxStyle', 'full', 'TickDir', 'out', ...
+                    'GridAlpha', 0.15, 'GridColor', [0.4 0.4 0.4]);
+            hold(ax, 'on');  grid(ax, 'on');
+
+            if opts.smooth
+                q = MWEC_WaveClimate_Plots.energy_density(cg, opts);
+                [T, H] = meshgrid(q.Te, q.Hs);
+                Z = q.Z;
+                z_label = 'p \cdot J   (kW/m per m\cdots)';
+                sub = sprintf(['volume = %.3f kW/m  (\\Sigma p_{ij}J_{ij} = %.3f kW/m)   ' ...
+                               '|   \\sigma = %.2f m \\times %.2f s'], ...
+                               q.volume, q.P_wave, q.sigma_Hs, q.sigma_Te);
+            else
+                k = MWEC_WaveClimate_Plots.derive(cg);
+                [T, H] = meshgrid(cg.Te_centers(:), cg.Hs_centers(:));
+                Z = k.E / 1000;
+                q = struct('P_wave', sum(Z(:)), 'volume', sum(Z(:)));
+                z_label = 'p \cdot J   (kW/m per cell)';
+                sub = sprintf('native %d \\times %d grid  |  \\Sigma p_{ij}J_{ij} = %.3f kW/m', ...
+                              size(Z, 1), size(Z, 2), q.P_wave);
+            end
+
+            srf = surf(ax, T, H, Z);
+            set(srf, 'EdgeColor', 'none', 'FaceColor', 'interp', ...
+                     'FaceLighting', 'none', 'AmbientStrength', 1);
+            colormap(ax, parula);
+            caxis(ax, [0, max(max(Z(:)), eps)]);
+            zlim(ax, [0, 1.05 * max(max(Z(:)), eps)]);
+
+            % The kernel is evaluated past the last bin edge so no mass is lost
+            % at the boundary; the axes stop at the edges, where the data does.
+            % A floor contour projection was tried and dropped: the surface's
+            % own near-zero skirt covers the whole plane and occludes it.
+            xlim(ax, [0, cg.Te_edges(end)]);  ylim(ax, [0, cg.Hs_edges(end)]);
+            xlabel(ax, 'Energy period  T_e  (s)',            'FontSize', s.fs.label);
+            ylabel(ax, 'Significant wave height  H_s  (m)',  'FontSize', s.fs.label);
+            zlabel(ax, z_label,                              'FontSize', s.fs.label);
+            view(ax, -40, 32);
+
+            cb = colorbar(ax);
+            cb.Label.String = z_label;
+            cb.Label.FontSize = s.fs.label;  cb.FontSize = s.fs.tick;
+            cb.Label.FontName = s.font;
+
+            ttl = title(ax, MWEC_WaveClimate_Plots.header(cg, 'W6 — available wave energy', true));
+            set(ttl, 'FontName', s.font, 'FontSize', s.fs.title, 'FontWeight', 'bold');
+            sbt = subtitle(ax, sub);
+            set(sbt, 'FontName', s.font, 'FontSize', s.fs.annot, 'Color', s.c.grey);
+
+            MWEC_WaveClimate_Plots.finish(fig, cg, 'fig_w6_surface', cfg, 'image');
+        end
+
+        function q = energy_density(cg, opts)
+        %ENERGY_DENSITY  Smooth (H_s,T_e) density of probability-weighted flux.
+        %   Returns Z in kW/m per (m.s) on a fine grid, with trapz(trapz(Z))
+        %   equal to sum(p_ij*J_ij) to within the fine grid's quadrature error.
+            if nargin < 2, opts = struct(); end
+            if ~isfield(opts, 'sigma_factor'), opts.sigma_factor = 0.75; end
+            if ~isfield(opts, 'n_Hs'), opts.n_Hs = 181; end
+            if ~isfield(opts, 'n_Te'), opts.n_Te = 241; end
+
+            k = MWEC_WaveClimate_Plots.derive(cg);
+            W = k.E / 1000;                                  % kW/m per cell
+            Hs_c = cg.Hs_centers(:);  Te_c = cg.Te_centers(:);
+            dH = median(diff(cg.Hs_edges(:)));
+            dT = median(diff(cg.Te_edges(:)));
+            sigma_Hs = opts.sigma_factor * dH;
+            sigma_Te = opts.sigma_factor * dT;
+
+            % pad past the last edge so the kernel tails stay inside the domain
+            Hs_f = linspace(0, cg.Hs_edges(end) + 1.5*dH, opts.n_Hs).';
+            Te_f = linspace(0, cg.Te_edges(end) + 1.5*dT, opts.n_Te).';
+            K_Hs = MWEC_WaveClimate_Plots.reflected_gaussian(Hs_f, Hs_c, sigma_Hs);
+            K_Te = MWEC_WaveClimate_Plots.reflected_gaussian(Te_f, Te_c, sigma_Te);
+
+            Z = K_Hs * W * K_Te.';                           % nHf x nTf
+            q = struct('Te', Te_f, 'Hs', Hs_f, 'Z', Z, ...
+                       'P_wave', sum(W(:)), ...
+                       'volume', trapz(Hs_f, trapz(Te_f, Z, 2)), ...
+                       'sigma_Hs', sigma_Hs, 'sigma_Te', sigma_Te, ...
+                       'dH', dH, 'dT', dT, 'E_native_kWm', W);
+        end
+
+        function K = reflected_gaussian(x, mu, sigma)
+        %REFLECTED_GAUSSIAN  Gaussian kernel matrix folded about the origin.
+        %   K(a,b) is the density at X(a) of a unit mass at MU(b).  Folding the
+        %   negative tail back keeps the total mass on [0, inf), so smoothing a
+        %   cell near H_s = 0 does not lose energy off the edge of the domain.
+            x = x(:);  mu = mu(:).';
+            phi = @(u) exp(-0.5 * u.^2) ./ (sigma * sqrt(2*pi));
+            K = phi((x - mu) / sigma) + phi((x + mu) / sigma);
+        end
+
+        function label = station_label(sid, region, cfg)
+        %STATION_LABEL  Header text for a station column.
+        %   cfg.station_labels overrides; otherwise the stored region is split
+        %   at camel-case boundaries ('NorthAtlantic' -> 'North Atlantic').
+            if nargin >= 3 && isfield(cfg, 'station_labels') && ...
+                    isfield(cfg.station_labels, sid)
+                label = cfg.station_labels.(sid);
+                return
+            end
+            label = regexprep(region, '(?<=[a-z])(?=[A-Z])', ' ');
+            if strcmp(label, 'unknown'), label = sid; end
+        end
+
+        %% =================================================================
         %%  HELPERS
         %% =================================================================
 
@@ -464,7 +742,7 @@ classdef MWEC_WaveClimate_Plots
                     if dark, col = [1 1 1]; else, col = s.c.black; end
                     text(ax, x(j), y(i), sprintf(fmt, V(i, j)), ...
                          'HorizontalAlignment', 'center', 'VerticalAlignment', 'middle', ...
-                         'FontName', s.font, 'FontSize', 5.5, 'Color', col);
+                         'FontName', s.font, 'FontSize', s.fs.cell, 'Color', col);
                 end
             end
         end
@@ -497,14 +775,16 @@ classdef MWEC_WaveClimate_Plots
             end
         end
 
-        function str = header(cg, prefix)
+        function str = header(cg, prefix, short)
         %HEADER  Common figure title: who the station is and how much data it has.
+        %   SHORT drops the record count, for titles that have to fit a 3-D axes.
+            if nargin < 3, short = false; end
             [sid, reg, depth, n_bin, n_tot] = MWEC_WaveClimate_Plots.ident(cg);
             str = sprintf('%s  ·  %s  ·  %s', prefix, sid, reg);
             if isfinite(depth)
                 str = sprintf('%s  |  h = %.0f m', str, depth);
             end
-            if isfinite(n_bin) && isfinite(n_tot)
+            if ~short && isfinite(n_bin) && isfinite(n_tot)
                 str = sprintf('%s,  N = %d/%d records', str, round(n_bin), round(n_tot));
             end
         end
