@@ -25,6 +25,7 @@
 % stations    = {'ST63044','ST84040'};   % subset; default is all found
 % formats     = {'pdf','png'};           % default {'pdf','png','fig'}
 % sigma_factor = 0.75;   % W6 smoothing width, in climate-grid bin widths
+% depth_model  = 'finite';   % 'finite' (default) or 'deep' group velocity
 % station_labels = struct('ST63044', 'North Atlantic, NH', ...
 %                         'ST84040', 'Santa Barbara, CA');   % W5 column headers
 % -----------------------------------------------------------------------------
@@ -49,10 +50,15 @@ if exist('station_labels', 'var') && ~isempty(station_labels)
     cfg.station_labels = station_labels;
 end
 
+if exist('depth_model', 'var') && ~isempty(depth_model)
+    cfg.depth_model = depth_model;
+end
+
 surf_opts = struct();
 if exist('sigma_factor', 'var') && ~isempty(sigma_factor)
     surf_opts.sigma_factor = sigma_factor;
 end
+if isfield(cfg, 'depth_model'), surf_opts.depth_model = cfg.depth_model; end
 
 bar_line = repmat('=', 1, 78);
 fprintf('\n%s\n  Wave-climate figures (station data only)\n%s\n', bar_line, bar_line);
@@ -86,7 +92,7 @@ for i = 1:numel(listing)
     [sid, region, depth] = MWEC_WaveClimate_Plots.ident(cg);
 
     fprintf('  [%d/%d] %s (%s) ... ', i, numel(listing), sid, region);
-    k = MWEC_WaveClimate_Plots.derive(cg);
+    k = MWEC_WaveClimate_Plots.derive(cg, cfg);
 
     MWEC_WaveClimate_Plots.fig_w1_scatter(cg, cfg);
     MWEC_WaveClimate_Plots.fig_w2_spectrum(cg, cfg);
@@ -97,6 +103,11 @@ for i = 1:numel(listing)
     q = MWEC_WaveClimate_Plots.energy_density(cg, surf_opts);
     fprintf('          surface volume %.4f kW/m vs sum(p*J) %.4f kW/m  (%.2f%% apart)\n', ...
             q.volume, q.P_wave, 100*abs(q.volume - q.P_wave)/max(q.P_wave, eps));
+
+    k_deep = MWEC_WaveClimate_Plots.derive(cg, struct('depth_model', 'deep'));
+    fprintf('          P_wave %.3f kW/m (%s depth); deep-water form gives %.3f (%+.1f%%)\n', ...
+            k.P_wave/1000, k.depth_model, k_deep.P_wave/1000, ...
+            100*(k_deep.P_wave - k.P_wave)/max(k.P_wave, eps));
 
     if k.m0_err_pct > 1
         warning('run_wave_climate_plots:m0', ...

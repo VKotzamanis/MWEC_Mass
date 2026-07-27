@@ -6,8 +6,9 @@ classdef MWEC_WaveClimate_Plots
 %   resource before any device is placed in it.  The WEC-coupled figures
 %   live in MWEC_Tuning_Plots (fig_t1..fig_t8) and are not duplicated here.
 %
-%   Style is single-sourced from MWEC_Tuning_Plots (Wong colorblind-safe
-%   palette, fixed cm sizes, Helvetica) so the two figure families match.
+%   Style follows MWEC_Tuning_Plots (Wong colorblind-safe palette, fixed cm
+%   sizes) with Times New Roman as the body font; cividis carries every
+%   colour-mapped field.  The T figures keep their own typeface.
 %
 %   Inventory
 %     fig_w1_scatter    (Hs,Te) occurrence scatter table + marginals
@@ -68,18 +69,35 @@ classdef MWEC_WaveClimate_Plots
         %%  DERIVED QUANTITIES  (station data only)
         %% =================================================================
 
-        function k = derive(cg)
+        function k = derive(cg, opts)
         %DERIVE  Spectral aggregates for one climate grid.
         %
         %   Mirrors MWEC_Tuning_Kernels.build_S_ew / compute_iec_moments but
         %   stays self-contained so these figures render without the tuning
         %   pipeline on the path.  Returns:
         %     Sew      probability-weighted climate spectrum  [m^2 s/rad]
-        %     J        energy-flux density rho g^2/(2 w) Sew  [W/m per rad/s]
+        %     J        energy-flux density rho g c_g(w) Sew   [W/m per rad/s]
         %     P_wave   total resource trapz(J)                [W/m]
         %     E        per-cell contribution to P_wave        [W/m], nHs x nTe
         %     band     central 90% energy band (omega and period)
         %     IEC      spectral moments per IEC TS 62600-101
+        %
+        %   The omnidirectional energy flux of a sea state is
+        %       J = rho g * integral c_g(w) S(w) dw            [W/m]
+        %   with the group velocity from the full dispersion relation,
+        %       c_g = 1/2 (1 + 2kh/sinh 2kh) w/k,   w^2 = g k tanh(kh).
+        %
+        %   opts.depth_model 'finite' (default) uses that c_g at the station's
+        %   own water depth; 'deep' collapses it to c_g = g/(2w), the form
+        %   MWEC_Tuning_Kernels.build_S_ew uses.  Deep water needs kh > pi, and
+        %   at 28 m and 50 m these stations do not reach it at their energy
+        %   period, where the deep form understates the flux by 6-8%.  The
+        %   spectra and every IEC moment are independent of this choice; only
+        %   J, E and P_wave move.
+            if nargin < 2, opts = struct(); end
+            if ~isfield(opts, 'depth_model') || isempty(opts.depth_model)
+                opts.depth_model = 'finite';
+            end
             rho = 1025; g_acc = 9.81;
 
             required = {'probability_grid','S_omega_grid','omega', ...
@@ -110,14 +128,21 @@ classdef MWEC_WaveClimate_Plots
             end
             S(~isfinite(S)) = 0;                         % empty cells: p=0, no contribution
 
+            [~, ~, depth] = MWEC_WaveClimate_Plots.ident(cg);
+            [c_g, depth_used] = MWEC_WaveClimate_Plots.group_velocity( ...
+                                    omega, depth, opts.depth_model, g_acc);
+
             k.omega = omega;
             k.Sew   = S * pv(:);                         % nOm x 1
-            k.J     = (rho * g_acc^2 / 2) .* k.Sew ./ max(omega, 1e-10);
+            k.J     = rho * g_acc .* c_g .* k.Sew;       % W/m per rad/s
 
             % Per-cell energy flux, then its probability-weighted share
-            J_cell = (rho * g_acc^2 / 2) .* trapz(omega, S ./ max(omega, 1e-10), 1);
+            J_cell = rho * g_acc .* trapz(omega, S .* c_g, 1);
             k.E    = reshape(pv .* J_cell, N_H, N_T);    % W/m, sums to P_wave
             k.P_wave = trapz(omega, k.J);
+            k.c_g    = c_g;
+            k.depth_model = depth_used;
+            k.water_depth_m = depth;
 
             k.IEC = MWEC_WaveClimate_Plots.moments(omega, k.Sew);
             k.band = MWEC_WaveClimate_Plots.energy_band(omega, k.Sew);
@@ -131,6 +156,47 @@ classdef MWEC_WaveClimate_Plots
 
             k.n_cells_occupied = nnz(occupied);
             k.n_cells_total    = N_H * N_T;
+        end
+
+        function [c_g, model] = group_velocity(omega, h, model, g_acc)
+        %GROUP_VELOCITY  Wave group velocity at angular frequency OMEGA.
+        %   'deep'   c_g = g/(2w)                       -- valid for kh > pi
+        %   'finite' c_g = 1/2 (1 + 2kh/sinh 2kh) w/k   -- valid at any depth
+        %   Falls back to 'deep' when the grid carries no water depth.
+            omega = omega(:);
+            if strcmpi(model, 'deep') || ~isfinite(h) || h <= 0
+                if ~strcmpi(model, 'deep')
+                    warning('MWEC_WaveClimate_Plots:noDepth', ...
+                            'No usable water depth in the grid; using deep water.');
+                end
+                model = 'deep';
+                c_g = g_acc ./ (2 * max(omega, 1e-10));
+                return
+            end
+            model = 'finite';
+            kh = MWEC_WaveClimate_Plots.wave_number(omega, h, g_acc) * h;
+            % sinh overflows past ~350; there c_g is deep-water to machine eps
+            ratio = zeros(size(kh));
+            small = 2*kh < 350;
+            ratio(small) = 2*kh(small) ./ sinh(2*kh(small));
+            n = 0.5 * (1 + ratio);
+            c_g = n .* omega ./ (kh / h);
+        end
+
+        function k = wave_number(omega, h, g_acc)
+        %WAVE_NUMBER  Solve w^2 = g k tanh(k h) for k.
+        %   Guo's (2002) explicit initial guess, then Newton.  Three sweeps
+        %   reach machine precision over 0.3-6 rad/s at 28-427 m; five is free.
+            omega = omega(:);
+            x  = omega.^2 * h / g_acc;
+            kh = x ./ (1 - exp(-x.^1.25)).^0.4;
+            k  = kh / h;
+            for it = 1:5
+                t  = tanh(k * h);
+                f  = g_acc * k .* t - omega.^2;
+                df = g_acc * t + g_acc * k * h .* (1 - t.^2);
+                k  = max(k - f ./ df, 1e-12);
+            end
         end
 
         function IEC = moments(omega, S)
@@ -184,7 +250,7 @@ classdef MWEC_WaveClimate_Plots
         %   reads as "0.0%".
             if nargin < 2, cfg = struct(); end
             s = MWEC_WaveClimate_Plots.style();
-            k = MWEC_WaveClimate_Plots.derive(cg);
+            k = MWEC_WaveClimate_Plots.derive(cg, cfg);
 
             Ppct = cg.probability_grid * 100;
             Hs_c = cg.Hs_centers(:);  Te_c = cg.Te_centers(:);
@@ -209,7 +275,7 @@ classdef MWEC_WaveClimate_Plots
             im = imagesc(ax, Te_c, Hs_c, Ppct);
             set(im, 'AlphaData', double(Ppct > 0));
             set(ax, 'YDir', 'normal', 'ColorScale', 'log');
-            colormap(ax, parula);
+            colormap(ax, MWEC_WaveClimate_Plots.cividis());
             c_lo = max(min(Ppct(Ppct > 0)), 1e-2);
             if isempty(c_lo), c_lo = 1e-2; end
             caxis(ax, [c_lo, max(max(Ppct(:)), 10*c_lo)]);
@@ -271,7 +337,7 @@ classdef MWEC_WaveClimate_Plots
         %   smaller than any single cell by construction (it is a p-weighted mean).
             if nargin < 2, cfg = struct(); end
             s = MWEC_WaveClimate_Plots.style();
-            k = MWEC_WaveClimate_Plots.derive(cg);
+            k = MWEC_WaveClimate_Plots.derive(cg, cfg);
 
             om = k.omega;  p = cg.probability_grid;
             [N_H, N_T] = size(p);
@@ -354,7 +420,7 @@ classdef MWEC_WaveClimate_Plots
         %   Hs^2 Te.  W1 answers "how often", this answers "how much".
             if nargin < 2, cfg = struct(); end
             s = MWEC_WaveClimate_Plots.style();
-            k = MWEC_WaveClimate_Plots.derive(cg);
+            k = MWEC_WaveClimate_Plots.derive(cg, cfg);
 
             Hs_c = cg.Hs_centers(:);  Te_c = cg.Te_centers(:);
             Epct = 100 * k.E / max(sum(k.E(:)), eps);
@@ -369,7 +435,7 @@ classdef MWEC_WaveClimate_Plots
             im = imagesc(ax, Te_c, Hs_c, Epct);
             set(im, 'AlphaData', double(Epct > 0));
             set(ax, 'YDir', 'normal');
-            colormap(ax, MWEC_WaveClimate_Plots.heat_map());
+            colormap(ax, MWEC_WaveClimate_Plots.cividis());
             caxis(ax, [0, max(max(Epct(:)), eps)]);
 
             MWEC_WaveClimate_Plots.label_cells(ax, Te_c, Hs_c, Epct, 0.5, '%.0f', s);
@@ -427,7 +493,7 @@ classdef MWEC_WaveClimate_Plots
 
             ks = cell(1, n);  names = cell(1, n);  legends = cell(1, n);
             for i = 1:n
-                ks{i} = MWEC_WaveClimate_Plots.derive(cgs{i});
+                ks{i} = MWEC_WaveClimate_Plots.derive(cgs{i}, cfg);
                 [sid, reg, depth] = MWEC_WaveClimate_Plots.ident(cgs{i});
                 names{i}   = reg;
                 legends{i} = sprintf('%s · %s  (h = %.0f m)', sid, reg, depth);
@@ -624,22 +690,23 @@ classdef MWEC_WaveClimate_Plots
                 Z = q.Z;
                 z_label = 'p \cdot J   (kW/m per m\cdots)';
                 sub = sprintf(['volume = %.3f kW/m  (\\Sigma p_{ij}J_{ij} = %.3f kW/m)   ' ...
-                               '|   \\sigma = %.2f m \\times %.2f s'], ...
-                               q.volume, q.P_wave, q.sigma_Hs, q.sigma_Te);
+                               '|   \\sigma = %.2f m \\times %.2f s   |   c_g: %s depth'], ...
+                               q.volume, q.P_wave, q.sigma_Hs, q.sigma_Te, q.depth_model);
             else
-                k = MWEC_WaveClimate_Plots.derive(cg);
+                k = MWEC_WaveClimate_Plots.derive(cg, opts);
                 [T, H] = meshgrid(cg.Te_centers(:), cg.Hs_centers(:));
                 Z = k.E / 1000;
                 q = struct('P_wave', sum(Z(:)), 'volume', sum(Z(:)));
                 z_label = 'p \cdot J   (kW/m per cell)';
-                sub = sprintf('native %d \\times %d grid  |  \\Sigma p_{ij}J_{ij} = %.3f kW/m', ...
-                              size(Z, 1), size(Z, 2), q.P_wave);
+                sub = sprintf(['native %d \\times %d grid  |  \\Sigma p_{ij}J_{ij} = %.3f kW/m' ...
+                               '  |  c_g: %s depth'], ...
+                              size(Z, 1), size(Z, 2), q.P_wave, k.depth_model);
             end
 
             srf = surf(ax, T, H, Z);
             set(srf, 'EdgeColor', 'none', 'FaceColor', 'interp', ...
                      'FaceLighting', 'none', 'AmbientStrength', 1);
-            colormap(ax, parula);
+            colormap(ax, MWEC_WaveClimate_Plots.cividis());
             caxis(ax, [0, max(max(Z(:)), eps)]);
             zlim(ax, [0, 1.05 * max(max(Z(:)), eps)]);
 
@@ -675,7 +742,7 @@ classdef MWEC_WaveClimate_Plots
             if ~isfield(opts, 'n_Hs'), opts.n_Hs = 181; end
             if ~isfield(opts, 'n_Te'), opts.n_Te = 241; end
 
-            k = MWEC_WaveClimate_Plots.derive(cg);
+            k = MWEC_WaveClimate_Plots.derive(cg, opts);
             W = k.E / 1000;                                  % kW/m per cell
             Hs_c = cg.Hs_centers(:);  Te_c = cg.Te_centers(:);
             dH = median(diff(cg.Hs_edges(:)));
@@ -691,6 +758,7 @@ classdef MWEC_WaveClimate_Plots
 
             Z = K_Hs * W * K_Te.';                           % nHf x nTf
             q = struct('Te', Te_f, 'Hs', Hs_f, 'Z', Z, ...
+                       'depth_model', k.depth_model, ...
                        'P_wave', sum(W(:)), ...
                        'volume', trapz(Hs_f, trapz(Te_f, Z, 2)), ...
                        'sigma_Hs', sigma_Hs, 'sigma_Te', sigma_Te, ...
@@ -727,6 +795,9 @@ classdef MWEC_WaveClimate_Plots
         function label_cells(ax, x, y, V, thresh, fmt, s)
         %LABEL_CELLS  Annotate matrix cells above THRESH, flipping the text to
         %   white over the dark end of the colormap so labels stay legible.
+        %   Both figures now use cividis, which runs dark navy at the low end to
+        %   yellow at the high end, so one rule covers the linear and the log
+        %   axis: white below the crossover, black above it.
             lim = caxis(ax);
             is_log = strcmp(get(ax, 'ColorScale'), 'log');
             for i = 1:numel(y)
@@ -735,11 +806,10 @@ classdef MWEC_WaveClimate_Plots
                     if is_log
                         f = (log10(max(V(i,j), lim(1))) - log10(lim(1))) / ...
                             max(log10(lim(2)) - log10(lim(1)), eps);
-                        dark = f < 0.62;                 % parula: low = dark blue
                     else
-                        dark = V(i, j) > 0.65 * lim(2);  % heat map: high = dark red
+                        f = (V(i, j) - lim(1)) / max(lim(2) - lim(1), eps);
                     end
-                    if dark, col = [1 1 1]; else, col = s.c.black; end
+                    if f < 0.62, col = [1 1 1]; else, col = s.c.black; end
                     text(ax, x(j), y(i), sprintf(fmt, V(i, j)), ...
                          'HorizontalAlignment', 'center', 'VerticalAlignment', 'middle', ...
                          'FontName', s.font, 'FontSize', s.fs.cell, 'Color', col);
@@ -747,11 +817,56 @@ classdef MWEC_WaveClimate_Plots
             end
         end
 
-        function cm = heat_map()
-        %HEAT_MAP  Sequential light-to-dark map, Wong orange/red anchored, so a
-        %   near-zero cell never reads like an unoccupied one.
-            anchors = [255 255 204; 254 217 118; 230 159 0; 213 94 0; 127 29 0] / 255;
-            cm = interp1(linspace(0, 1, size(anchors, 1)), anchors, linspace(0, 1, 256));
+        function cm = cividis(n)
+        %CIVIDIS  The cividis colormap (Nunez, Anderton & Renslow, 2018).
+        %   Perceptually uniform like viridis, but built so a deuteranope or
+        %   protanope reads the same ordering a trichromat does -- viridis is
+        %   only approximately safe, cividis is optimised for it.  MATLAB does
+        %   not ship it, so the reference 256-entry table is embedded verbatim:
+        %   sparse anchors plus interpolation cost ~2% in the blue ramp, which
+        %   is visible, and break colour-for-colour agreement with matplotlib.
+            persistent T
+            if isempty(T)
+                T = [ ...
+                  0  34  78;   0  35  79;   0  36  81;   0  37  83;   0  37  84;   0  38  86;   0  39  88;   0  40  89;
+                  0  40  91;   0  41  93;   0  42  95;   0  42  97;   0  43  98;   0  44 100;   0  44 102;   0  45 104;
+                  0  46 106;   0  46 108;   0  47 109;   0  48 111;   0  48 112;   0  49 112;   0  49 113;   1  50 113;
+                  5  51 113;   8  51 112;  12  52 112;  15  53 112;  18  53 112;  20  54 112;  22  55 112;  24  55 111;
+                 26  56 111;  28  57 111;  30  58 111;  32  58 111;  33  59 110;  35  60 110;  36  60 110;  38  61 110;
+                 39  62 110;  41  63 110;  42  63 109;  43  64 109;  45  65 109;  46  65 109;  47  66 109;  49  67 109;
+                 50  67 109;  51  68 109;  52  69 108;  53  69 108;  54  70 108;  56  71 108;  57  72 108;  58  72 108;
+                 59  73 108;  60  74 108;  61  74 108;  62  75 108;  63  76 108;  64  76 108;  65  77 108;  66  78 108;
+                 67  78 108;  68  79 108;  69  80 108;  70  81 108;  71  81 108;  72  82 108;  73  83 108;  74  83 108;
+                 75  84 108;  76  85 108;  77  85 108;  78  86 108;  79  87 108;  80  87 108;  81  88 109;  82  89 109;
+                 83  90 109;  84  90 109;  85  91 109;  85  92 109;  86  92 109;  87  93 109;  88  94 109;  89  94 110;
+                 90  95 110;  91  96 110;  92  97 110;  93  97 110;  94  98 110;  94  99 111;  95  99 111;  96 100 111;
+                 97 101 111;  98 101 111;  99 102 112; 100 103 112; 101 104 112; 101 104 112; 102 105 112; 103 106 113;
+                104 106 113; 105 107 113; 106 108 113; 107 109 114; 108 109 114; 108 110 114; 109 111 114; 110 111 115;
+                111 112 115; 112 113 115; 113 114 116; 114 114 116; 114 115 116; 115 116 117; 116 116 117; 117 117 117;
+                118 118 118; 119 119 118; 119 119 119; 120 120 119; 121 121 119; 122 122 120; 123 122 120; 124 123 120;
+                125 124 120; 126 124 120; 126 125 120; 127 126 120; 128 127 120; 129 127 120; 130 128 121; 131 129 121;
+                132 130 121; 133 130 121; 134 131 121; 135 132 120; 136 133 120; 137 133 120; 138 134 120; 139 135 120;
+                140 136 120; 141 136 120; 142 137 120; 143 138 120; 144 139 120; 145 139 120; 146 140 120; 146 141 120;
+                147 142 120; 148 142 119; 149 143 119; 150 144 119; 151 145 119; 152 146 119; 153 146 119; 154 147 118;
+                155 148 118; 156 149 118; 157 149 118; 158 150 118; 159 151 117; 160 152 117; 161 153 117; 162 153 117;
+                163 154 116; 164 155 116; 165 156 116; 166 156 116; 167 157 115; 168 158 115; 169 159 115; 170 160 115;
+                171 160 114; 172 161 114; 173 162 114; 174 163 113; 175 164 113; 176 165 113; 177 165 112; 179 166 112;
+                180 167 111; 181 168 111; 182 169 111; 183 169 110; 184 170 110; 185 171 109; 186 172 109; 187 173 109;
+                188 174 108; 189 174 108; 190 175 107; 191 176 107; 192 177 106; 193 178 106; 194 179 105; 195 179 105;
+                196 180 104; 197 181 104; 198 182 103; 199 183 103; 200 184 102; 201 185 101; 203 185 101; 204 186 100;
+                205 187  99; 206 188  99; 207 189  98; 208 190  98; 209 191  97; 210 192  96; 211 192  95; 212 193  95;
+                213 194  94; 214 195  93; 215 196  92; 217 197  92; 218 198  91; 219 199  90; 220 200  89; 221 200  88;
+                222 201  88; 223 202  87; 224 203  86; 225 204  85; 226 205  84; 228 206  83; 229 207  82; 230 208  81;
+                231 209  80; 232 210  79; 233 211  78; 234 211  76; 235 212  75; 237 213  74; 238 214  73; 239 215  72;
+                240 216  70; 241 217  69; 242 218  68; 243 219  66; 245 220  65; 246 221  63; 247 222  62; 248 223  60;
+                249 224  58; 251 225  56; 252 226  54; 253 227  52; 254 228  52; 254 229  53; 254 230  54; 254 232  56 ] / 255;
+            end
+            if nargin < 1 || isempty(n), n = size(T, 1); end
+            if n == size(T, 1)
+                cm = T;
+            else
+                cm = interp1(linspace(0, 1, size(T, 1)), T, linspace(0, 1, n));
+            end
         end
 
         function v = omega_view(k)
