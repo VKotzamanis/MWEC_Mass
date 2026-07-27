@@ -29,6 +29,10 @@ classdef WEC_Visualization
         LW_AXES         = 0.6;
         WATERLINE_COLOR = [0.15, 0.55, 0.95];
         BOUNDARY_COLOR  = [0.10, 0.10, 0.10];
+        % Export
+        EXPORT_DPI      = 300;
+        % Fraction of the data range added as whitespace around 2D geometry
+        AXIS_PAD_FRAC   = 0.06;
     end
 
     methods (Static)
@@ -42,7 +46,7 @@ classdef WEC_Visualization
                 s1 = results.stage1_2d;
                 n_iter = s1.iterations;
 
-                figure('Name', 'WEC Optimization Convergence', ...
+                fig = figure('Name', 'WEC Optimization Convergence', ...
                        'Color', 'white', 'Position', [100, 100, 1400, 900]);
 
                 %% PANEL A1: Surrogate Quality (R^2 & MAPE)
@@ -53,35 +57,40 @@ classdef WEC_Visualization
                     valid = ~isnan(s1.R2_mass);
 
                     if any(valid)
-                        yyaxis left
-                        plot(iters(valid), s1.R2_mass(valid), 'b-o', ...
-                             'LineWidth', WEC_Visualization.LW_MAIN, 'MarkerSize', 6);
+                        yyaxis(ax1, 'left');
+                        plot(ax1, iters(valid), s1.R2_mass(valid), 'b-o', ...
+                             'LineWidth', WEC_Visualization.LW_MAIN, 'MarkerSize', 6, ...
+                             'DisplayName', '$R^2$(Mass)');
                         if isfield(s1, 'R2_GM') && ~isempty(s1.R2_GM)
-                            plot(iters(valid), s1.R2_GM(valid), 'r-s', ...
-                                 'LineWidth', WEC_Visualization.LW_MAIN, 'MarkerSize', 6);
+                            plot(ax1, iters(valid), s1.R2_GM(valid), 'r-s', ...
+                                 'LineWidth', WEC_Visualization.LW_MAIN, 'MarkerSize', 6, ...
+                                 'DisplayName', '$R^2$(GM)');
                         end
-                        ylabel('$R^2$ (Goodness of Fit)', 'Interpreter', 'latex', ...
+                        ylabel(ax1, '$R^2$ (Goodness of Fit)', 'Interpreter', 'latex', ...
                                'FontSize', WEC_Visualization.FONT_SIZE_LABEL);
-                        ylim([0, 1.05]);
-                        xl = xlim;
-                        plot(xl, [0.9, 0.9], 'k--', 'LineWidth', 1, 'HandleVisibility', 'off');
-                        set(gca, 'YColor', 'k');
+                        ylim(ax1, [0, 1.05]);
+                        yline(ax1, 0.9, 'k--', 'LineWidth', 1, 'HandleVisibility', 'off');
+                        set(ax1, 'YColor', 'k');
 
-                        yyaxis right
+                        yyaxis(ax1, 'right');
                         if isfield(s1, 'MAPE_mass') && ~isempty(s1.MAPE_mass)
-                            plot(iters(valid), s1.MAPE_mass(valid), 'b--^', ...
-                                 'LineWidth', 1.5, 'MarkerSize', 5);
+                            plot(ax1, iters(valid), s1.MAPE_mass(valid), 'b--^', ...
+                                 'LineWidth', 1.5, 'MarkerSize', 5, ...
+                                 'DisplayName', 'MAPE(Mass)');
                         end
                         if isfield(s1, 'MAPE_GM') && ~isempty(s1.MAPE_GM)
-                            plot(iters(valid), s1.MAPE_GM(valid), 'r--v', ...
-                                 'LineWidth', 1.5, 'MarkerSize', 5);
+                            plot(ax1, iters(valid), s1.MAPE_GM(valid), 'r--v', ...
+                                 'LineWidth', 1.5, 'MarkerSize', 5, ...
+                                 'DisplayName', 'MAPE(GM)');
                         end
-                        ylabel('MAPE (\%)', 'Interpreter', 'latex', ...
+                        ylabel(ax1, 'MAPE (\%)', 'Interpreter', 'latex', ...
                                'FontSize', WEC_Visualization.FONT_SIZE_LABEL);
-                        set(gca, 'YColor', [0.5 0.5 0.5]);
-                        
-                        legend('$R^2$(Mass)', '$R^2$(GM)', 'MAPE(Mass)', 'MAPE(GM)', ...
-                               'Location', 'best', 'Interpreter', 'latex', 'FontName', WEC_Visualization.FONT_NAME);
+                        set(ax1, 'YColor', [0.5 0.5 0.5]);
+
+                        % DisplayName-driven legend: a fixed 4-entry label list
+                        % mislabels the curves whenever R2_GM/MAPE are absent.
+                        legend(ax1, 'Location', 'best', 'Interpreter', 'latex', ...
+                               'FontName', WEC_Visualization.FONT_NAME);
                     else
                         text(0.5, 0.5, 'R$^2$ / MAPE: insufficient data', ...
                              'Interpreter', 'latex', 'Units', 'normalized', 'HorizontalAlignment', 'center');
@@ -90,8 +99,8 @@ classdef WEC_Visualization
                     text(0.5, 0.5, sprintf('Stage 1: %d iteration(s) (need $\\geq 2$)', n_iter), ...
                          'Interpreter', 'latex', 'Units', 'normalized', 'HorizontalAlignment', 'center');
                 end
-                xlabel('Stage 1 Iteration', 'Interpreter', 'latex', 'FontSize', WEC_Visualization.FONT_SIZE_LABEL);
-                title('(A1) Surrogate Quality', 'Interpreter', 'latex', 'FontSize', WEC_Visualization.FONT_SIZE_TITLE);
+                xlabel(ax1, 'Stage 1 Iteration', 'Interpreter', 'latex', 'FontSize', WEC_Visualization.FONT_SIZE_LABEL);
+                title(ax1, '(A1) Surrogate Quality', 'Interpreter', 'latex', 'FontSize', WEC_Visualization.FONT_SIZE_TITLE);
                 WEC_Visualization.format_axis_publication(ax1);
 
                 %% PANEL A2: Raw 2D-3D Errors
@@ -100,23 +109,27 @@ classdef WEC_Visualization
                 if n_iter >= 1 && ~isempty(s1.mass_errors)
                     iters = 1:n_iter;
 
-                    yyaxis left
-                    plot(iters, s1.mass_errors, 'b-o', 'LineWidth', WEC_Visualization.LW_MAIN, 'MarkerSize', 6);
-                    ylabel('Mass Error (kg)', 'Interpreter', 'latex', 'FontSize', WEC_Visualization.FONT_SIZE_LABEL);
-                    set(gca, 'YColor', 'b');
+                    yyaxis(ax2, 'left');
+                    plot(ax2, iters, s1.mass_errors, 'b-o', 'LineWidth', WEC_Visualization.LW_MAIN, ...
+                         'MarkerSize', 6, 'DisplayName', 'Mass Error');
+                    yline(ax2, 0, '-', 'Color', [0.6 0.6 0.6], 'LineWidth', 0.75, 'HandleVisibility', 'off');
+                    ylabel(ax2, 'Mass Error (kg)', 'Interpreter', 'latex', 'FontSize', WEC_Visualization.FONT_SIZE_LABEL);
+                    set(ax2, 'YColor', 'b');
 
-                    yyaxis right
-                    plot(iters, s1.gm_errors, 'r-s', 'LineWidth', WEC_Visualization.LW_MAIN, 'MarkerSize', 6);
-                    ylabel('GM Error (m)', 'Interpreter', 'latex', 'FontSize', WEC_Visualization.FONT_SIZE_LABEL);
-                    set(gca, 'YColor', 'r');
+                    yyaxis(ax2, 'right');
+                    plot(ax2, iters, s1.gm_errors, 'r-s', 'LineWidth', WEC_Visualization.LW_MAIN, ...
+                         'MarkerSize', 6, 'DisplayName', 'GM Error');
+                    ylabel(ax2, 'GM Error (m)', 'Interpreter', 'latex', 'FontSize', WEC_Visualization.FONT_SIZE_LABEL);
+                    set(ax2, 'YColor', 'r');
 
-                    legend('Mass Error', 'GM Error', 'Location', 'best', 'Interpreter', 'latex', 'FontName', WEC_Visualization.FONT_NAME);
+                    legend(ax2, 'Location', 'best', 'Interpreter', 'latex', 'FontName', WEC_Visualization.FONT_NAME);
+                    xlim(ax2, [0.5, n_iter + 0.5]);
                 else
-                    text(0.5, 0.5, 'No Stage 1 error data', 'Interpreter', 'latex', ...
+                    text(ax2, 0.5, 0.5, 'No Stage 1 error data', 'Interpreter', 'latex', ...
                          'Units', 'normalized', 'HorizontalAlignment', 'center');
                 end
-                xlabel('Stage 1 Iteration', 'Interpreter', 'latex', 'FontSize', WEC_Visualization.FONT_SIZE_LABEL);
-                title('(A2) 2D-3D Prediction Errors', 'Interpreter', 'latex', 'FontSize', WEC_Visualization.FONT_SIZE_TITLE);
+                xlabel(ax2, 'Stage 1 Iteration', 'Interpreter', 'latex', 'FontSize', WEC_Visualization.FONT_SIZE_LABEL);
+                title(ax2, '(A2) 2D-3D Prediction Errors', 'Interpreter', 'latex', 'FontSize', WEC_Visualization.FONT_SIZE_TITLE);
                 WEC_Visualization.format_axis_publication(ax2);
 
                 %% PANEL B1: Stage 2 Mass & GM
@@ -131,12 +144,9 @@ classdef WEC_Visualization
                     results, {'heave', 'pitch'}, {'Heave Period', 'Pitch Period'}, ...
                     '(B2) Stage 2: Period Convergence', ax4);
 
-                sgtitle('WEC Optimization Convergence', ...
+                sgtitle(fig, 'WEC Optimization Convergence', ...
                         'Interpreter', 'latex', 'FontName', WEC_Visualization.FONT_NAME, 'FontSize', 14);
-                timestamp = datestr(now, 'yyyymmdd_HHMMSS');
-                fname = sprintf('WEC_Complete_Convergence_%s.png', timestamp);
-                saveas(gcf, fname);
-                fprintf('  Convergence figure saved: %s\n', fname);
+                WEC_Visualization.save_figure(fig, 'WEC_Complete_Convergence');
 
             catch ME
                 warning('WECVisualization:CompleteConvergenceFailed', ...
@@ -151,7 +161,7 @@ classdef WEC_Visualization
                     return;
                 end
 
-                figure('Name', 'Stage 1: Surrogate Learning Convergence', ...
+                fig = figure('Name', 'Stage 1: Surrogate Learning Convergence', ...
                        'Color', 'white', 'Position', [100, 100, 1600, 900]);
                 iters = 1:n_iter;
 
@@ -246,13 +256,26 @@ classdef WEC_Visualization
                 metrics = stage1_data.convergence_metrics;
 
                 if isfield(metrics, 'constraints_satisfied') && length(metrics.constraints_satisfied) == n_iter
-                    stairs(iters, metrics.constraints_satisfied, 'b-', 'LineWidth', 2.5, 'DisplayName', 'Constraints OK');
-                    stairs(iters, metrics.solution_stable, 'g-', 'LineWidth', 2.5, 'DisplayName', 'Stable');
-                    stairs(iters, metrics.mass_acceptable, 'm-', 'LineWidth', 2.5, 'DisplayName', 'Mass $<10\%$');
-                    stairs(iters, metrics.converged, 'r-', 'LineWidth', 3.5, 'DisplayName', 'CONVERGED');
+                    % The four criteria are coincident whenever they agree, so a
+                    % plain 0/1 plot hides every series but the last drawn.  A
+                    % small vertical stagger plus distinct dash patterns keeps
+                    % all four readable without changing what they encode.
+                    crit = {metrics.constraints_satisfied, metrics.solution_stable, ...
+                            metrics.mass_acceptable,       metrics.converged};
+                    crit_style = {'-', '--', '-.', '-'};
+                    crit_col   = {[0.00 0.35 0.85], [0.10 0.60 0.25], ...
+                                  [0.65 0.20 0.70], [0.85 0.10 0.10]};
+                    crit_lw    = [2.0, 2.0, 2.0, 3.2];
+                    crit_name  = {'Constraints OK', 'Stable', 'Mass $<10\%$', 'CONVERGED'};
+                    offs       = [-0.030, -0.010, 0.010, 0.030];
+                    for c = 1:4
+                        stairs(axD, iters, double(crit{c}(:))' + offs(c), crit_style{c}, ...
+                               'Color', crit_col{c}, 'LineWidth', crit_lw(c), ...
+                               'DisplayName', crit_name{c});
+                    end
 
-                    set(gca, 'YTick', [0, 1], 'YTickLabel', {'False', 'True'});
-                    ylim([-0.15, 1.25]);
+                    set(axD, 'YTick', [0, 1], 'YTickLabel', {'False', 'True'});
+                    ylim(axD, [-0.15, 1.25]);
                 end
 
                 xlabel('Iteration', 'Interpreter', 'latex', 'FontSize', WEC_Visualization.FONT_SIZE_LABEL);
@@ -262,10 +285,9 @@ classdef WEC_Visualization
                 xlim([0.5, n_iter + 0.5]);
                 WEC_Visualization.format_axis_publication(axD);
 
-                sgtitle('Stage 1: Surrogate Learning Convergence', 'Interpreter', 'latex', 'FontName', WEC_Visualization.FONT_NAME, 'FontSize', 14);
-                timestamp = datestr(now, 'yyyymmdd_HHMMSS');
-                fname = sprintf('WEC_Stage1_Convergence_%s.png', timestamp);
-                saveas(gcf, fname);
+                sgtitle(fig, 'Stage 1: Surrogate Learning Convergence', 'Interpreter', 'latex', ...
+                        'FontName', WEC_Visualization.FONT_NAME, 'FontSize', 14);
+                WEC_Visualization.save_figure(fig, 'WEC_Stage1_Convergence');
 
             catch ME
                 warning('WECVisualization:ConvergencePlotFailed', ...
@@ -335,9 +357,8 @@ classdef WEC_Visualization
                 %
                 colormap(ax, WEC_Visualization.cividis_map(256));
                 cbar = colorbar(ax);
-                cbar.Label.String = 'Density, \rho (kg/m^3)';
-                cbar.Label.Interpreter = 'tex';
-                cbar.TickLabelInterpreter = 'tex';
+                WEC_Visualization.format_colorbar(cbar, ...
+                    'Density, $\rho$ [kg\,m$^{-3}$]');
 
                 min_d = min(face_densities);
                 max_d = max(face_densities);
@@ -360,18 +381,22 @@ classdef WEC_Visualization
                     'ks', 'MarkerSize', 12, 'MarkerFaceColor', 'b');
 
                 axis(ax, 'equal'); view(ax, 30, 25);
-                xlabel(ax, '$x$ [m]', 'Interpreter', 'latex'); 
-                ylabel(ax, '$y$ [m]', 'Interpreter', 'latex'); 
-                zlabel(ax, '$z$ [m]', 'Interpreter', 'latex');
-                
-                title(ax, sprintf('Final 3D Design (GM=%.3f m, $T_h$=%.2f s, $T_p$=%.2f s)', ...
-                    props.GM_L, props.periods.heave, props.periods.pitch), 'Interpreter', 'latex');
-                
-                legend(ax, [h_water, h_cg, h_cb], {'Waterplane', 'CG', 'CB'}, ...
-                       'Location', 'bestoutside', 'Interpreter', 'none', 'FontName', WEC_Visualization.FONT_NAME);
-                
+                xlabel(ax, '$x$ [m]', 'Interpreter', 'latex', 'FontSize', WEC_Visualization.FONT_SIZE_LABEL);
+                ylabel(ax, '$y$ [m]', 'Interpreter', 'latex', 'FontSize', WEC_Visualization.FONT_SIZE_LABEL);
+                zlabel(ax, '$z$ [m]', 'Interpreter', 'latex', 'FontSize', WEC_Visualization.FONT_SIZE_LABEL);
+
+                title(ax, sprintf(['Final 3D Design ($GM$ = %.3f m, ' ...
+                    '$T_h$ = %.2f s, $T_p$ = %.2f s)'], ...
+                    props.GM_L, props.periods.heave, props.periods.pitch), ...
+                    'Interpreter', 'latex', 'FontSize', WEC_Visualization.FONT_SIZE_TITLE);
+
+                legend(ax, [h_water, h_cg, h_cb], {'Waterplane', '$CG$', '$CB$'}, ...
+                       'Location', 'northeast', 'Interpreter', 'latex', ...
+                       'FontName', WEC_Visualization.FONT_NAME);
+
                 WEC_Visualization.format_axis_publication(ax);
                 hold(ax, 'off');
+                WEC_Visualization.save_figure(fig, 'WEC_Final_3D_Design');
 
             catch ME
                 warning('WEC_Visualization:3DPlotFailed', '3D visualization failed: %s', ME.message);
@@ -443,9 +468,8 @@ classdef WEC_Visualization
 
                     colormap(ax, cmap);
                     cbar = colorbar(ax);
-                    cbar.Label.String = 'Density, \rho_{core} (kg/m^3)';
-                    cbar.Label.Interpreter = 'tex';
-                    cbar.TickLabelInterpreter = 'tex';
+                    WEC_Visualization.format_colorbar(cbar, ...
+                        'Density, $\rho_{\mathrm{core}}$ [kg\,m$^{-3}$]');
                     caxis(ax, [d_min, d_max]);
                 else
                     plot(ax, shifted_profile(:,1), shifted_profile(:,2), 'k-', 'LineWidth', WEC_Visualization.LW_MAIN);
@@ -470,18 +494,25 @@ classdef WEC_Visualization
                 h_cg = plot(ax, props.CG_total(1), props.CG_total(3), 'ko', 'MarkerSize', 12, 'MarkerFaceColor', 'r');
                 h_cb = plot(ax, props.CB(1), props.CB(3), 'ks', 'MarkerSize', 12, 'MarkerFaceColor', 'b');
 
-                xlabel(ax, '$x$ [m]', 'Interpreter', 'latex'); 
-                ylabel(ax, '$z$ [m]', 'Interpreter', 'latex');
-                title(ax, 'WEC Design Profile', 'Interpreter', 'latex');
+                xlabel(ax, '$x$ [m]', 'Interpreter', 'latex', 'FontSize', WEC_Visualization.FONT_SIZE_LABEL);
+                ylabel(ax, '$z$ [m]  (waterline at $z=0$)', 'Interpreter', 'latex', ...
+                       'FontSize', WEC_Visualization.FONT_SIZE_LABEL);
+                title(ax, 'WEC Design Profile', 'Interpreter', 'latex', ...
+                      'FontSize', WEC_Visualization.FONT_SIZE_TITLE);
                 handles = [h_water, h_cg, h_cb];
-                labels  = {'Waterline', 'CG', 'CB'};
+                labels  = {'Waterline', '$CG$', '$CB$'};
                 if ~isempty(h_wall)
                     handles = [h_water, h_wall, h_cg, h_cb];
-                    labels  = {'Waterline', 'Wall boundary', 'CG', 'CB'};
+                    labels  = {'Waterline', 'Wall boundary', '$CG$', '$CB$'};
                 end
                 legend(ax, handles, labels, ...
-                       'Location', 'bestoutside', 'Interpreter', 'none', 'FontName', WEC_Visualization.FONT_NAME);
-                ylim(ax, [-5, 2]);
+                       'Location', 'best', 'Interpreter', 'latex', ...
+                       'FontName', WEC_Visualization.FONT_NAME);
+                % Fit to the hull instead of the old fixed ylim([-5 2]), which
+                % cropped any design deeper than 5 m or taller than 2 m.
+                WEC_Visualization.pad_axes_2d(ax, ...
+                    [shifted_profile(:,1); x_hull_range(:)], ...
+                    [shifted_profile(:,2); 0]);
                 WEC_Visualization.format_axis_publication(ax);
                 hold(ax, 'off');
 
@@ -510,11 +541,14 @@ classdef WEC_Visualization
                     end
                 end
 
-                text(ax2, 0.05, 0.95, txt, 'Units', 'normalized', ...
-                     'VerticalAlignment', 'top', 'FontName', 'Courier New', ...
+                text(ax2, 0.02, 0.97, txt, 'Units', 'normalized', ...
+                     'VerticalAlignment', 'top', 'HorizontalAlignment', 'left', ...
+                     'FontName', 'Courier New', ...
                      'FontSize', WEC_Visualization.FONT_SIZE_AXIS - 1, 'Interpreter', 'none');
-                 
-                sgtitle(plot_title, 'Interpreter', 'latex', 'FontName', WEC_Visualization.FONT_NAME, 'FontSize', 14);
+
+                sgtitle(fig, plot_title, 'Interpreter', 'latex', ...
+                        'FontName', WEC_Visualization.FONT_NAME, 'FontSize', 14);
+                WEC_Visualization.save_figure(fig, 'WEC_2D_Design');
 
             catch ME
                 warning('WEC_Visualization:2DPlotFailed', '2D visualization failed: %s', ME.message);
@@ -604,9 +638,8 @@ classdef WEC_Visualization
 
                 colormap(ax1, cmap);
                 cb = colorbar(ax1);
-                cb.Label.String = 'Density, \rho_{core} (kg/m^3)';
-                cb.Label.Interpreter = 'tex';
-                cb.TickLabelInterpreter = 'tex';
+                WEC_Visualization.format_colorbar(cb, ...
+                    'Density, $\rho_{\mathrm{core}}$ [kg\,m$^{-3}$]');
                 caxis(ax1, [d_min, d_max]);
 
                 % Waterline — extend to full hull profile width
@@ -625,17 +658,20 @@ classdef WEC_Visualization
                 h_cg = plot(ax1, props_3d.CG_total(1), props_3d.CG_total(3), 'ro', 'MarkerSize', 12, 'MarkerFaceColor', 'r', 'LineWidth', 2);
                 h_cb = plot(ax1, props_3d.CB(1), props_3d.CB(3), 'bs', 'MarkerSize', 12, 'MarkerFaceColor', 'b', 'LineWidth', 2);
                 
-                xlabel(ax1, '$x$ [m]', 'Interpreter', 'latex'); 
-                ylabel(ax1, '$z$ [m]', 'Interpreter', 'latex');
-                title(ax1, 'WEC Design Profile', 'Interpreter', 'latex');
+                xlabel(ax1, '$x$ [m]', 'Interpreter', 'latex', 'FontSize', WEC_Visualization.FONT_SIZE_LABEL);
+                ylabel(ax1, '$z$ [m]  (waterline at $z=0$)', 'Interpreter', 'latex', ...
+                       'FontSize', WEC_Visualization.FONT_SIZE_LABEL);
+                title(ax1, 'WEC Design Profile', 'Interpreter', 'latex', ...
+                      'FontSize', WEC_Visualization.FONT_SIZE_TITLE);
                 if ~isempty(h_wall)
-                    legend(ax1, [h_wl, h_wall, h_cg, h_cb], {'Waterline', 'Wall boundary', 'CG', 'CB'}, ...
-                        'Location', 'best', 'Interpreter', 'none', 'FontName', WEC_Visualization.FONT_NAME);
+                    legend(ax1, [h_wl, h_wall, h_cg, h_cb], {'Waterline', 'Wall boundary', '$CG$', '$CB$'}, ...
+                        'Location', 'best', 'Interpreter', 'latex', 'FontName', WEC_Visualization.FONT_NAME);
                 else
-                    legend(ax1, [h_wl, h_cg, h_cb], {'Waterline', 'CG', 'CB'}, ...
-                        'Location', 'best', 'Interpreter', 'none', 'FontName', WEC_Visualization.FONT_NAME);
+                    legend(ax1, [h_wl, h_cg, h_cb], {'Waterline', '$CG$', '$CB$'}, ...
+                        'Location', 'best', 'Interpreter', 'latex', 'FontName', WEC_Visualization.FONT_NAME);
                 end
-                axis(ax1, 'equal'); 
+                axis(ax1, 'equal');
+                WEC_Visualization.pad_axes_2d(ax1, [px(:); x_hull_range(:)], [pz(:); 0]);
                 WEC_Visualization.format_axis_publication(ax1);
                 hold(ax1, 'off');
 
@@ -680,19 +716,19 @@ classdef WEC_Visualization
                     if isfield(props_3d, 'realisation_mode') && ...
                             strcmp(props_3d.realisation_mode, 'uhpc_fill')
                         sg_str = 'Realised UHPC + Void Hull (as-built strip densities)';
-                        png_name = 'WEC_Final_3D_CrossSection_UHPC.png';
+                        png_name = 'WEC_Final_3D_CrossSection_UHPC';
                     else
                         sg_str = 'Realised Steel-Fill Hull (as-built strip densities)';
-                        png_name = 'WEC_Final_3D_CrossSection_Steel.png';
+                        png_name = 'WEC_Final_3D_CrossSection_Steel';
                     end
                 else
                     sg_str = 'Stage 2 Final: Optimised 3D Design (continuous ballast densities)';
-                    png_name = 'WEC_Final_3D_CrossSection.png';
+                    png_name = 'WEC_Final_3D_CrossSection';
                 end
-                sgtitle(sg_str, 'Interpreter', 'latex', ...
+                sgtitle(fig, sg_str, 'Interpreter', 'latex', ...
                         'FontName', WEC_Visualization.FONT_NAME, 'FontSize', 14);
 
-                saveas(gcf, png_name);
+                WEC_Visualization.save_figure(fig, png_name, struct('timestamp', false));
             catch ME
                 warning('WEC_Visualization:CrossSectionFailed', '3D cross-section failed: %s', ME.message);
             end
@@ -730,7 +766,7 @@ classdef WEC_Visualization
                 end
 
                 fig = figure('Name', fig_name, ...
-                             'Color', 'white', 'Position', [150, 150, 1000, 600]); %#ok<NASGU>
+                             'Color', 'white', 'Position', [150, 150, 1000, 600]);
 
                 ax = subplot(1, 2, 1);
                 hold(ax, 'on'); axis(ax, 'equal');
@@ -807,23 +843,25 @@ classdef WEC_Visualization
 
                 colormap(ax, cmap);
                 cbar = colorbar(ax);
-                cbar.Label.String = 'Density, \rho_{eq} (kg/m^3)';
-                cbar.Label.Interpreter = 'tex';
-                cbar.TickLabelInterpreter = 'tex';
+                WEC_Visualization.format_colorbar(cbar, ...
+                    'Density, $\rho_{\mathrm{eq}}$ [kg\,m$^{-3}$]');
                 caxis(ax, [d_min, d_max]);
 
-                xlabel(ax, '$x$ [m]', 'Interpreter', 'latex');
-                ylabel(ax, '$z$ [m]', 'Interpreter', 'latex');
-                title(ax, 'Equivalent Uniform Density per Strip', 'Interpreter', 'latex');
+                xlabel(ax, '$x$ [m]', 'Interpreter', 'latex', 'FontSize', WEC_Visualization.FONT_SIZE_LABEL);
+                ylabel(ax, '$z$ [m]  (waterline at $z=0$)', 'Interpreter', 'latex', ...
+                       'FontSize', WEC_Visualization.FONT_SIZE_LABEL);
+                title(ax, 'Equivalent Uniform Density per Strip', 'Interpreter', 'latex', ...
+                      'FontSize', WEC_Visualization.FONT_SIZE_TITLE);
                 handles_eq = [h_wl, h_cg, h_cb];
-                labels_eq  = {'Waterline', 'CG', 'CB'};
+                labels_eq  = {'Waterline', '$CG$', '$CB$'};
                 if ~isempty(h_wall_eq)
                     handles_eq = [h_wl, h_wall_eq, h_cg, h_cb];
-                    labels_eq  = {'Waterline', 'Wall boundary', 'CG', 'CB'};
+                    labels_eq  = {'Waterline', 'Wall boundary', '$CG$', '$CB$'};
                 end
                 legend(ax, handles_eq, labels_eq, ...
-                       'Location', 'bestoutside', 'Interpreter', 'none', ...
+                       'Location', 'best', 'Interpreter', 'latex', ...
                        'FontName', WEC_Visualization.FONT_NAME);
+                WEC_Visualization.pad_axes_2d(ax, [px(:); x_hull_range(:)], [pz(:); 0]);
                 WEC_Visualization.format_axis_publication(ax);
                 hold(ax, 'off');
 
@@ -869,8 +907,9 @@ classdef WEC_Visualization
                 else
                     sg2_str = 'Steiner-Equivalent Bulk Density (optimiser)';
                 end
-                sgtitle(sg2_str, 'Interpreter', 'latex', ...
+                sgtitle(fig, sg2_str, 'Interpreter', 'latex', ...
                         'FontName', WEC_Visualization.FONT_NAME, 'FontSize', 14);
+                WEC_Visualization.save_figure(fig, 'WEC_Equivalent_Density_2D');
 
             catch ME
                 warning('WEC_Visualization:2DEquivFailed', ...
@@ -911,7 +950,7 @@ classdef WEC_Visualization
                     fig_name = 'WEC Equivalent Density (3D)';
                 end
                 fig = figure('Name', fig_name, ...
-                             'Color', 'white', 'Position', [150, 150, 1000, 800]); %#ok<NASGU>
+                             'Color', 'white', 'Position', [150, 150, 1000, 800]);
                 ax = axes(fig);
                 hold(ax, 'on');
 
@@ -967,9 +1006,8 @@ classdef WEC_Visualization
 
                 colormap(ax, WEC_Visualization.cividis_map(256));
                 cbar = colorbar(ax);
-                cbar.Label.String = 'Density, \rho_{eq} (kg/m^3)';
-                cbar.Label.Interpreter = 'tex';
-                cbar.TickLabelInterpreter = 'tex';
+                WEC_Visualization.format_colorbar(cbar, ...
+                    'Density, $\rho_{\mathrm{eq}}$ [kg\,m$^{-3}$]');
                 d_min = min(rho_eq); d_max = max(rho_eq);
                 if d_max > d_min, caxis(ax, [d_min, d_max]);
                 else,             caxis(ax, [d_min-1, d_max+1]); end
@@ -988,9 +1026,9 @@ classdef WEC_Visualization
                     'ks', 'MarkerSize', 12, 'MarkerFaceColor', 'b');
 
                 axis(ax, 'equal'); view(ax, 30, 25);
-                xlabel(ax, '$x$ [m]', 'Interpreter', 'latex');
-                ylabel(ax, '$y$ [m]', 'Interpreter', 'latex');
-                zlabel(ax, '$z$ [m]', 'Interpreter', 'latex');
+                xlabel(ax, '$x$ [m]', 'Interpreter', 'latex', 'FontSize', WEC_Visualization.FONT_SIZE_LABEL);
+                ylabel(ax, '$y$ [m]', 'Interpreter', 'latex', 'FontSize', WEC_Visualization.FONT_SIZE_LABEL);
+                zlabel(ax, '$z$ [m]', 'Interpreter', 'latex', 'FontSize', WEC_Visualization.FONT_SIZE_LABEL);
                 if rho_source_is_realised
                     if isfield(props, 'realisation_mode') && ...
                             strcmp(props.realisation_mode, 'uhpc_fill')
@@ -1007,12 +1045,14 @@ classdef WEC_Visualization
                         'Equivalent Bulk Density — Optimiser (GM=%.3f m, $T_h$=%.2f s)', ...
                         props.GM_L, props.periods.heave);
                 end
-                title(ax, title_str, 'Interpreter', 'latex');
-                legend(ax, [h_water, h_cg, h_cb], {'Waterplane', 'CG', 'CB'}, ...
-                       'Location', 'bestoutside', 'Interpreter', 'none', ...
+                title(ax, title_str, 'Interpreter', 'latex', ...
+                      'FontSize', WEC_Visualization.FONT_SIZE_TITLE);
+                legend(ax, [h_water, h_cg, h_cb], {'Waterplane', '$CG$', '$CB$'}, ...
+                       'Location', 'northeast', 'Interpreter', 'latex', ...
                        'FontName', WEC_Visualization.FONT_NAME);
                 WEC_Visualization.format_axis_publication(ax);
                 hold(ax, 'off');
+                WEC_Visualization.save_figure(fig, 'WEC_Equivalent_Density_3D');
 
             catch ME
                 warning('WEC_Visualization:3DEquivFailed', ...
@@ -1220,24 +1260,27 @@ classdef WEC_Visualization
                 Ai = A_inf(d,d);
 
                 yyaxis(ax, 'left');
-                plot(ax, T, Av, '-', 'Color', c_A(d,:), 'LineWidth', LW);
-                yline(ax, Ai, '--', 'Color', c_A(d,:)*0.5, 'LineWidth', 1.2, ...
-                      'HandleVisibility', 'off');
+                hA  = plot(ax, T, Av, '-', 'Color', c_A(d,:), 'LineWidth', LW);
+                hAi = yline(ax, Ai, '--', 'Color', c_A(d,:)*0.5, 'LineWidth', 1.2);
                 ylabel(ax, sprintf('$A_{%s%s}$ %s', dof_num{d}, dof_num{d}, A_units{d}), ...
                        'Interpreter', 'latex', 'FontSize', FSL);
                 set(ax, 'YColor', c_A(d,:));
 
                 yyaxis(ax, 'right');
-                plot(ax, T, Bv, '-', 'Color', c_B(d,:), 'LineWidth', LW);
+                hB = plot(ax, T, Bv, '-', 'Color', c_B(d,:), 'LineWidth', LW);
                 ylabel(ax, sprintf('$B_{%s%s}$ %s', dof_num{d}, dof_num{d}, B_units{d}), ...
                        'Interpreter', 'latex', 'FontSize', FSL);
                 set(ax, 'YColor', c_B(d,:));
 
+                xlim(ax, [min(T), max(T)]);
                 WEC_Visualization.shade_T_band(ax, T_band);
                 xlabel(ax, '$T$ [s]', 'Interpreter', 'latex', 'FontSize', FSL);
                 title(ax, sprintf('%s -- $A_\\infty$ = %.0f', dof_name{d}, Ai), ...
                       'Interpreter', 'latex', 'FontSize', FST);
-                legend(ax, {'$A(\omega)$','$B(\omega)$'}, ...
+                % The A_infinity asymptote was drawn but unlabelled — it now
+                % carries a legend entry so the dashed line is self-explanatory.
+                legend(ax, [hA, hAi, hB], ...
+                       {'$A(\omega)$', '$A_\infty$', '$B(\omega)$'}, ...
                        'Interpreter', 'latex', 'FontName', FN, 'Location', 'best');
                 WEC_Visualization.format_axis_publication(ax);
             end
@@ -1251,25 +1294,26 @@ classdef WEC_Visualization
                 Ai = A_inf(ii,jj);
 
                 yyaxis(ax, 'left');
-                plot(ax, T, Av, '-', 'Color', c_o_A(k,:), 'LineWidth', LW);
-                yline(ax, Ai, '--', 'Color', c_o_A(k,:)*0.5, 'LineWidth', 1.2, ...
-                      'HandleVisibility', 'off');
+                hA  = plot(ax, T, Av, '-', 'Color', c_o_A(k,:), 'LineWidth', LW);
+                hAi = yline(ax, Ai, '--', 'Color', c_o_A(k,:)*0.5, 'LineWidth', 1.2);
                 ylabel(ax, sprintf('$A_{%s%s}$', dof_num{ii}, dof_num{jj}), ...
                        'Interpreter', 'latex', 'FontSize', FSL);
                 set(ax, 'YColor', c_o_A(k,:));
 
                 yyaxis(ax, 'right');
-                plot(ax, T, Bv, '-', 'Color', c_o_B(k,:), 'LineWidth', LW);
+                hB = plot(ax, T, Bv, '-', 'Color', c_o_B(k,:), 'LineWidth', LW);
                 ylabel(ax, sprintf('$B_{%s%s}$', dof_num{ii}, dof_num{jj}), ...
                        'Interpreter', 'latex', 'FontSize', FSL);
                 set(ax, 'YColor', c_o_B(k,:));
 
+                xlim(ax, [min(T), max(T)]);
                 WEC_Visualization.shade_T_band(ax, T_band);
                 xlabel(ax, '$T$ [s]', 'Interpreter', 'latex', 'FontSize', FSL);
                 title(ax, sprintf('%s--%s -- $A_\\infty$ = %.1f', ...
                       dof_name{ii}, dof_name{jj}, Ai), ...
                       'Interpreter', 'latex', 'FontSize', FST);
-                legend(ax, {'$A(\omega)$','$B(\omega)$'}, ...
+                legend(ax, [hA, hAi, hB], ...
+                       {'$A(\omega)$', '$A_\infty$', '$B(\omega)$'}, ...
                        'Interpreter', 'latex', 'FontName', FN, 'Location', 'best');
                 WEC_Visualization.format_axis_publication(ax);
             end
@@ -1278,9 +1322,7 @@ classdef WEC_Visualization
                 'Hydrodynamic Coefficients at Origin ($v_s$ = %+.3f m)', ...
                 vertical_shift), 'Interpreter', 'latex', 'FontName', FN, 'FontSize', 14);
 
-            fname1 = sprintf('WEC_HydroCoeffs_%s.png', datestr(now, 'yyyymmdd_HHMMSS'));
-            exportgraphics(fig1, fname1, 'Resolution', 300);
-            fprintf('  Figure saved: %s\n', fname1);
+            WEC_Visualization.save_figure(fig1, 'WEC_HydroCoeffs');
 
             % ══════════════════════════════════════════════════════════
             %  FIGURE 2: RAO
@@ -1398,6 +1440,8 @@ classdef WEC_Visualization
                           'Interpreter', 'latex', 'FontSize', 10, ...
                           'LabelVerticalAlignment', 'top');
                 end
+                xlim(ax, [min(T), max(T)]);
+                WEC_Visualization.shade_T_band(ax, T_band);
                 xlabel(ax, '$T$ [s]', 'Interpreter', 'latex', 'FontSize', FSL);
                 ylabel(ax, rao_ylabels{d}, 'Interpreter', 'latex', 'FontSize', FSL);
                 title(ax, rao_titles{d}, 'Interpreter', 'latex', 'FontSize', FST);
@@ -1416,6 +1460,8 @@ classdef WEC_Visualization
                 yline(ax, 90, '--', 'Color', [0.6 0.6 0.6], 'LineWidth', 0.5);
                 ylim(ax, [-180 180]);
                 set(ax, 'YTick', [-180 -90 0 90 180]);
+                xlim(ax, [min(T), max(T)]);
+                WEC_Visualization.shade_T_band(ax, T_band);
                 xlabel(ax, '$T$ [s]', 'Interpreter', 'latex', 'FontSize', FSL);
                 ylabel(ax, 'Phase [deg]', 'Interpreter', 'latex', 'FontSize', FSL);
                 title(ax, phase_titles{d}, 'Interpreter', 'latex', 'FontSize', FST);
@@ -1436,9 +1482,7 @@ classdef WEC_Visualization
                     sgt, vertical_shift, mass, visc_str), ...
                     'Interpreter', 'latex', 'FontName', FN, 'FontSize', 13);
 
-            fname2 = sprintf('WEC_RAO_%s.png', datestr(now, 'yyyymmdd_HHMMSS'));
-            exportgraphics(fig2, fname2, 'Resolution', 300);
-            fprintf('  Figure saved: %s\n', fname2);
+            WEC_Visualization.save_figure(fig2, 'WEC_RAO');
 
             % ══════════════════════════════════════════════════════════
             %  FIGURE 3: A_inf diagonals vs vertical_shift
@@ -1502,9 +1546,7 @@ classdef WEC_Visualization
                 '$A^{\\infty}$ vs Vertical Shift (%d points -- linearity check)', ...
                 length(drafts_v)), 'Interpreter', 'latex', 'FontName', FN, 'FontSize', 14);
 
-            fname3 = sprintf('WEC_Ainf_vs_Draft_%s.png', datestr(now, 'yyyymmdd_HHMMSS'));
-            exportgraphics(fig3, fname3, 'Resolution', 300);
-            fprintf('  Figure saved: %s\n', fname3);
+            WEC_Visualization.save_figure(fig3, 'WEC_Ainf_vs_Draft');
 
             catch ME
                 warning('WECVisualization:HydroPlotFailed', ...
@@ -1514,6 +1556,11 @@ classdef WEC_Visualization
 
 
         function plot_draft_landscape(sweep, config)
+            try
+            FSL = WEC_Visualization.FONT_SIZE_LABEL;
+            FST = WEC_Visualization.FONT_SIZE_TITLE;
+            FN  = WEC_Visualization.FONT_NAME;
+
             vs   = sweep.vs;
             N    = length(vs);
             feas = sweep.feasible;
@@ -1535,74 +1582,116 @@ classdef WEC_Visualization
             fig = figure('Name', 'Draft Landscape', ...
                          'Color', 'w', 'Position', [100 100 1100 750]);
 
-            ax1 = subplot(2, 2, 1);  hold(ax1, 'on');  grid(ax1, 'on');
+            xl = [min(vs), max(vs)];
+
+            C_FEAS   = [0.13 0.55 0.20];
+            C_INFEAS = [0.80 0.15 0.15];
+            C_HEAVE  = [0.12 0.47 0.71];
+            C_PITCH  = [0.85 0.20 0.18];
+
+            ax1 = subplot(2, 2, 1);  hold(ax1, 'on');
+            h1 = gobjects(0);  l1 = {};
             if any(feas)
-                plot(ax1, vs(feas), sweep.fval(feas), 'go', ...
-                     'MarkerSize', 8, 'LineWidth', 1.5);
+                h1(end+1) = plot(ax1, vs(feas), sweep.fval(feas), 'o', ...
+                     'Color', C_FEAS, 'MarkerFaceColor', C_FEAS, ...
+                     'MarkerSize', 6, 'LineWidth', 1.2);
+                l1{end+1} = 'Feasible';
             end
             if any(~feas)
-                plot(ax1, vs(~feas), sweep.fval(~feas), 'rx', ...
-                     'MarkerSize', 8, 'LineWidth', 1.5);
+                h1(end+1) = plot(ax1, vs(~feas), sweep.fval(~feas), 'x', ...
+                     'Color', C_INFEAS, 'MarkerSize', 8, 'LineWidth', 1.5);
+                l1{end+1} = 'Infeasible';
             end
             fi = find(feas);
             if ~isempty(fi)
                 [~, best_in_feas] = min(sweep.fval(fi));
                 best = fi(best_in_feas);
-                plot(ax1, vs(best), sweep.fval(best), 'p', ...
-                     'MarkerSize', 15, 'MarkerFaceColor', 'g', ...
-                     'MarkerEdgeColor', 'k');
+                h1(end+1) = plot(ax1, vs(best), sweep.fval(best), 'p', ...
+                     'MarkerSize', 16, 'MarkerFaceColor', [1.00 0.84 0.15], ...
+                     'MarkerEdgeColor', 'k', 'LineWidth', 1.0);
+                l1{end+1} = sprintf('Best ($v_s$ = %+.3f m)', vs(best));
             end
-            xlabel(ax1, 'Vertical shift [m]');
-            ylabel(ax1, 'Objective $f^*$', 'Interpreter', 'latex');
-            title(ax1, 'Objective landscape');
-            legend(ax1, 'Feasible', 'Infeasible', 'Best', 'Location', 'best');
+            xlabel(ax1, 'Vertical shift, $v_s$ [m]', 'Interpreter', 'latex', 'FontSize', FSL);
+            ylabel(ax1, 'Objective $f^*$', 'Interpreter', 'latex', 'FontSize', FSL);
+            title(ax1, '(a) Objective landscape', 'Interpreter', 'latex', 'FontSize', FST);
+            % Legend entries are built alongside the series, so an all-feasible
+            % or all-infeasible sweep no longer mislabels the markers.
+            if ~isempty(h1)
+                legend(ax1, h1, l1, 'Location', 'best', ...
+                       'Interpreter', 'latex', 'FontName', FN);
+            end
+            xlim(ax1, xl);
+            WEC_Visualization.format_axis_publication(ax1);
 
-            ax2 = subplot(2, 2, 2);  hold(ax2, 'on');  grid(ax2, 'on');
-            plot(ax2, vs, T_h, 'b-o', 'LineWidth', 1.5, 'MarkerSize', 4);
-            plot(ax2, vs, T_p, 'r-s', 'LineWidth', 1.5, 'MarkerSize', 4);
-            yline(ax2, config.T_heave_goal, 'b--', 'LineWidth', 1);
-            yline(ax2, config.T_pitch_goal, 'r--', 'LineWidth', 1);
-            xl = [vs(1), vs(end)];
+            ax2 = subplot(2, 2, 2);  hold(ax2, 'on');
+            % Acceptance bands are drawn first so the curves sit on top of them.
             patch(ax2, [xl(1) xl(2) xl(2) xl(1)], ...
                   [config.T_heave_range(1) config.T_heave_range(1) ...
                    config.T_heave_range(2) config.T_heave_range(2)], ...
-                  'b', 'FaceAlpha', 0.08, 'EdgeColor', 'none');
+                  C_HEAVE, 'FaceAlpha', 0.10, 'EdgeColor', 'none', ...
+                  'HandleVisibility', 'off');
             patch(ax2, [xl(1) xl(2) xl(2) xl(1)], ...
                   [config.T_pitch_range(1) config.T_pitch_range(1) ...
                    config.T_pitch_range(2) config.T_pitch_range(2)], ...
-                  'r', 'FaceAlpha', 0.08, 'EdgeColor', 'none');
-            xlabel(ax2, 'Vertical shift [m]');
-            ylabel(ax2, 'Period [s]');
-            title(ax2, 'Natural periods vs draft');
-            legend(ax2, '$T_{heave}$', '$T_{pitch}$', ...
-                   'Interpreter', 'latex', 'Location', 'best');
+                  C_PITCH, 'FaceAlpha', 0.10, 'EdgeColor', 'none', ...
+                  'HandleVisibility', 'off');
+            hTh = plot(ax2, vs, T_h, '-o', 'Color', C_HEAVE, ...
+                       'MarkerFaceColor', C_HEAVE, 'LineWidth', 1.8, 'MarkerSize', 4);
+            hTp = plot(ax2, vs, T_p, '-s', 'Color', C_PITCH, ...
+                       'MarkerFaceColor', C_PITCH, 'LineWidth', 1.8, 'MarkerSize', 4);
+            yline(ax2, config.T_heave_goal, '--', 'Color', C_HEAVE, 'LineWidth', 1.2);
+            yline(ax2, config.T_pitch_goal, '--', 'Color', C_PITCH, 'LineWidth', 1.2);
+            xlabel(ax2, 'Vertical shift, $v_s$ [m]', 'Interpreter', 'latex', 'FontSize', FSL);
+            ylabel(ax2, 'Period, $T$ [s]', 'Interpreter', 'latex', 'FontSize', FSL);
+            title(ax2, '(b) Natural periods vs draft', 'Interpreter', 'latex', 'FontSize', FST);
+            legend(ax2, [hTh, hTp], {'$T_{\mathrm{heave}}$', '$T_{\mathrm{pitch}}$'}, ...
+                   'Interpreter', 'latex', 'Location', 'best', 'FontName', FN);
+            xlim(ax2, xl);
+            WEC_Visualization.format_axis_publication(ax2);
 
-            ax3 = subplot(2, 2, 3);  hold(ax3, 'on');  grid(ax3, 'on');
-            plot(ax3, vs, GM, 'k-o', 'LineWidth', 1.5, 'MarkerSize', 4);
-            yline(ax3, config.gm_min, 'r--', 'LineWidth', 1.5, ...
-                  'Label', 'GM_{min}');
+            ax3 = subplot(2, 2, 3);  hold(ax3, 'on');
             patch(ax3, [xl(1) xl(2) xl(2) xl(1)], ...
                   [config.gm_range(1) config.gm_range(1) ...
                    config.gm_range(2) config.gm_range(2)], ...
-                  'g', 'FaceAlpha', 0.1, 'EdgeColor', 'none');
-            xlabel(ax3, 'Vertical shift [m]');
-            ylabel(ax3, 'GM [m]');
-            title(ax3, 'Metacentric height vs draft');
+                  C_FEAS, 'FaceAlpha', 0.12, 'EdgeColor', 'none', ...
+                  'HandleVisibility', 'off');
+            plot(ax3, vs, GM, '-o', 'Color', [0.15 0.15 0.15], ...
+                 'MarkerFaceColor', [0.15 0.15 0.15], 'LineWidth', 1.8, 'MarkerSize', 4);
+            yline(ax3, config.gm_min, '--', 'Color', C_INFEAS, 'LineWidth', 1.5, ...
+                  'Label', '$GM_{\min}$', 'Interpreter', 'latex', ...
+                  'LabelHorizontalAlignment', 'left');
+            xlabel(ax3, 'Vertical shift, $v_s$ [m]', 'Interpreter', 'latex', 'FontSize', FSL);
+            ylabel(ax3, '$GM$ [m]', 'Interpreter', 'latex', 'FontSize', FSL);
+            title(ax3, '(c) Metacentric height vs draft', 'Interpreter', 'latex', 'FontSize', FST);
+            xlim(ax3, xl);
+            WEC_Visualization.format_axis_publication(ax3);
 
-            ax4 = subplot(2, 2, 4);  hold(ax4, 'on');  grid(ax4, 'on');
-            plot(ax4, vs, mass_err, 'k-o', 'LineWidth', 1.5, 'MarkerSize', 4);
-            yline(ax4, 1, 'r--', 'LineWidth', 1, 'Label', '1%');
-            xlabel(ax4, 'Vertical shift [m]');
-            ylabel(ax4, 'Mass error [%]');
-            title(ax4, 'Mass balance error vs draft');
+            ax4 = subplot(2, 2, 4);  hold(ax4, 'on');
+            plot(ax4, vs, mass_err, '-o', 'Color', [0.15 0.15 0.15], ...
+                 'MarkerFaceColor', [0.15 0.15 0.15], 'LineWidth', 1.8, 'MarkerSize', 4);
+            yline(ax4, 1, '--', 'Color', C_INFEAS, 'LineWidth', 1.2, ...
+                  'Label', '1\%', 'Interpreter', 'latex', ...
+                  'LabelHorizontalAlignment', 'left');
+            % Mass error spans orders of magnitude across a sweep; a log axis
+            % keeps the near-balanced drafts from collapsing onto y = 0.
+            if any(mass_err > 0) && max(mass_err) / max(min(mass_err(mass_err > 0)), eps) > 50
+                set(ax4, 'YScale', 'log');
+            end
+            xlabel(ax4, 'Vertical shift, $v_s$ [m]', 'Interpreter', 'latex', 'FontSize', FSL);
+            ylabel(ax4, 'Mass error [\%]', 'Interpreter', 'latex', 'FontSize', FSL);
+            title(ax4, '(d) Mass balance error vs draft', 'Interpreter', 'latex', 'FontSize', FST);
+            xlim(ax4, xl);
+            WEC_Visualization.format_axis_publication(ax4);
 
             sgtitle(fig, sprintf('Draft Landscape Sweep (%d drafts)', N), ...
-                    'FontSize', 14);
+                    'Interpreter', 'latex', 'FontName', FN, 'FontSize', 14);
 
-            fname = sprintf('WEC_DraftLandscape_%s.png', ...
-                            datestr(now, 'yyyymmdd_HHMMSS'));
-            exportgraphics(fig, fname, 'Resolution', 300);
-            fprintf('  Draft landscape saved: %s\n', fname);
+            WEC_Visualization.save_figure(fig, 'WEC_DraftLandscape');
+
+            catch ME
+                warning('WEC_Visualization:DraftLandscapeFailed', ...
+                        'Draft landscape plot failed: %s', ME.message);
+            end
         end
 
 
@@ -1718,23 +1807,25 @@ classdef WEC_Visualization
                 n_show   = length(idx_plot);
 
                 % ── Figure layout ──────────────────────────────────────────
-                figure('Name', 'Panel Normals Diagnostic', ...
+                fig = figure('Name', 'Panel Normals Diagnostic', ...
                        'Color', 'white', 'Position', [80, 80, 1200, 600]);
 
                 % ── Panel 1 — 3D hull + quiver arrows ─────────────────────
                 ax1 = subplot(1, 2, 1);
                 hold(ax1, 'on');
 
-                for p = 1:nP
-                    v = panels(p, :);
-                    if v(3) == v(4), nv = 3; else, nv = 4; end
-                    vi = v(1:nv);
-                    fill3(ax1, verts(vi,1), verts(vi,2), verts(vi,3), ...
-                          options.face_color, ...
-                          'EdgeColor', [0.45 0.45 0.45], ...
-                          'FaceAlpha', options.face_alpha, ...
-                          'EdgeAlpha', 0.55);
-                end
+                % One patch for the whole mesh instead of nP fill3 calls: for a
+                % typical BEM hull that is thousands of graphics objects, which
+                % is what made this diagnostic slow to draw and pan.  Triangles
+                % are expressed as NaN-padded quads.
+                faces_mixed = double(panels);
+                is_tri_all  = panels(:,3) == panels(:,4);
+                faces_mixed(is_tri_all, 4) = NaN;   % needs double, hence the cast
+                patch(ax1, 'Faces', faces_mixed, 'Vertices', verts, ...
+                      'FaceColor', options.face_color, ...
+                      'EdgeColor', [0.45 0.45 0.45], ...
+                      'FaceAlpha', options.face_alpha, ...
+                      'EdgeAlpha', 0.55);
 
                 quiver3(ax1, ...
                     centroids(idx_plot,1), centroids(idx_plot,2), centroids(idx_plot,3), ...
@@ -1774,9 +1865,12 @@ classdef WEC_Visualization
                 n_zero = sum(abs(nz_all) <= 0.01);
 
                 if n_zero > 0
+                    % \color{} is a TeX command and renders literally under the
+                    % LaTeX interpreter — the warning was printed as raw markup.
                     text(ax2, 0.02, 0.96, ...
-                         sprintf('\\color{red}%d degenerate panels ($|n_z| \\leq 0.01$)', n_zero), ...
+                         sprintf('%d degenerate panels ($|n_z| \\leq 0.01$)', n_zero), ...
                          'Units', 'normalized', 'Interpreter', 'latex', ...
+                         'Color', [0.80 0.15 0.15], 'FontWeight', 'bold', ...
                          'FontSize', WEC_Visualization.FONT_SIZE_AXIS - 1, ...
                          'VerticalAlignment', 'top');
                 end
@@ -1791,14 +1885,12 @@ classdef WEC_Visualization
                     'Interpreter', 'latex', 'FontSize', WEC_Visualization.FONT_SIZE_TITLE);
                 WEC_Visualization.format_axis_publication(ax2);
 
-                sgtitle(sprintf('BEM Panel Normals  (%d panels, quiver scale = %.3f m)', ...
+                sgtitle(fig, sprintf('BEM Panel Normals  (%d panels, quiver scale = %.3f m)', ...
                                 nP, options.scale), ...
                         'Interpreter', 'latex', ...
                         'FontName', WEC_Visualization.FONT_NAME, 'FontSize', 14);
 
-                fname = sprintf('WEC_PanelNormals_%s.png', datestr(now, 'yyyymmdd_HHMMSS'));
-                exportgraphics(gcf, fname, 'Resolution', 300);
-                fprintf('  Panel normals figure saved: %s\n', fname);
+                WEC_Visualization.save_figure(fig, 'WEC_PanelNormals');
 
             catch ME
                 warning('WEC_Visualization:PanelNormalsFailed', ...
@@ -1815,23 +1907,24 @@ classdef WEC_Visualization
 
         function plot_mesh_diagnostic(mesh, config)
             try
-                figure('Name', 'BEM Mesh Diagnostic', ...
+                fig = figure('Name', 'BEM Mesh Diagnostic', ...
                        'Color', 'white', 'Position', [80, 80, 1500, 550]);
 
                 verts  = mesh.vertices;
                 panels = mesh.panels;
                 n_p    = size(panels, 1);
 
+                % Triangles as NaN-padded quads so the whole mesh renders in a
+                % single patch rather than one graphics object per panel.
+                hull_faces = double(panels);
+                hull_faces(panels(:,3) == panels(:,4), 4) = NaN;
+
                 ax1 = subplot(1, 3, 1);
                 hold(ax1, 'on');
-                for p = 1:n_p
-                    v = panels(p, :);
-                    if v(3) == v(4); nv = 3; else; nv = 4; end
-                    vi = v(1:nv);
-                    fill3(ax1, verts(vi, 1), verts(vi, 2), verts(vi, 3), ...
-                          verts(vi, 3), 'EdgeColor', [0.3 0.3 0.3], ...
-                          'FaceAlpha', 0.6, 'EdgeAlpha', 0.4);
-                end
+                patch(ax1, 'Faces', hull_faces, 'Vertices', verts, ...
+                      'FaceVertexCData', verts(:, 3), 'FaceColor', 'interp', ...
+                      'EdgeColor', [0.3 0.3 0.3], ...
+                      'FaceAlpha', 0.6, 'EdgeAlpha', 0.4);
                 z_tol_vis = 0.01;
                 wl_idx = find(abs(verts(:, 3)) < z_tol_vis);
                 if ~isempty(wl_idx)
@@ -1857,7 +1950,7 @@ classdef WEC_Visualization
                 axis(ax1, 'equal');
                 colormap(ax1, WEC_Visualization.cividis_map(64));
                 cb = colorbar(ax1);
-                ylabel(cb, '$z$ [m]', 'Interpreter', 'latex');
+                WEC_Visualization.format_colorbar(cb, '$z$ [m]');
                 WEC_Visualization.format_axis_publication(ax1);
 
                 % ── Panel 2: Waterplane lid (top view) ─────────────
@@ -1890,18 +1983,18 @@ classdef WEC_Visualization
                     if ~isempty(wp_n), wp_n(:,3) = 0; end
 
                     n_wp = size(wp_p, 1);
-                    for p = 1:n_wp
-                        nv = wp_nv(p);
-                        vi = wp_p(p, 1:nv);
-                        if nv == 4
-                            fc = [0.65, 0.82, 1.0];
-                            ec = [0.1, 0.3, 0.7];
-                        else
-                            fc = [0.65, 0.95, 0.75];
-                            ec = [0.05, 0.45, 0.2];
-                        end
-                        fill(ax2, wp_n(vi, 1), wp_n(vi, 2), fc, ...
-                             'EdgeColor', ec, 'FaceAlpha', 0.6);
+                    % Two patches (quads, tris) instead of one fill per element.
+                    q_mask = (wp_nv(:) == 4);
+                    wp_p   = double(wp_p);
+                    if any(q_mask)
+                        patch(ax2, 'Faces', wp_p(q_mask, 1:4), 'Vertices', wp_n(:, 1:2), ...
+                              'FaceColor', [0.65, 0.82, 1.0], ...
+                              'EdgeColor', [0.1, 0.3, 0.7], 'FaceAlpha', 0.6);
+                    end
+                    if any(~q_mask)
+                        patch(ax2, 'Faces', wp_p(~q_mask, 1:3), 'Vertices', wp_n(:, 1:2), ...
+                              'FaceColor', [0.65, 0.95, 0.75], ...
+                              'EdgeColor', [0.05, 0.45, 0.2], 'FaceAlpha', 0.6);
                     end
 
                     plot(ax2, boundary_xy(:, 1), boundary_xy(:, 2), ...
@@ -1935,21 +2028,15 @@ classdef WEC_Visualization
 
                 ax3 = subplot(1, 3, 3);
                 hold(ax3, 'on');
-                for p = 1:n_p
-                    v = panels(p, :);
-                    if v(3) == v(4); nv = 3; else; nv = 4; end
-                    vi = v(1:nv);
-                    fill3(ax3, verts(vi, 1), verts(vi, 2), verts(vi, 3), ...
-                          [0.7 0.7 0.7], 'EdgeColor', [0.5 0.5 0.5], ...
-                          'FaceAlpha', 0.25, 'EdgeAlpha', 0.3);
-                end
-                if ~isempty(boundary_xy)
-                    for p = 1:n_wp
-                        nv = wp_nv(p); vi = wp_p(p, 1:nv);
-                        fill3(ax3, wp_n(vi, 1), wp_n(vi, 2), wp_n(vi, 3), ...
-                              [0.3 0.5 0.9], 'EdgeColor', [0.1 0.2 0.5], ...
-                              'FaceAlpha', 0.7, 'EdgeAlpha', 0.5);
-                    end
+                patch(ax3, 'Faces', hull_faces, 'Vertices', verts, ...
+                      'FaceColor', [0.7 0.7 0.7], 'EdgeColor', [0.5 0.5 0.5], ...
+                      'FaceAlpha', 0.25, 'EdgeAlpha', 0.3);
+                if ~isempty(boundary_xy) && n_wp > 0
+                    wp_faces = wp_p(:, 1:4);
+                    wp_faces(wp_nv(:) == 3, 4) = NaN;
+                    patch(ax3, 'Faces', wp_faces, 'Vertices', wp_n, ...
+                          'FaceColor', [0.3 0.5 0.9], 'EdgeColor', [0.1 0.2 0.5], ...
+                          'FaceAlpha', 0.7, 'EdgeAlpha', 0.5);
                 end
                 if ~isempty(wl_idx)
                     plot3(ax3, verts(wl_idx, 1), verts(wl_idx, 2), ...
@@ -1967,9 +2054,11 @@ classdef WEC_Visualization
                 axis(ax3, 'equal');
                 WEC_Visualization.format_axis_publication(ax3);
 
-                sgtitle('BEM Mesh Diagnostic', ...
+                sgtitle(fig, 'BEM Mesh Diagnostic', ...
                         'FontSize', 14, 'FontWeight', 'bold', ...
                         'FontName', WEC_Visualization.FONT_NAME);
+
+                WEC_Visualization.save_figure(fig, 'WEC_MeshDiagnostic');
 
             catch ME
                 warning('WEC_Visualization:MeshDiag', ...
@@ -2062,8 +2151,12 @@ classdef WEC_Visualization
                     continue;
                 end
 
+                % Opaque: at FaceAlpha 0.85 the strips blended with the white
+                % figure background, so the rendered colour no longer matched
+                % the colorbar it is read against.  'Layer','top' (see
+                % format_axis_publication) keeps the grid visible regardless.
                 patch(ax, slab(:,1), slab(:,2), rho_strip, ...
-                      'EdgeColor', 'none', 'FaceAlpha', 0.85);
+                      'EdgeColor', 'none', 'FaceAlpha', 1.0);
             end
             %
             for k = 1:length(bounds)
@@ -2261,15 +2354,60 @@ classdef WEC_Visualization
                     'LineWidth', WEC_Visualization.LW_AXES, ...
                     'FontName', WEC_Visualization.FONT_NAME, ...
                     'FontSize', WEC_Visualization.FONT_SIZE_AXIS, ...
-                    'TickLabelInterpreter', 'latex');
+                    'TickLabelInterpreter', 'latex', ...
+                    'TickDir', 'out', 'Layer', 'top');
+            % 'Layer','top' keeps grid lines and the box above filled patches
+            % (density strips, shaded bands) instead of being buried by them.
         end
 
-        function shade_T_band(ax, T_band)
+        function format_colorbar(cb, label_str)
+        % FORMAT_COLORBAR  Apply the figure's font/interpreter policy to a colorbar.
+        %
+        %   Without this the colorbar keeps MATLAB's default Helvetica ticks
+        %   next to Times/LaTeX axis ticks — the most visible font mismatch in
+        %   the whole suite.  label_str is interpreted as LaTeX.
+            if isempty(cb) || ~isvalid(cb), return; end
+            cb.Label.String       = label_str;
+            cb.Label.Interpreter  = 'latex';
+            cb.Label.FontSize     = WEC_Visualization.FONT_SIZE_LABEL;
+            cb.TickLabelInterpreter = 'latex';
+            cb.FontName  = WEC_Visualization.FONT_NAME;
+            cb.FontSize  = WEC_Visualization.FONT_SIZE_AXIS - 1;
+            cb.LineWidth = WEC_Visualization.LW_AXES;
+            cb.Box       = 'on';
+        end
+
+        function pad_axes_2d(ax, xs, zs)
+        % PAD_AXES_2D  Fit the axes to the geometry with a uniform margin.
+        %
+        %   Replaces hard-coded limits, which crop any hull whose extent
+        %   differs from the one the constant was written for.
+            xs = xs(isfinite(xs));  zs = zs(isfinite(zs));
+            if isempty(xs) || isempty(zs), return; end
+            f  = WEC_Visualization.AXIS_PAD_FRAC;
+            dx = max(max(xs) - min(xs), eps);
+            dz = max(max(zs) - min(zs), eps);
+            pad = f * max(dx, dz);
+            xlim(ax, [min(xs) - pad, max(xs) + pad]);
+            ylim(ax, [min(zs) - pad, max(zs) + pad]);
+        end
+
+        function h = shade_T_band(ax, T_band)
+        % SHADE_T_BAND  Tint the operational period band behind the curves.
+        %
+        %   The band is pushed to the bottom of the child stack and the y-limits
+        %   are frozen first, so it neither tints the data lines drawn earlier
+        %   nor re-triggers an autoscale that would leave it short of the axes.
             yl = ylim(ax);
-            fill(ax, [T_band(1) T_band(2) T_band(2) T_band(1)], ...
-                 [yl(1) yl(1) yl(2) yl(2)], ...
-                 [0.85 0.92 1.0], 'FaceAlpha', 0.15, 'EdgeColor', 'none', ...
-                 'HandleVisibility', 'off');
+            ylim(ax, yl);                       % freeze before adding the patch
+            h = fill(ax, [T_band(1) T_band(2) T_band(2) T_band(1)], ...
+                     [yl(1) yl(1) yl(2) yl(2)], ...
+                     [0.85 0.92 1.0], 'FaceAlpha', 0.35, 'EdgeColor', 'none', ...
+                     'HandleVisibility', 'off');
+            try
+                uistack(h, 'bottom');   % cosmetic only — never fail the figure
+            catch
+            end
         end
 
         function cmap = cividis_map(n)
@@ -2363,6 +2501,60 @@ classdef WEC_Visualization
     end  % methods (Static, Access = private)
 
     methods (Static)
+
+        function out_dir = plots_dir()
+        % PLOTS_DIR  Absolute path of the shared figure output directory.
+        %
+        %   Every figure produced by the suite lands in <suite>/Plots so a run
+        %   no longer scatters PNGs across the working directory.  Falls back
+        %   to pwd if the directory cannot be created.
+            out_dir = fileparts(mfilename('fullpath'));
+            if isempty(out_dir), out_dir = pwd; end
+            out_dir = fullfile(out_dir, 'Plots');
+            if ~exist(out_dir, 'dir')
+                [ok, ~] = mkdir(out_dir);
+                if ~ok, out_dir = pwd; end
+            end
+        end
+
+        function out_path = save_figure(fig, basename, opts)
+        % SAVE_FIGURE  Export a figure to Plots/ as a 300-dpi PNG.
+        %
+        %   WEC_Visualization.save_figure(fig, 'WEC_RAO')
+        %   WEC_Visualization.save_figure(fig, 'Steel_Solve', struct('timestamp', false))
+        %
+        %   OPTS (all optional)
+        %     .timestamp  [logical] append _yyyymmdd_HHMMSS;  default true
+        %     .resolution [dpi]     raster resolution;        default 300
+        %     .quiet      [logical] suppress the console line; default false
+        %
+        %   Replaces saveas(), which rasterises at screen resolution (~96 dpi)
+        %   and produces figures too coarse for print.  Never throws.
+            out_path = '';
+            try
+                if nargin < 3 || ~isstruct(opts), opts = struct(); end
+                if ~isfield(opts, 'timestamp'),  opts.timestamp  = true;  end
+                if ~isfield(opts, 'resolution'), opts.resolution = WEC_Visualization.EXPORT_DPI; end
+                if ~isfield(opts, 'quiet'),      opts.quiet      = false; end
+
+                if opts.timestamp
+                    fname = sprintf('%s_%s.png', basename, datestr(now, 'yyyymmdd_HHMMSS'));
+                else
+                    fname = sprintf('%s.png', basename);
+                end
+                out_path = fullfile(WEC_Visualization.plots_dir(), fname);
+
+                exportgraphics(fig, out_path, ...
+                               'Resolution', opts.resolution, ...
+                               'BackgroundColor', 'white');
+                if ~opts.quiet
+                    fprintf('  Figure saved: %s\n', out_path);
+                end
+            catch ME
+                warning('WEC_Visualization:SaveFigureFailed', ...
+                        'Could not save figure "%s": %s', basename, ME.message);
+            end
+        end
 
         function profile = build_smooth_viz_profile(config, n_levels)
         % BUILD_SMOOTH_VIZ_PROFILE  Parametric hull silhouette for 2D visualization.

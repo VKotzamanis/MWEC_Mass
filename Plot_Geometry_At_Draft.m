@@ -125,7 +125,9 @@ title(ax_main, sprintf('3D view  (v_s = %+0.4f m)', vs), 'FontSize', 13);
 axis(ax_main, 'equal');  grid(ax_main, 'on');  box(ax_main, 'on');
 view(ax_main, view_az, view_el);
 camlight(ax_main, 'headlight');  lighting(ax_main, 'gouraud');
-set(ax_main, 'FontName', 'Times New Roman', 'FontSize', 11);
+set(ax_main, 'FontName', 'Times New Roman', 'FontSize', 11, ...
+             'GridLineStyle', ':', 'GridAlpha', 0.4, ...
+             'TickDir', 'out', 'Layer', 'top');
 
 % Side view (xz) to make the waterline cut crystal clear
 ax_side = subplot(1, 2, 2);  hold(ax_side, 'on');
@@ -152,7 +154,9 @@ ylabel(ax_side, 'z_{body} [m]', 'FontSize', 12);
 title(ax_side, 'Side view (xz, looking down y)', 'FontSize', 13);
 axis(ax_side, 'equal');  grid(ax_side, 'on');  box(ax_side, 'on');
 view(ax_side, 0, 0);
-set(ax_side, 'FontName', 'Times New Roman', 'FontSize', 11);
+set(ax_side, 'FontName', 'Times New Roman', 'FontSize', 11, ...
+             'GridLineStyle', ':', 'GridAlpha', 0.4, ...
+             'TickDir', 'out', 'Layer', 'top');
 
 sgtitle(fig, sprintf( ...
     'C0 hull at v_s = %+0.4f m  —  body-fixed frame  —  blue = wet, beige = dry', vs), ...
@@ -162,9 +166,9 @@ sgtitle(fig, sprintf( ...
 %%  §5  SAVE
 %% ═══════════════════════════════════════════════════════════════════
 
-fname = sprintf('WAMIT_GeomVerify_vs%+0.4f_%s.png', vs, datestr(now, 'yyyymmdd_HHMMSS'));
-exportgraphics(fig, fname, 'Resolution', 300);
-fprintf('\n  Figure saved: %s\n', fname);
+% Written to the shared Plots/ directory alongside every other suite figure.
+fname = sprintf('WAMIT_GeomVerify_vs%+0.4f', vs);
+WEC_Visualization.save_figure(fig, fname);
 
 fprintf('\n  HOW TO VERIFY AGAINST WAMIT\n');
 fprintf('    1. Open your WAMIT pre-processor / viewer with C0.gdf loaded.\n');

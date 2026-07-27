@@ -198,12 +198,14 @@ function fig = plot_steel_solve(config, steel_data)
         end
     end
 
-    % Infeasibility banner
+    % Infeasibility banner — normalized units so it stays pinned to the top of
+    % the panel whatever the axis limits end up being.
     if ~is_real
-        yl = ylim(ax1);
-        text(ax1, mean(x_range), yl(2) - 0.05*(yl(2)-yl(1)), ...
+        text(ax1, 0.5, 0.97, ...
              'INFEASIBLE — geometry rendered with optimiser draft', ...
-             'HorizontalAlignment', 'center', 'Color', BAD_RED, ...
+             'Units', 'normalized', ...
+             'HorizontalAlignment', 'center', 'VerticalAlignment', 'top', ...
+             'Color', BAD_RED, 'BackgroundColor', [1 1 1 ], 'Margin', 3, ...
              'FontWeight', 'bold', 'FontSize', 12, 'FontName', FN);
     end
 
@@ -248,7 +250,13 @@ function fig = plot_steel_solve(config, steel_data)
     grid(ax1, 'on');
     set(ax1, 'GridLineStyle', ':', 'GridAlpha', 0.3, 'Box', 'on', ...
              'FontName', FN, 'FontSize', 11, ...
-             'TickLabelInterpreter', 'latex');
+             'TickLabelInterpreter', 'latex', ...
+             'TickDir', 'out', 'Layer', 'top');
+    % Fit to the hull with a uniform margin: the default autoscale leaves the
+    % geometry hard against the box, and the t_steel callout clipped off-axes.
+    pad = 0.06 * max(max(px_outer) - min(px_outer), max(pz_outer) - min(pz_outer));
+    xlim(ax1, [min(px_outer) - pad, max(px_outer) + pad]);
+    ylim(ax1, [min(pz_outer) - pad, max(pz_outer) + pad]);
     hold(ax1, 'off');
 
     %% ============= RIGHT PANEL: properties card =====================
@@ -423,6 +431,12 @@ function draw_hatch(ax, x_poly, z_poly, color, spacing)
     c_max = x_hi - z_lo;
     c_vals = c_min : spacing : c_max;
 
+    % Accumulate every hatch segment into one NaN-separated polyline and issue a
+    % single plot() call.  The previous one-plot-per-segment loop created
+    % hundreds of line objects per cavity, which dominated both draw time and
+    % the size of the exported figure.
+    hx = [];  hz = [];
+
     for ci = 1:length(c_vals)
         c = c_vals(ci);
         z_line = linspace(z_lo, z_hi, 200)';
@@ -438,11 +452,15 @@ function draw_hatch(ax, x_poly, z_poly, color, spacing)
         if in(end), stops  = [stops; length(in)];  end
         n_seg = min(length(starts), length(stops));
         for s = 1:n_seg
-            plot(ax, x_line(starts(s):stops(s)), ...
-                     z_line(starts(s):stops(s)), '-', ...
-                 'Color', color, 'LineWidth', 0.4, ...
-                 'HandleVisibility', 'off');
+            idx = starts(s):stops(s);
+            hx = [hx; x_line(idx); NaN];   %#ok<AGROW>
+            hz = [hz; z_line(idx); NaN];   %#ok<AGROW>
         end
+    end
+
+    if ~isempty(hx)
+        plot(ax, hx, hz, '-', 'Color', color, 'LineWidth', 0.4, ...
+             'HandleVisibility', 'off');
     end
 end
 
@@ -473,21 +491,13 @@ end
 % =======================================================================
 
 function save_figure(fig)
-    out_dir = fullfile(fileparts(mfilename('fullpath')), 'Plots');
-    if ~exist(out_dir, 'dir')
-        [ok, msg] = mkdir(out_dir);
-        if ~ok
-            warning('plot_steel_solve:MkdirFailed', ...
-                    'Could not create Plots directory: %s', msg);
-            out_dir = fileparts(mfilename('fullpath'));
-        end
-    end
-    png_path = fullfile(out_dir, 'Steel_Solve.png');
-    fig_path = fullfile(out_dir, 'Steel_Solve.fig');
+% Routed through WEC_Visualization.save_figure so this figure lands in the same
+% Plots/ directory, at the same 300 dpi, as every other figure in the suite.
+% saveas() rasterised at screen resolution (~96 dpi), which is too coarse
+% to read the numeric card when printed.
     try
-        saveas(fig, png_path);
-        savefig(fig, fig_path);
-        fprintf('      Steel-fill plot saved: %s\n', png_path);
+        WEC_Visualization.save_figure(fig, 'Steel_Solve', struct('timestamp', false));
+        savefig(fig, fullfile(WEC_Visualization.plots_dir(), 'Steel_Solve.fig'));
     catch ME
         warning('plot_steel_solve:SaveFailed', ...
                 'Could not save figure: %s', ME.message);

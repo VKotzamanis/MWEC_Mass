@@ -1385,11 +1385,9 @@ classdef WEC_Constructable_Hull
                      'GridLineStyle', ':', 'GridAlpha', 0.3);
             xlim(ax1, [x_range(1), x_annot + 4.5]);
 
-            try
-                saveas(fig1, 'WEC_Constructability_XZ.png');
-                fprintf('      Figure saved: WEC_Constructability_XZ.png\n');
-            catch
-            end
+            % Routed through the shared exporter: Plots/ directory, 300 dpi.
+            WEC_Visualization.save_figure(fig1, 'WEC_Constructability_XZ', ...
+                                          struct('timestamp', false));
 
             %% ═════════════════════════════════════════════════════════
             %%  FIGURE 2 — Per-strip plan-view cross-sections
@@ -1427,11 +1425,16 @@ classdef WEC_Constructable_Hull
             if n_panels == 0
                 fprintf('      Figure 2 skipped: no usable strip cross-sections.\n');
             else
-                n_cols = ceil(n_panels / 2);
-                n_rows = min(2, n_panels);
+                % Near-square grid.  The old fixed 2-row layout degenerated into
+                % a very wide strip of postage-stamp axes once a design had more
+                % than ~8 cross-sections.
+                n_cols = max(1, ceil(sqrt(n_panels)));
+                n_rows = ceil(n_panels / n_cols);
                 fig2 = figure('Name', 'Constructability: Strip Plan-View', ...
                               'Color', 'w', ...
-                              'Position', [80 80 max(n_cols*240, 600), n_rows * 290]);
+                              'Position', [80 80 ...
+                                           min(max(n_cols*280, 600), 1800), ...
+                                           min(max(n_rows*300, 400), 1000)]);
 
                 for p = 1:n_panels
                     ax = subplot(n_rows, n_cols, p, 'Parent', fig2);
@@ -1542,11 +1545,8 @@ classdef WEC_Constructable_Hull
                            'FontWeight', 'bold', 'EdgeColor', 'none', ...
                            'FitBoxToText', 'off');
 
-                try
-                    saveas(fig2, 'WEC_Constructability_Strips.png');
-                    fprintf('      Figure saved: WEC_Constructability_Strips.png\n');
-                catch
-                end
+                WEC_Visualization.save_figure(fig2, 'WEC_Constructability_Strips', ...
+                                              struct('timestamp', false));
             end
         end
 
@@ -1963,6 +1963,10 @@ function draw_hatch_local(ax, xp, yp, spacing, color)
     c_min = x_lo - y_hi;
     c_max = x_hi - y_lo;
     c_vals = c_min:spacing:c_max;
+    % One NaN-separated polyline for the whole hatch instead of one line object
+    % per segment — the per-segment version created hundreds of objects per
+    % strip, which is what made this figure slow to draw and heavy to export.
+    hx = [];  hy = [];
     for ci = 1:length(c_vals)
         c = c_vals(ci);
         y_line = linspace(y_lo, y_hi, 200)';
@@ -1974,11 +1978,14 @@ function draw_hatch_local(ax, xp, yp, spacing, color)
         stops  = find(d == -1) - 1;
         n_seg = min(length(starts), length(stops));
         for s = 1:n_seg
-            plot(ax, x_line(starts(s):stops(s)), ...
-                     y_line(starts(s):stops(s)), '-', ...
-                 'Color', color, 'LineWidth', 0.4, ...
-                 'HandleVisibility', 'off');
+            idx = starts(s):stops(s);
+            hx = [hx; x_line(idx); NaN];   %#ok<AGROW>
+            hy = [hy; y_line(idx); NaN];   %#ok<AGROW>
         end
+    end
+    if ~isempty(hx)
+        plot(ax, hx, hy, '-', 'Color', color, 'LineWidth', 0.4, ...
+             'HandleVisibility', 'off');
     end
 end
 
