@@ -200,7 +200,7 @@ D2 calls in `modular_precast/solve.m`, D6 (precast fields).
 Acceptance: C1 run under Octave prints the split, the realised module geometry and the check
 table; `final_props` never contains Stage-2 values for this mode.
 
-### T6 — UHPC Stage 3, part b: optimisation, spill, closest fail (Sonnet high) — needs OD6, OD10
+### T6 — UHPC Stage 3, part b: optimisation, spill, closest fail (Sonnet high) — needs OD10
 
 Files: `src/+mwecmass/+realise/+modular_precast/solve.m` (rewrite), new `stage3_report.m`.
 
@@ -211,8 +211,8 @@ Files: `src/+mwecmass/+realise/+modular_precast/solve.m` (rewrite), new `stage3_
   keeps a void, from the kernel); ballast level within k*.
 - Escalation order (owner decision; equalities held to the solver's constraint tolerance, OD10):
   1. Draft fixed at the Stage-2 value; ballast within k*.
-  2. Draft fixed; ballast may enter k*+1 (k* becomes solid; fill measured from the module
-     bottom, OD6).
+  2. Draft fixed; ballast may enter k*+1: the same ballast-level variable, its upper bound
+     widened from the top of k* to the top of k*+1 (k* is then solid; OD6, option ii).
   3. Draft free (last resort).
   4. Closest fail (below).
 - If still infeasible: keep the iterate with the smallest constraint violation, set status
@@ -282,15 +282,18 @@ Acceptance: `tests/step_check.py` imports a unit cube, a cylinder-free test soli
 spline faces, and a solid with a void; reports solid count, zero open edges, and volume against
 the analytic value.
 
-### T10 — Stage-3 STEP exports (Sonnet high) — needs OD3b
+### T10 — Stage-3 STEP exports (Sonnet high)
 
 Files: realisation `run.m` files, `WEC_Output_Options.m` (new `out.save.stage3.step_*`
 switches), `src/+mwecmass/+output/+step/` builders.
 
 - UHPC: one STEP per module; one STEP with all modules as one connected solid (built directly as
   one B-rep with the cavity as a void shell).
-- Steel: ballast solid; shell as a 2D surface = the exterior parametric surface (exact NURBS;
-  extent per OD3b); combined file with both bodies and identical geometry where they meet.
+- Steel: ballast solid = full outer section below `z_ballast`; shell = the exterior parametric
+  surface (exact NURBS) from `z_ballast` to the deck only (no double counting of the plate);
+  combined file with both bodies sharing the identical junction curve at `z_ballast`. For C1 the
+  split at `z_ballast` is exact (z depends only on the profile parameter of the RevSurf and the
+  RuledSurf, so the cut is an iso-parameter line found by knot insertion).
 - Files go to `Output/<type>/step/`; paths stored in the `.mat`.
 
 Acceptance: C1 files pass `tests/step_check.py`; imported volumes equal the kernel volumes

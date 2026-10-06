@@ -160,8 +160,7 @@ Figures: `WEC_Constructability_XZ`, `WEC_Constructability_Strips` (precast), `St
 6. Ballast first, inside one module only. The fill may enter the next module only if flotation
    and the GM equality cannot be met otherwise. When it does, the owner asked for the more
    robust of (i) rebuilding the module edges or (ii) measuring the fill from that module's own
-   bottom. The agent recommended (ii): module edges stay fixed, the fill stays a continuous
-   variable, and each Stage-2 density keeps referring to the same volume (see OD6).
+   bottom; the agent chose (ii) (reasons under OD6).
 7. If Stage 3 cannot meet its requirements, return the closest realisable design, flag it as
    failed, report which metric failed and why, **plot it, store it in `final_props` and the
    `.mat`, and export its STEP files** — never fall back to Stage 2.
@@ -200,7 +199,8 @@ Figures: `WEC_Constructability_XZ`, `WEC_Constructability_Strips` (precast), `St
     pitch inertia by A15²/(M + A11). Heave is uncoupled (A13 = A35 = 0, fore–aft symmetry).
 22. CG means the centre of gravity, Z_CG = `CG_total(3)`; compare it against Z_CG of Stage 2
     (item 16). Take the owner's wording literally; ask instead of reinterpreting.
-23. The steel shell STEP surface is the exterior parametric surface.
+23. The steel shell STEP surface is the exterior parametric surface, from `z_ballast` up only:
+    below it the ballast solid already contains the plate (no double counting).
 24. Thin-shell Stage-2 upper density bound = 7500 kg/m³ (solid steel); keep ρ_air correct.
 25. GM = GM_Stage2 in both modes, for consistency.
 
@@ -262,8 +262,9 @@ their mean (assumes star-shaped sections); CG_x = CG_y = 0 (declared symmetric-b
 7. **STEP files** written by Stage 3 (METRE units, named solids):
    - UHPC: `<hull>_UHPC_module_<i>.step` for each module, and `<hull>_UHPC_all.step` — all
      modules as one connected solid (built directly as one B-rep, no boolean needed).
-   - Steel: `<hull>_STEEL_ballast.step` (solid), `<hull>_STEEL_shell.step` (2D surface: the
-     exterior parametric surface; extent per OD3b), and a combined file with both bodies.
+   - Steel: `<hull>_STEEL_ballast.step` (solid: full outer section below `z_ballast`),
+     `<hull>_STEEL_shell.step` (2D surface: the exterior parametric surface from `z_ballast` to the
+     deck), and a combined file with both bodies sharing the junction curve at `z_ballast`.
    - Verified on import with `gmsh`/OpenCASCADE: closed solids, correct solid count, volume equal
      to the kernel's volume.
 8. Docs (`METHODS_ENGINE`, `RUNTIME_GUIDE`, `RESULT_SCHEMA`) describe the new methods only.
@@ -369,15 +370,25 @@ New folders created by the plan: `src/+mwecmass/+solid/` (exact geometry kernel)
 
 - **OD1** Resolved: keep the existing period range-penalty objective; evaluate coupled periods.
 - **OD2** Resolved: |Z_CG,3 − Z_CG,2| / |Z_CG,2| with Z_CG = `CG_total(3)` (world frame).
-- **OD3** Resolved in part: the steel shell is the exterior parametric surface (exact NURBS of
-  the `.ms2` patches). Still open (OD3b): does the shell surface cover the whole hull or only the
-  part above `z_ballast`? Combined steel file: a single manifold solid cannot contain a 2D sheet;
-  the plan writes both bodies into one file with identical geometry where they meet, so a mesher
-  can merge them.
+- **OD3** Resolved: the steel shell is the exterior parametric surface (exact NURBS of the
+  `.ms2` patches) **from `z_ballast` up to the deck only**. Below `z_ballast` the mass model
+  counts the full section as ballast (plate included), so a shell surface there would count the
+  plate twice. The ballast solid is the full outer section below `z_ballast`. The two bodies
+  meet along one closed curve: the section of the exterior surface at `z_ballast`, which is also
+  the outer edge of the ballast's top face. The combined file holds both bodies with that curve
+  identical in each, so a mesher can merge them; a single manifold solid cannot contain a 2D
+  sheet.
 - **OD4** Resolved: thin shell uses the closest-fail rule.
 - **OD5** Resolved: adaptive fitting with metrics M1–M3 (§5 item 9).
-- **OD6** Ballast spill rule: confirm option (ii) — fill measured from the next module's bottom,
-  module edges unchanged.
+- **OD6** Resolved (agent's decision, owner informed): option (ii), the ballast level measured
+  from the next module's bottom with module edges unchanged. For the same ballast level, (i) and
+  (ii) give the identical body (solid from the keel to `z_ballast`, walls above); they differ
+  only in where the precast joint sits. (ii) keeps every module equal to its Stage-2 strip, so
+  each keeps its Stage-2 density target and its own STEP file; it keeps one continuous variable
+  whose upper bound simply widens from the top of k* to the top of k*+1 when spill is allowed
+  (smooth for SQP); and it never changes module heights, which are fabrication inputs (including
+  the 1.8 m wall module). (i) would move a module edge during the solve: a change of topology
+  (non-smooth for SQP), reassigned Stage-2 targets, and silently altered module heights.
 - **OD7** Resolved: t_min = t_init = 25.4 mm for thin shell; it also sets the Stage-2 floors.
 - **OD8** Resolved: the draft stays a variable in both modes, used last (§3 item 20).
 - **OD9** Resolved: the Stage-2 upper density bound is the solid density of the mode's ballast —
