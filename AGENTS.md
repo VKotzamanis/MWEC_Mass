@@ -7,7 +7,8 @@ when the current work is finished. The implementation plan lives in
 
 Status: written 2026-10-06 against commit `8da92d5` (v1.0, `Example_C1`). Work happens on branch
 `claude/lucid-cray-7o9442`. Every number quoted below as "measured" was computed in Python from
-`Output/C1_modular_precast_results.mat`; MATLAB was not available in the cloud container.
+the v1.0 reference results `Output/C1_modular_precast_results.mat` and
+`Output/C1_thin_shell_results.mat`; MATLAB was not available in the cloud container.
 
 ---
 
@@ -71,7 +72,8 @@ Status: written 2026-10-06 against commit `8da92d5` (v1.0, `Example_C1`). Work h
 ### 2.3 Stage 1 and Stage 2
 
 - Design vector `x = [vertical_shift, rho_1 … rho_N]`: one equivalent (bulk) density per module
-  ("strip"). C1 has 5 modules; module 5 is the solid UHPC wall, pinned to 2500 kg/m³.
+  ("strip"). C1 has 5 modules; in modular precast, module 5 is the solid UHPC wall, pinned to
+  2500 kg/m³ (thin shell has no wall module).
 - Stage-2 objective: range penalties on GM (to `gm_target`), heave and pitch periods.
   Constraints: flotation equality, GM ≥ `gm_min`, adjacent density ratio, bottom-heavy
   monotonicity, and for modular precast a minimum constructable mass.
@@ -85,8 +87,8 @@ Status: written 2026-10-06 against commit `8da92d5` (v1.0, `Example_C1`). Work h
 ### 2.4 Stage 3, modular precast (UHPC) — current behaviour
 
 - `solve_and_extract` → `solve.m` runs a new fmincon optimisation with variables
-  `[vs, z_fill, t_2 … t_N_nonwall]`, objective = heave and pitch period penalties, equality =
-  flotation, inequality = GM ≥ `gm_min`. **It reads only the Stage-2 vertical shift** (and the
+  `[vs, z_fill, t_2 … t_N_nonwall]`, objective = heave and pitch period penalties (evaluated
+  with uncoupled periods, I20), equality = flotation, inequality = GM ≥ `gm_min`. **It reads only the Stage-2 vertical shift** (and the
   mass for a pre-check); the Stage-2 densities are never used.
 - Inner (void) geometry: each horizontal slice is offset in its own plane by t·L, with
   L = 1/cos α estimated from `dA/dz ÷ P` and capped at 5 (`inner_properties_at_z`,
@@ -149,7 +151,8 @@ Figures: `WEC_Constructability_XZ`, `WEC_Constructability_Strips` (precast), `St
    2. Build the real walls and ballast that hold V_UHPC,i in each module.
    3. Compute mass, z_CG, Iyy, GM and periods **on the actual 3D geometry** (the same solid that
       is written to STEP) and compare them with Stage 2.
-   4. If flotation balance, z_CG, GM and periods are all within `mass_acceptable_pct`, accept.
+   4. If z_CG, GM and periods are all within `mass_acceptable_pct` of Stage 2, accept
+      (flotation itself: see OD10).
    5. Otherwise optimise Stage 3 from that initial split. It may change draft (for mass balance)
       and the mass distribution to come closer to the Stage-2 solution.
 5. GM is an **equality**: GM_realised = GM_Stage2 (not GM ≥ `gm_min`), so the optimiser cannot
@@ -171,7 +174,7 @@ Figures: `WEC_Constructability_XZ`, `WEC_Constructability_Strips` (precast), `St
 13. Rename `z_fill` → `z_ballast` and remove the density naming trap, in code and docs.
 14. Thin shell is a separate pipeline:
     1. Stage-2 densities start from (are floored by) a thin-shell minimum shell thickness that the
-       user sets in the input file (new or renamed variable; the owner recalls 15 mm).
+       user sets in the input file (value fixed later at 25.4 mm, item 19).
     2. Stage 2 runs again for this mode, without a solid wall.
     3. Stage 3 finds **one uniform thickness** for all modules — built with care in the slender
        neck — and `z_ballast`.
@@ -180,8 +183,9 @@ Figures: `WEC_Constructability_XZ`, `WEC_Constructability_Strips` (precast), `St
 15. The Stage-3 objective is not wrong and stays: the same heave and pitch range penalties as
     Stage 2 (the GM term drops out because GM is now an equality constraint). Stage 3 must
     evaluate the **coupled** periods, as Stage 2 and the report do.
-16. Compare the centre of gravity as a relative distance on the body, not as a world-frame
-    coordinate (agent's reading: KG, the height of the CG above the keel; owner to confirm).
+16. The centre-of-gravity check uses the Stage-2 value as the reference:
+    |Z_CG,3 − Z_CG,2| / |Z_CG,2| ≤ `mass_acceptable_pct`/100, with Z_CG = `CG_total(3)`, the
+    CG elevation in the world frame the code already reports (z = 0 at the still-water line).
 17. Thin shell also uses the closest-fail rule: never fall back to Stage 2.
 18. Spline fitting is adaptive: the algorithm judges explicit metrics and refines locally where
     curvature, slender sections or folds need more nodes (§5 item 9).
@@ -194,6 +198,11 @@ Figures: `WEC_Constructability_XZ`, `WEC_Constructability_Strips` (precast), `St
 21. Coupled periods are fine to use (owner). Evidence for keeping them: with no surge stiffness
     the body surges freely as it pitches, and the surge–pitch added mass A15 lowers the effective
     pitch inertia by A15²/(M + A11). Heave is uncoupled (A13 = A35 = 0, fore–aft symmetry).
+22. CG means the centre of gravity, Z_CG = `CG_total(3)`; compare it against Z_CG of Stage 2
+    (item 16). Take the owner's wording literally; ask instead of reinterpreting.
+23. The steel shell STEP surface is the exterior parametric surface.
+24. Thin-shell Stage-2 upper density bound = 7500 kg/m³ (solid steel); keep ρ_air correct.
+25. GM = GM_Stage2 in both modes, for consistency.
 
 ---
 
@@ -209,7 +218,7 @@ Figures: `WEC_Constructability_XZ`, `WEC_Constructability_Strips` (precast), `St
 | I6 | Solver (table areas + contour offset) and stored contours (separate slicing) are two geometries | `build_geometry_grid.m` vs `extract_strip_geometry.m` | Stored contours: +0.85 % mass, z_CG +7 mm vs solver |
 | I7 | `t_max = 0.5 × compute_rmin_at_z` (a radius) bounds the thickness | both `solve.m` files | — |
 | I8 | Figures do not show the solved geometry: voids squeezed to a volume ratio, `z_fill` ignored, wall lines from 2D offsets or t_min | `plot_modular_precast.m`, `compute_inner_profile.m`, `plot_inner_spline.m`, `plot_steel_solve.m`, `stage_animations.m` | Read as a 3D body, the XZ figure weighs 23 687 kg with z_CG 71 mm higher |
-| I9 | Zero-thickness points: the offset leaves seam vertices unmoved | `internal/offset_polygon.m:146–149` | 932 inner vertices lie on the outer hull |
+| I9 | Zero-thickness points: the offset leaves seam vertices unmoved | `internal/offset_polygon.m:47–50` | 932 inner vertices lie on the outer hull |
 | I10 | `strip_scale_factor`, `strip_r_min`, `feasibility.s_max` assume shape scaling | `extract_strip_geometry.m`, `export_schema.m`, `Report.m` | — |
 | I11 | Name trap: modular-precast `rho_fill` means air (1.2); thin-shell `rho_fill` means solid fill (7500) | `WEC_User_Input.m`, `build_config.m` | Values are correct today; the name invites a wrong density |
 | I12 | `BM_L` taken about x = 0 without the parallel-axis term | `hydrostatics/properties_3d.m:95–100` | Exact for C1 (symmetric); wrong for a hull whose waterplane centroid is off x = 0 |
@@ -219,9 +228,9 @@ Figures: `WEC_Constructability_XZ`, `WEC_Constructability_Strips` (precast), `St
 | I16 | Thin-shell Stage 2 has no density floor, so it can request unbuildable densities | `build_config.m:358` (floors only for precast) | C1: modules 4–5 at 310.5 kg/m³; a 15 mm shell alone gives ≥ ≈1196 / 1336 |
 | I17 | `compute_rmin_at_z` measures distances to vertices only; flat faces have none | `geometry/compute_rmin_at_z.m:36–37` | C1 thin shell: `t_max` = 0.5025 m although the neck closes at t = 0.10 m |
 | I18 | Stage-2 density upper bound is 2500 kg/m³ in every mode, although steel ballast reaches 7500 | `WEC_User_Input.m` `ballast_density_bounds`, `stage2_bounds.m` | C1 thin shell: Stage 2 capped module 1 at 2500; Stage 3 built 6977 |
+| I19 | More material-name traps: the UHPC path passes UHPC density as `rho_steel` and stores UHPC volume and thickness as `V_steel`, `t_steel`; thin shell stores the fill density in `steel_data.rho_steel` | `modular_precast/solve_and_extract.m:18`, `solve.m`, `thin_shell/solve.m` packaging | — |
 | I20 | Stage 3 optimises **uncoupled** periods, while Stage 2 and the reported results use coupled periods | `modular_precast/evaluate_design_point.m:119–126`, `thin_shell/evaluate_design_point.m:200–207` vs `properties_3d.m:254–257`, `build_realised_properties.m` | Pitch only (heave identical): precast 4.960 s optimised vs 4.907 s reported; thin shell 3.890 s optimised (the target) vs 3.813 s reported. A15²/(M+A11) = 2.1 % and 3.9 % of the pitch inertia |
 | I21 | C1 floats with ≈95 % of its volume submerged (V_sub 20.16 of 21.16 m³). Mass balance therefore cannot carry a percentage tolerance | hydrostatics of C1 | From the C1 tables: +1 % mass raises the waterline 160 mm; +5 % submerges the hull completely; −10 % lowers the waterline 256 mm |
-| I19 | More material-name traps: the UHPC path passes UHPC density as `rho_steel` and stores UHPC volume and thickness as `V_steel`, `t_steel`; thin shell stores the fill density in `steel_data.rho_steel` | `modular_precast/solve_and_extract.m:56`, `solve.m`, `thin_shell/solve.m` packaging | — |
 
 Known approximations **not** in scope (report, do not change without approval): linear
 interpolation of the hydrostatic tables in Stages 1–2; angular sorting of contour points about
@@ -237,22 +246,24 @@ their mean (assumes star-shaped sections); CG_x = CG_y = 0 (declared symmetric-b
    realisations, stored contours, figures and STEP files all use this kernel.
 2. **Stage-2 floors** equal the true density of each module with a t_min normal wall and air.
 3. **Stage 3, modular precast** follows §3 item 4: split → build → check against Stage 2 →
-   optimise if needed (variables: draft, fill level in the ballast module, t_i of the hollow
-   modules; equalities: flotation and GM = GM_Stage2; objective: closeness to the Stage-2
-   solution) → spill into the next module only if needed → closest-fail report if infeasible.
+   optimise if needed (variables: ballast level in the ballast module, t_i of the hollow
+   modules, and the draft as the last resort; equalities: flotation and GM = GM_Stage2;
+   objective: the Stage-2 heave and pitch range penalties with coupled periods) → spill into
+   the next module only if needed → closest-fail report if infeasible.
 4. **Thin shell** keeps its own pipeline: Stage-2 floors from the user-set minimum shell
-   thickness on the exact geometry (no wall strip); Stage 3 solves one uniform thickness and
-   `z_ballast` (free to pass module edges) with the exact-normal inner surface, built correctly
-   in the slender neck, and an exact-geometry `t_max` (the thickness at which the void first
-   closes in the middle 80 % of the hull height).
+   thickness (25.4 mm) on the exact geometry, no wall strip, upper bound 7500 kg/m³; Stage 3
+   solves one uniform thickness and `z_ballast` (free to pass module edges), with the draft as
+   the last resort, flotation and GM = GM_Stage2 as equalities, the exact-normal inner surface
+   built correctly in the slender neck, and an exact-geometry `t_max` (the thickness at which
+   the void first closes in the middle 80 % of the hull height).
 5. `final_props` and the `.mat` always describe the realised (or closest-fail) 3D design, with a
    status flag and a per-metric report.
 6. **Figures** draw true sections of the realised solid and honour the ballast level.
 7. **STEP files** written by Stage 3 (METRE units, named solids):
    - UHPC: `<hull>_UHPC_module_<i>.step` for each module, and `<hull>_UHPC_all.step` — all
      modules as one connected solid (built directly as one B-rep, no boolean needed).
-   - Steel: `<hull>_STEEL_ballast.step` (solid), `<hull>_STEEL_shell.step` (2D surface), and a
-     combined file (see open decision OD3).
+   - Steel: `<hull>_STEEL_ballast.step` (solid), `<hull>_STEEL_shell.step` (2D surface: the
+     exterior parametric surface; extent per OD3b), and a combined file with both bodies.
    - Verified on import with `gmsh`/OpenCASCADE: closed solids, correct solid count, volume equal
      to the kernel's volume.
 8. Docs (`METHODS_ENGINE`, `RUNTIME_GUIDE`, `RESULT_SCHEMA`) describe the new methods only.
@@ -278,6 +289,20 @@ their mean (assumes star-shaped sections); CG_x = CG_y = 0 (declared symmetric-b
    Outer faces are exported as exact NURBS conversions of the `.ms2` entities where the entity
    type allows (all of C1: B-spline curves, arcs, revolution, ruled surface); otherwise they are
    fitted with the same metrics.
+
+---
+
+### What the two equalities imply (derived, read before T5–T7)
+
+At the Stage-2 draft, flotation fixes the mass (M = ρ_w V_sub) and GM = GM_Stage2 fixes Z_CG
+(the draft fixes KM, and GM = KM − Z_CG). Heave then cannot change either: T_heave depends only
+on M, A33 and A_w, all set by the draft. Only Iyy, and through it the pitch period, remains free.
+
+- **UHPC (C1):** variables at fixed draft are the ballast level in k* and t_3, t_4 — three
+  unknowns, two equalities, one degree of freedom left for the pitch objective.
+- **Thin shell:** variables at fixed draft are t and `z_ballast` — two unknowns, two equalities,
+  **no freedom left**. Stage 3 becomes a solve, and the period objective acts only if the draft
+  is released (the last resort).
 
 ---
 
@@ -343,25 +368,25 @@ New folders created by the plan: `src/+mwecmass/+solid/` (exact geometry kernel)
 ## 8. Open decisions (ask the owner; do not decide alone)
 
 - **OD1** Resolved: keep the existing period range-penalty objective; evaluate coupled periods.
-- **OD2** z_CG acceptance as a relative distance on the body. Agent's reading: compare KG
-  (CG height above the keel), |KG_3 − KG_2| / KG_2 ≤ `mass_acceptable_pct`. For the v1.0 C1
-  precast result this gives −4.3 % (pass); the world-frame coordinate would give 13.7 % (fail),
-  because the draft changed by 9 cm. Owner to confirm the reference point.
-- **OD3** Steel shell surface: mid-surface or exterior surface, over the whole hull or above
-  `z_fill` only. Combined steel file: a single manifold solid cannot contain a 2D sheet; the
-  plan writes both bodies into one file with identical (conformal) geometry along their junction,
-  so a mesher can merge them. A true non-manifold link needs STEP AP242 support that GiD and
-  most CAD tools do not read reliably.
+- **OD2** Resolved: |Z_CG,3 − Z_CG,2| / |Z_CG,2| with Z_CG = `CG_total(3)` (world frame).
+- **OD3** Resolved in part: the steel shell is the exterior parametric surface (exact NURBS of
+  the `.ms2` patches). Still open (OD3b): does the shell surface cover the whole hull or only the
+  part above `z_ballast`? Combined steel file: a single manifold solid cannot contain a 2D sheet;
+  the plan writes both bodies into one file with identical geometry where they meet, so a mesher
+  can merge them.
 - **OD4** Resolved: thin shell uses the closest-fail rule.
 - **OD5** Resolved: adaptive fitting with metrics M1–M3 (§5 item 9).
 - **OD6** Ballast spill rule: confirm option (ii) — fill measured from the next module's bottom,
   module edges unchanged.
 - **OD7** Resolved: t_min = t_init = 25.4 mm for thin shell; it also sets the Stage-2 floors.
 - **OD8** Resolved: the draft stays a variable in both modes, used last (§3 item 20).
+- **OD9** Resolved: the Stage-2 upper density bound is the solid density of the mode's ballast —
+  7500 kg/m³ (solid steel) for thin shell, 2500 kg/m³ (solid UHPC) for modular precast — taken
+  from the material inputs, not from the shared `ballast_density_bounds`. ρ_air is 1.2 kg/m³ in
+  both modes today (`config.rho_air` from `thin_shell.rho_void`; `constructability_rho_fill` from
+  `modular_precast.rho_fill`); T0b renames both to `rho_air`, T4 asserts it.
 - **OD10** Mass balance is an equilibrium, not a comparison. Proposal: enforce mass = displaced
   mass as an equality to the solver's existing constraint tolerance (1e-6) in every reported
-  state, and apply `mass_acceptable_pct` only to the Stage-2 comparison of KG, GM and periods
-  (see I21). Owner to confirm.
-- **OD11** Thin-shell GM rule: keep GM ≥ `gm_min` (today), or GM = GM_Stage2 as in UHPC?
-- **OD9** Stage-2 density upper bound for thin shell: raise it to `rho_ballast` (7500) instead of
-  the shared 2500?
+  state, and apply `mass_acceptable_pct` only to the Stage-2 comparison of Z_CG, GM and
+  periods (see I21). Owner to confirm.
+- **OD11** Resolved: GM = GM_Stage2 (equality) in both modes.

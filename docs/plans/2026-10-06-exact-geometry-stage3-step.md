@@ -152,7 +152,7 @@ x = y = 0 to machine precision for C1); convergence of every quantity with quadr
 reported; agreement with an independent `gmsh` mesh integration of the same body, reported.
 **Owner checkpoint after T3.**
 
-### T4 — Stage-2 floors from the kernel, both modes (Sonnet high) — needs OD9
+### T4 — Stage-2 floors and bounds from the kernel, both modes (Sonnet high)
 
 Files: `src/+mwecmass/+driver/build_config.m`, `src/+mwecmass/+optim/stage2_bounds.m`,
 `WEC_User_Input.m`; delete D1, D3.
@@ -161,7 +161,9 @@ Files: `src/+mwecmass/+driver/build_config.m`, `src/+mwecmass/+optim/stage2_boun
   V_wall from the kernel; `m_min_constructability` from the same values. Wall module pinned
   solid as today.
 - Thin shell (new): the same floor with ρ_shell and the user-set minimum shell thickness, no wall
-  module. Upper bound per OD9. Set `in.materials.thin_shell.t_min` = `t_init` = 0.0254 m
+  module.
+- Upper density bound per mode from the material inputs (OD9): `rho_ballast` (7500) for thin
+  shell, `rho_uhpc` (2500) for modular precast. Set `in.materials.thin_shell.t_min` = `t_init` = 0.0254 m
   (owner decision, OD7) and update `RUNTIME_GUIDE.md` defaults.
 - `in.materials.modular_precast.t_init` is derived from the steel `t_init` today; the new UHPC
   Stage 3 starts from the Stage-2 split instead, so remove that derived input in T5.
@@ -188,9 +190,10 @@ D2 calls in `modular_precast/solve.m`, D6 (precast fields).
    (cannot occur once T4 floors are in place).
 4. Restore equilibrium at the Stage-2 draft: adjust the ballast level in k* so that mass equals
    the Stage-2 displaced mass (differences come only from exact versus table module volumes).
-   Evaluate the realised body with T3 at the Stage-2 draft: mass, KG, Iyy, GM, coupled periods
-   (added mass at the realised CG). Compare with Stage 2 using `mass_acceptable_pct`: flotation
-   balance, KG as a relative distance on the body (OD2), GM, coupled T_heave and T_pitch.
+   Evaluate the realised body with T3 at the Stage-2 draft: mass, Z_CG, Iyy, GM, coupled
+   periods (added mass at the realised CG). Compare with Stage 2 using `mass_acceptable_pct`:
+   |Z_CG,3 − Z_CG,2| / |Z_CG,2| with Z_CG = `CG_total(3)` (world frame), and the same relative
+   form for GM, coupled T_heave and coupled T_pitch. Flotation is an equality (OD10).
 5. Store the realised body description, exact contours, per-module volumes and masses, the check
    report and a status flag; `final_props` always describes this realised design.
 
@@ -220,7 +223,7 @@ Acceptance: C1 run under the Octave shim; report printed; a forced-infeasible te
 unreachable GM) produces a stored, plotted, flagged closest-fail design. **Owner checkpoint
 after T6.**
 
-### T7 — Thin-shell rebuild on the kernel (Sonnet high) — needs OD10, OD11
+### T7 — Thin-shell rebuild on the kernel (Sonnet high) — needs OD10
 
 Also in T7: evaluate coupled periods in the objective (I20), and replace the fallback to Stage 2
 with the closest-fail rule (OD4): flagged status, per-metric report, plotted, stored in
@@ -232,8 +235,10 @@ Files: `src/+mwecmass/+realise/+thin_shell/` (`build_geometry_grid.m`, `inner_pr
 D4, D6, D7.
 
 - Keep the thin-shell formulation: one uniform thickness t for the whole hull and `z_ballast`
-  free to pass module edges without penalty (plus the draft, OD8); period-penalty objective;
-  flotation equality; GM ≥ `gm_min`; ballast model (full section below `z_ballast`).
+  free to pass module edges without penalty (plus the draft, last resort); period-penalty
+  objective; flotation equality; **GM = GM_Stage2** (OD11, replaces GM ≥ `gm_min`); ballast
+  model (full section below `z_ballast`). At fixed draft the two equalities fix t and
+  `z_ballast` (AGENTS.md §5, "What the two equalities imply").
 - Replace the inner geometry with the kernel's normal offset at the single t. Build it with care
   in the slender neck (C1 half-width 0.10 m): the void there is 0.20 − 2t wide and closes at
   t = 0.10 m; the rounded top (radius 0.10 m) needs no fold trimming for t < 0.10 m. Remove the
@@ -277,14 +282,15 @@ Acceptance: `tests/step_check.py` imports a unit cube, a cylinder-free test soli
 spline faces, and a solid with a void; reports solid count, zero open edges, and volume against
 the analytic value.
 
-### T10 — Stage-3 STEP exports (Sonnet high) — needs OD3
+### T10 — Stage-3 STEP exports (Sonnet high) — needs OD3b
 
 Files: realisation `run.m` files, `WEC_Output_Options.m` (new `out.save.stage3.step_*`
 switches), `src/+mwecmass/+output/+step/` builders.
 
 - UHPC: one STEP per module; one STEP with all modules as one connected solid (built directly as
   one B-rep with the cavity as a void shell).
-- Steel: ballast solid; shell as a 2D surface (OD3); combined file (OD3).
+- Steel: ballast solid; shell as a 2D surface = the exterior parametric surface (exact NURBS;
+  extent per OD3b); combined file with both bodies and identical geometry where they meet.
 - Files go to `Output/<type>/step/`; paths stored in the `.mat`.
 
 Acceptance: C1 files pass `tests/step_check.py`; imported volumes equal the kernel volumes
