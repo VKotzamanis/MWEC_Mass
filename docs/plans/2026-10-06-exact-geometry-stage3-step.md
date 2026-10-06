@@ -121,15 +121,18 @@ outward, continuous across patch seams; exact symmetry under the deck's mirror p
 Files: `src/+mwecmass/+solid/offset_surface.m`, `trim_fold.m`, `fit_bspline_surface.m`,
 `eval_bspline_surface.m`, `slice_bspline_surface.m`, tests.
 
-- Inner nodes P_in = S − t·n on the T1 grid; remove nodes whose distance to the outer surface is
-  below t (the fold, e.g. the C1 shoulder corner); fit a tensor-product B-spline surface through
-  the remaining nodes (interpolating), per patch, per module range.
+- Adaptive, error-bounded fitting as specified in AGENTS.md §5 item 9: initial nodes dense where
+  curvature is high or the void is narrow; offset by t + ε/2 along the exact normal; trim the
+  fold; split faces along creases; fit cubic B-splines; check M1–M3 on points between the nodes;
+  insert knots only in failing spans; remove unneeded knots at the end; stop with an error report
+  at the iteration cap.
 - Slice the fitted surface at any height into an ordered closed contour.
 
-Acceptance: measured normal clearance of the fitted inner surface to the outer surface, reported
-as min / max / distribution over a dense check grid not used for fitting; no self-intersection;
-C1 at t = 0.0762 m compared with the Python reference half-widths per height and with the
-independent erosion result for module 4 (void 3.548 m³ with the v1.0 module edges and z_fill).
+Acceptance: M1–M3 pass on a dense check grid not used for fitting (report min / max t_local, the
+number of refinement passes and knots per face); creases present where the C1 shoulder fold is
+trimmed; C1 at t = 0.0762 m compared with the Python reference half-widths per height and with
+the independent erosion result for module 4 (void 3.548 m³ with the v1.0 module edges and
+`z_ballast`); a slender-section case (thin-shell neck, t = 0.025 m) passes M3.
 
 ### T3 — Kernel C: bodies and exact properties (Sonnet high)
 
@@ -180,22 +183,24 @@ D2 calls in `modular_precast/solve.m`, D6 (precast fields).
    ballast from the module bottom (stays inside k*). Modules above k*: solve t_i ≥ t_min so the
    wall holds V_UHPC,i. A module whose V_UHPC,i is below its t_min wall volume is flagged
    (cannot occur once T4 floors are in place).
-4. Evaluate the realised body with T3 at the Stage-2 draft: mass, z_CG, Iyy, GM, coupled periods
-   (added mass at the realised CG). Compare with Stage 2 using `mass_acceptable_pct`.
+4. Evaluate the realised body with T3 at the Stage-2 draft: mass, KG, Iyy, GM, coupled periods
+   (added mass at the realised CG). Compare with Stage 2 using `mass_acceptable_pct`: flotation
+   balance, KG as a relative distance on the body (OD2), GM, coupled T_heave and T_pitch.
 5. Store the realised body description, exact contours, per-module volumes and masses, the check
    report and a status flag; `final_props` always describes this realised design.
 
 Acceptance: C1 run under Octave prints the split, the realised module geometry and the check
 table; `final_props` never contains Stage-2 values for this mode.
 
-### T6 — UHPC Stage 3, part b: optimisation, spill, closest fail (Sonnet high) — needs OD1, OD6
+### T6 — UHPC Stage 3, part b: optimisation, spill, closest fail (Sonnet high) — needs OD6
 
 Files: `src/+mwecmass/+realise/+modular_precast/solve.m` (rewrite), new `stage3_report.m`.
 
-- Runs only when T5's check fails. Start point: T5's split. Variables: draft, fill level in k*,
-  t_i of the hollow modules above k*. Equalities: flotation and GM = GM_Stage2. Objective:
-  closeness to the Stage-2 solution (OD1). Bounds: t_min ≤ t_i ≤ t_max,i (largest t for which
-  module i keeps a void, from the kernel); fill level within k*.
+- Runs only when T5's check fails. Start point: T5's split. Variables: draft, ballast level in
+  k*, t_i of the hollow modules above k*. Equalities: flotation and GM = GM_Stage2. Objective:
+  unchanged — heave and pitch range penalties against the configured goals, evaluated with the
+  **coupled** periods (fixes I20). Bounds: t_min ≤ t_i ≤ t_max,i (largest t for which module i
+  keeps a void, from the kernel); ballast level within k*.
 - If no feasible point exists, allow the fill to enter k*+1 (k* becomes solid; fill measured
   from the module bottom, OD6) and solve again.
 - If still infeasible: keep the iterate with the smallest constraint violation, set status
@@ -206,7 +211,11 @@ Acceptance: C1 run under the Octave shim; report printed; a forced-infeasible te
 unreachable GM) produces a stored, plotted, flagged closest-fail design. **Owner checkpoint
 after T6.**
 
-### T7 — Thin-shell rebuild on the kernel (Sonnet high) — needs OD4, OD8
+### T7 — Thin-shell rebuild on the kernel (Sonnet high) — needs OD8
+
+Also in T7: evaluate coupled periods in the objective (I20), and replace the fallback to Stage 2
+with the closest-fail rule (OD4): flagged status, per-metric report, plotted, stored in
+`final_props` and the `.mat`, STEP files exported.
 
 Files: `src/+mwecmass/+realise/+thin_shell/` (`build_geometry_grid.m`, `inner_properties_at_z.m`,
 `solve.m`, `evaluate_design_point.m`, `strip_partition_volumes.m`); delete D2 (last callers),
@@ -245,8 +254,10 @@ in MATLAB.
 
 Files: `src/+mwecmass/+output/+step/write_step.m` and helpers, tests.
 
-- AP214 text writer: `B_SPLINE_SURFACE_WITH_KNOTS` lateral faces whose boundary rows lie in the
-  bounding planes (no trimming curves), `PLANE` caps, shared `EDGE_CURVE`s, `CLOSED_SHELL`,
+- Outer faces: exact NURBS conversions of the `.ms2` entities where the type allows (C1: B-spline
+  curves, arcs, revolution, ruled surface); inner faces: the adaptive fits from T2.
+- AP214 text writer: `B_SPLINE_SURFACE_WITH_KNOTS` (and the rational form for exact
+  revolutions) lateral faces whose boundary rows lie in the bounding planes (no trimming curves), `PLANE` caps, shared `EDGE_CURVE`s, `CLOSED_SHELL`,
   `MANIFOLD_SOLID_BREP` and `BREP_WITH_VOIDS`, `OPEN_SHELL` / `SHELL_BASED_SURFACE_MODEL` for
   sheets, SI units in METRE, product and solid names, presentation layers per body (lessons from
   the earlier STEP pipeline: correct unit declaration, no free construction points, every entity

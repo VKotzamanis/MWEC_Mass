@@ -31,7 +31,9 @@ Status: written 2026-10-06 against commit `8da92d5` (v1.0, `Example_C1`). Work h
 4. **t_min is a floor, not a fixed value.** Per-module wall thickness t_i ≥ t_min stays a design
    variable. Below the ballast level the section is solid and t_min does not apply there.
 5. **No invented tolerances.** Stage-3 acceptance uses `in.pid.mass_acceptable_pct` (10 %).
-   Any other numeric gate needs the owner's approval first.
+   The only other gate is the spline-fit band ε = 0.01 · t_min (one tenth of that acceptance
+   band, so fitting can never use up more than a tenth of it; see §5 item 9). Any further numeric
+   gate needs the owner's approval first.
 6. **No side quests.** Work only on correctness of the code. Do not add before/after studies,
    paper comparisons or unrelated refactors.
 7. **Thin shell is not UHPC.** The thin-shell (steel) realisation has its own logic. Rebuild its
@@ -175,6 +177,14 @@ Figures: `WEC_Constructability_XZ`, `WEC_Constructability_Strips` (precast), `St
        neck — and `z_ballast`.
     4. `z_ballast` may rise past module 1 into other modules without penalty; it is not a last
        resort as in UHPC.
+15. The Stage-3 objective is not wrong and stays: the same heave and pitch range penalties as
+    Stage 2 (the GM term drops out because GM is now an equality constraint). Stage 3 must
+    evaluate the **coupled** periods, as Stage 2 and the report do.
+16. Compare the centre of gravity as a relative distance on the body, not as a world-frame
+    coordinate (agent's reading: KG, the height of the CG above the keel; owner to confirm).
+17. Thin shell also uses the closest-fail rule: never fall back to Stage 2.
+18. Spline fitting is adaptive: the algorithm judges explicit metrics and refines locally where
+    curvature, slender sections or folds need more nodes (§5 item 9).
 
 ---
 
@@ -200,6 +210,7 @@ Figures: `WEC_Constructability_XZ`, `WEC_Constructability_Strips` (precast), `St
 | I16 | Thin-shell Stage 2 has no density floor, so it can request unbuildable densities | `build_config.m:358` (floors only for precast) | C1: modules 4–5 at 310.5 kg/m³; a 15 mm shell alone gives ≥ ≈1196 / 1336 |
 | I17 | `compute_rmin_at_z` measures distances to vertices only; flat faces have none | `geometry/compute_rmin_at_z.m:36–37` | C1 thin shell: `t_max` = 0.5025 m although the neck closes at t = 0.10 m |
 | I18 | Stage-2 density upper bound is 2500 kg/m³ in every mode, although steel ballast reaches 7500 | `WEC_User_Input.m` `ballast_density_bounds`, `stage2_bounds.m` | C1 thin shell: Stage 2 capped module 1 at 2500; Stage 3 built 6977 |
+| I20 | Stage 3 optimises **uncoupled** periods, while Stage 2 and the reported results use coupled periods | `modular_precast/evaluate_design_point.m:119–126`, `thin_shell/evaluate_design_point.m:200–207` vs `properties_3d.m:254–257`, `build_realised_properties.m` | C1 precast: optimiser saw T_pitch 4.96 s, report shows 4.91 s |
 | I19 | More material-name traps: the UHPC path passes UHPC density as `rho_steel` and stores UHPC volume and thickness as `V_steel`, `t_steel`; thin shell stores the fill density in `steel_data.rho_steel` | `modular_precast/solve_and_extract.m:56`, `solve.m`, `thin_shell/solve.m` packaging | — |
 
 Known approximations **not** in scope (report, do not change without approval): linear
@@ -235,6 +246,28 @@ their mean (assumes star-shaped sections); CG_x = CG_y = 0 (declared symmetric-b
    - Verified on import with `gmsh`/OpenCASCADE: closed solids, correct solid count, volume equal
      to the kernel's volume.
 8. Docs (`METHODS_ENGINE`, `RUNTIME_GUIDE`, `RESULT_SCHEMA`) describe the new methods only.
+9. **Adaptive spline fitting with judged metrics** (error-bounded fitting with local knot
+   insertion and knot removal, after Piegl & Tiller, *The NURBS Book*, 2nd ed., 1997, ch. 5 and 9):
+   1. Place initial nodes densely where the outer surface curves sharply or the void is narrow.
+   2. Offset the nodes by t + ε/2 along the exact normal, trim the fold, and **split the face
+      along any crease** the trimming leaves (e.g. behind the C1 shoulder corner) instead of
+      forcing one smooth spline across it — a smooth spline across a crease overshoots.
+   3. Fit cubic B-splines through the nodes; check them on dense points *between* the nodes.
+   4. Metrics the algorithm judges at every check point:
+      - **M1 (hard):** local normal thickness t_local ≥ t_min.
+      - **M2 (band):** t ≤ t_local ≤ t + ε, with ε = 0.01 · t_min. Fitting to t + ε/2 centres
+        the error band, so the floor holds while the error stays below ε.
+      - **M3 (hard):** the inner surface stays inside the outer surface, never self-intersects,
+        and every horizontal slice of a void is one simple closed loop; opposite walls of a
+        slender section never meet.
+   5. Insert knots only in the spans that fail; refit and recheck. Stop with an error report,
+      never silently, if the iteration cap is reached.
+   6. Remove knots that are not needed while M1–M3 still hold, so the STEP stays lean.
+   7. Mass properties are computed on the fitted surfaces themselves (the STEP geometry), so any
+      fit deviation is already in the reported mass, CG and inertia.
+   Outer faces are exported as exact NURBS conversions of the `.ms2` entities where the entity
+   type allows (all of C1: B-spline curves, arcs, revolution, ruled surface); otherwise they are
+   fitted with the same metrics.
 
 ---
 
@@ -299,20 +332,18 @@ New folders created by the plan: `src/+mwecmass/+solid/` (exact geometry kernel)
 
 ## 8. Open decisions (ask the owner; do not decide alone)
 
-- **OD1** Stage-3 objective weights: the plan minimises the sum of squared relative deviations of
-  z_CG, T_heave and T_pitch from Stage 2 (equal weights). Confirm.
-- **OD2** z_CG acceptance: a percentage of a coordinate depends on the origin. Literal rule:
-  |Δz_CG| / |z_CG,Stage2| (world frame) ≤ `mass_acceptable_pct`. Confirm or choose a reference.
+- **OD1** Resolved: keep the existing period range-penalty objective; evaluate coupled periods.
+- **OD2** z_CG acceptance as a relative distance on the body. Agent's reading: compare KG
+  (CG height above the keel), |KG_3 − KG_2| / KG_2 ≤ `mass_acceptable_pct`. For the v1.0 C1
+  precast result this gives −4.3 % (pass); the world-frame coordinate would give 13.7 % (fail),
+  because the draft changed by 9 cm. Owner to confirm the reference point.
 - **OD3** Steel shell surface: mid-surface or exterior surface, over the whole hull or above
   `z_fill` only. Combined steel file: a single manifold solid cannot contain a 2D sheet; the
   plan writes both bodies into one file with identical (conformal) geometry along their junction,
   so a mesher can merge them. A true non-manifold link needs STEP AP242 support that GiD and
   most CAD tools do not read reliably.
-- **OD4** Thin shell when infeasible: keep today's fallback to Stage 2, or adopt the closest-fail
-  rule used for UHPC?
-- **OD5** Spline-fit accuracy for the fitted surfaces (inner walls and STEP faces): the plan
-  reports measured fit errors and gates only on existing quantities (t ≥ t_min, mass balance);
-  the owner sets any numeric fit tolerance.
+- **OD4** Resolved: thin shell uses the closest-fail rule.
+- **OD5** Resolved: adaptive fitting with metrics M1–M3 (§5 item 9).
 - **OD6** Ballast spill rule: confirm option (ii) — fill measured from the next module's bottom,
   module edges unchanged.
 - **OD7** Thin-shell minimum shell thickness: the input file says 25 mm; the owner recalls 15 mm.
