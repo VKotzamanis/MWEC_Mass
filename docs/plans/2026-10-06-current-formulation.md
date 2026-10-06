@@ -510,7 +510,7 @@ Guard: `f = 1e4` if more than 5% of grid sections are degenerate or a period is 
 **Post-solve.**
 - Strips wholly below `z_fill*` are promoted to solid (`solve.m:222-229`).
 - `extract_strip_geometry` inherits `cstr = solve_data` (grep: `extract_strip_geometry.m:8`) and adds per-strip diagnostics (lines 324-385).
-- `final_props` is rebuilt with `build_realised_properties` (`modular_precast/run.m:26-27`; `modular_precast/build_realised_properties.m:13`) when `feasible` is true; same finiteness-only flag at `evaluate_design_point.m:129`.
+- `final_props` is rebuilt with `build_realised_properties` (`modular_precast/run.m:26-27`; `modular_precast/build_realised_properties.m:10`) when `feasible` is true; same finiteness-only flag at `evaluate_design_point.m:129`.
 
 ## 8. Dependency maps (as implemented)
 
@@ -599,7 +599,7 @@ Guard: `f = 1e4` if more than 5% of grid sections are degenerate or a period is 
 4. **Different mass models.**
    - Stage 2: uniform density per horizontal strip on precomputed strip integrals (`properties_3d.m:120-136`).
    - Stage 3: shell, fill and air on a 300-point grid (`build_geometry_grid.m:49-78`).
-   - Stage 3 does not use the Stage-2 densities at all (section 9). Its realised per-strip equivalent densities violate Stage-2 rules:
+   - Stage 3 does not use the Stage-2 densities as inputs to its mass model (section 9; modular reads only the resulting `final_props.mass_total` in a pass/abort pre-check, `solve_and_extract.m:95-106`). Its realised per-strip equivalent densities violate Stage-2 rules:
      - thin shell `strip_rho_eff = [6977, 285.5, 399.6, 2152.8, 2275.4]`: above the 2500 bound and non-monotone
      - modular `[2500, 1638.7, 211.0, 481.2, 2500]`: non-monotone
    - Stage 3 has no monotonicity or density constraint.
@@ -624,7 +624,7 @@ Guard: `f = 1e4` if more than 5% of grid sections are degenerate or a period is 
 - **`config.shell` is always `[]`** (`build_config.m:283`), so the shell branches in `properties_2d.m:93-96, 157-167, 259-267` are dead.
 - **Unread config fields:** `config.mass_correction_factor`, `gm_correction_factor` and `z_cg_target` (`build_config.m:953-967`) are never read elsewhere in src (grep).
 - **Trained-mode corrections never reach Stage 2:** `k_vol`/`k_gm` and the retransformed hydro data are local (section 4).
-- **Stage-2 densities have no effect on Stage 3** (section 9).
+- **Stage-2 densities do not enter the Stage-3 mass model or design variables** (section 9). Their only effect is indirect: for modular, `final_props.mass_total` (the sum of strip volume times Stage-2 density, `properties_3d.m:120-138`) feeds the hard pre-check that can abort Stage 3 with an error (`solve_and_extract.m:95-106`). Thin shell has no such gate, and the reporting use of `mass_total` does not affect the solve.
 - **Modular t_i for strips below z_fill have no effect** (section 8).
 - **Two-density thin-shell split has no mass effect for C1**, because `rho_fill = rho_shell = 7500` (`WEC_User_Input.m:31`).
 - **Unused inputs:** `modular_precast/evaluate_design_point.m` takes `t_offset_strip` and `is_solid_strip` and does not use them (l.139). `B_full` is never used in any period.
@@ -633,11 +633,10 @@ Guard: `f = 1e4` if more than 5% of grid sections are degenerate or a period is 
 
 - `stage2_objective.m:3` says the residual divides by `max(half_range, eps)`. Code fact: no max (l.26-28).
 - `build_realised_properties.m:133-135` says "the periods the objective reads come from the coupled eigenproblem below". Code fact: the Stage-3 objectives read uncoupled periods (`thin_shell/solve.m:452-462`).
-- `WEC_User_Input.m:69-70` calls `gm_range` a "reporting/consistency band" and `gm_target` "documentation/objective reference". Code fact: both define the GM objective term in Stages 1 and 2 (`stage2_objective.m:21, 26`; `solve_2d_surrogate.m:161, 166-167`).
+- `WEC_User_Input.m:69` calls `gm_range` a "reporting/consistency band". Code fact: it defines the half-range of the GM objective term in Stages 1 and 2 (`stage2_objective.m:21, 26`; `solve_2d_surrogate.m:161, 166-167`).
 - `modular_precast/solve.m:46` cites `solve_and_extract.m:38` for `opts.rho_steel`. Code fact: line 18.
 
 ### docs/ against code
 
-- **Cache reference point.** Docs claim: "Cached coefficients are referenced to the BEM/HAMS center of gravity" (`docs/METHODS_ENGINE.md:528`). Code fact: the cache matrices are treated as "6×6 at origin" and transformed to `z_cg` by the code (`build_config.m:835-845`; `run_at_draft.m:86`).
 - **`stage1_2d.properties`.** Docs claim: "2-D surrogate properties at `x_optimal`" (`docs/RESULT_SCHEMA.md:69`). Code fact: `skip` stores `properties_3d` (`run.m:116`).
 - **`stage1_2d.iterations`.** Docs claim: it is the "Stage-1 execution status" count (`docs/RESULT_SCHEMA.md:70`). Code fact: it is `length(hist.mass_errors_history)` (`report_assemble_results.m:16`), which is 0 for sweep even though Tier-2 fmincon runs.
