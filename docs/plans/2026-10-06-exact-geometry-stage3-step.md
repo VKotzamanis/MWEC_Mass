@@ -152,7 +152,7 @@ x = y = 0 to machine precision for C1); convergence of every quantity with quadr
 reported; agreement with an independent `gmsh` mesh integration of the same body, reported.
 **Owner checkpoint after T3.**
 
-### T4 — Stage-2 floors from the kernel, both modes (Sonnet high) — needs OD7, OD9
+### T4 — Stage-2 floors from the kernel, both modes (Sonnet high) — needs OD9
 
 Files: `src/+mwecmass/+driver/build_config.m`, `src/+mwecmass/+optim/stage2_bounds.m`,
 `WEC_User_Input.m`; delete D1, D3.
