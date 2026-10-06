@@ -185,6 +185,15 @@ Figures: `WEC_Constructability_XZ`, `WEC_Constructability_Strips` (precast), `St
 17. Thin shell also uses the closest-fail rule: never fall back to Stage 2.
 18. Spline fitting is adaptive: the algorithm judges explicit metrics and refines locally where
     curvature, slender sections or folds need more nodes (§5 item 9).
+19. Thin shell: t_min = t_init = 25.4 mm (one inch), one value set by the user; it also sets the
+    Stage-2 floors.
+20. The draft is a Stage-3 variable in both modes but the **last resort**: first find the best
+    design at the Stage-2 draft; change the draft only if equilibrium (mass = displaced mass)
+    cannot be reached there. UHPC order: ballast within k* → ballast spill → draft → closest fail.
+    Thin shell order: (t, z_ballast) at fixed draft → draft → closest fail.
+21. Coupled periods are fine to use (owner). Evidence for keeping them: with no surge stiffness
+    the body surges freely as it pitches, and the surge–pitch added mass A15 lowers the effective
+    pitch inertia by A15²/(M + A11). Heave is uncoupled (A13 = A35 = 0, fore–aft symmetry).
 
 ---
 
@@ -210,7 +219,8 @@ Figures: `WEC_Constructability_XZ`, `WEC_Constructability_Strips` (precast), `St
 | I16 | Thin-shell Stage 2 has no density floor, so it can request unbuildable densities | `build_config.m:358` (floors only for precast) | C1: modules 4–5 at 310.5 kg/m³; a 15 mm shell alone gives ≥ ≈1196 / 1336 |
 | I17 | `compute_rmin_at_z` measures distances to vertices only; flat faces have none | `geometry/compute_rmin_at_z.m:36–37` | C1 thin shell: `t_max` = 0.5025 m although the neck closes at t = 0.10 m |
 | I18 | Stage-2 density upper bound is 2500 kg/m³ in every mode, although steel ballast reaches 7500 | `WEC_User_Input.m` `ballast_density_bounds`, `stage2_bounds.m` | C1 thin shell: Stage 2 capped module 1 at 2500; Stage 3 built 6977 |
-| I20 | Stage 3 optimises **uncoupled** periods, while Stage 2 and the reported results use coupled periods | `modular_precast/evaluate_design_point.m:119–126`, `thin_shell/evaluate_design_point.m:200–207` vs `properties_3d.m:254–257`, `build_realised_properties.m` | C1 precast: optimiser saw T_pitch 4.96 s, report shows 4.91 s |
+| I20 | Stage 3 optimises **uncoupled** periods, while Stage 2 and the reported results use coupled periods | `modular_precast/evaluate_design_point.m:119–126`, `thin_shell/evaluate_design_point.m:200–207` vs `properties_3d.m:254–257`, `build_realised_properties.m` | Pitch only (heave identical): precast 4.960 s optimised vs 4.907 s reported; thin shell 3.890 s optimised (the target) vs 3.813 s reported. A15²/(M+A11) = 2.1 % and 3.9 % of the pitch inertia |
+| I21 | C1 floats with ≈95 % of its volume submerged (V_sub 20.16 of 21.16 m³). Mass balance therefore cannot carry a percentage tolerance | hydrostatics of C1 | From the C1 tables: +1 % mass raises the waterline 160 mm; +5 % submerges the hull completely; −10 % lowers the waterline 256 mm |
 | I19 | More material-name traps: the UHPC path passes UHPC density as `rho_steel` and stores UHPC volume and thickness as `V_steel`, `t_steel`; thin shell stores the fill density in `steel_data.rho_steel` | `modular_precast/solve_and_extract.m:56`, `solve.m`, `thin_shell/solve.m` packaging | — |
 
 Known approximations **not** in scope (report, do not change without approval): linear
@@ -346,10 +356,12 @@ New folders created by the plan: `src/+mwecmass/+solid/` (exact geometry kernel)
 - **OD5** Resolved: adaptive fitting with metrics M1–M3 (§5 item 9).
 - **OD6** Ballast spill rule: confirm option (ii) — fill measured from the next module's bottom,
   module edges unchanged.
-- **OD7** Thin-shell minimum shell thickness: the input file says 25 mm; the owner recalls 15 mm.
-  Which value, and should one input (`t_shell_min`) set both the Stage-2 floors and the Stage-3
-  lower bound?
-- **OD8** Thin-shell Stage 3 also varies the draft (needed for flotation). Keep the draft as a
-  third variable?
+- **OD7** Resolved: t_min = t_init = 25.4 mm for thin shell; it also sets the Stage-2 floors.
+- **OD8** Resolved: the draft stays a variable in both modes, used last (§3 item 20).
+- **OD10** Mass balance is an equilibrium, not a comparison. Proposal: enforce mass = displaced
+  mass as an equality to the solver's existing constraint tolerance (1e-6) in every reported
+  state, and apply `mass_acceptable_pct` only to the Stage-2 comparison of KG, GM and periods
+  (see I21). Owner to confirm.
+- **OD11** Thin-shell GM rule: keep GM ≥ `gm_min` (today), or GM = GM_Stage2 as in UHPC?
 - **OD9** Stage-2 density upper bound for thin shell: raise it to `rho_ballast` (7500) instead of
   the shared 2500?

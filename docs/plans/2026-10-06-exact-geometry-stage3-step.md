@@ -160,8 +160,11 @@ Files: `src/+mwecmass/+driver/build_config.m`, `src/+mwecmass/+optim/stage2_boun
 - Modular precast: ρ_min,i = [ρ_UHPC·V_wall,i(t_min) + ρ_air·(V_i − V_wall,i)] / V_i with
   V_wall from the kernel; `m_min_constructability` from the same values. Wall module pinned
   solid as today.
-- Thin shell (new): the same floor with ρ_shell and the user-set minimum shell thickness
-  (`in.materials.thin_shell.t_shell_min`, OD7), no wall module. Upper bound per OD9.
+- Thin shell (new): the same floor with ρ_shell and the user-set minimum shell thickness, no wall
+  module. Upper bound per OD9. Set `in.materials.thin_shell.t_min` = `t_init` = 0.0254 m
+  (owner decision, OD7) and update `RUNTIME_GUIDE.md` defaults.
+- `in.materials.modular_precast.t_init` is derived from the steel `t_init` today; the new UHPC
+  Stage 3 starts from the Stage-2 split instead, so remove that derived input in T5.
 - Assert that every UHPC path reads `rho_air` (1.2) and the thin-shell paths read `rho_air` and
   `rho_ballast` as named after T0b.
 
@@ -169,7 +172,7 @@ Acceptance: floors reported for both modes (Python estimates on C1 — precast �
 kg/m³; thin shell at 15 mm ≈ 432/159/268/1196/1336, at 25 mm ≈ 711/264/446/1978/2184); no
 remaining caller of D1; Stage 2 runs under the Octave shim for both modes.
 
-### T5 — UHPC Stage 3, part a: split, build, check, store (Sonnet high) — needs OD2
+### T5 — UHPC Stage 3, part a: split, build, check, store (Sonnet high) — needs OD2, OD10
 
 Files: `src/+mwecmass/+realise/+modular_precast/` (`solve_and_extract.m`, new
 `split_from_stage2.m`, `realise_modules.m`, `check_against_stage2.m`, rewrite of
@@ -183,7 +186,9 @@ D2 calls in `modular_precast/solve.m`, D6 (precast fields).
    ballast from the module bottom (stays inside k*). Modules above k*: solve t_i ≥ t_min so the
    wall holds V_UHPC,i. A module whose V_UHPC,i is below its t_min wall volume is flagged
    (cannot occur once T4 floors are in place).
-4. Evaluate the realised body with T3 at the Stage-2 draft: mass, KG, Iyy, GM, coupled periods
+4. Restore equilibrium at the Stage-2 draft: adjust the ballast level in k* so that mass equals
+   the Stage-2 displaced mass (differences come only from exact versus table module volumes).
+   Evaluate the realised body with T3 at the Stage-2 draft: mass, KG, Iyy, GM, coupled periods
    (added mass at the realised CG). Compare with Stage 2 using `mass_acceptable_pct`: flotation
    balance, KG as a relative distance on the body (OD2), GM, coupled T_heave and T_pitch.
 5. Store the realised body description, exact contours, per-module volumes and masses, the check
@@ -192,7 +197,7 @@ D2 calls in `modular_precast/solve.m`, D6 (precast fields).
 Acceptance: C1 run under Octave prints the split, the realised module geometry and the check
 table; `final_props` never contains Stage-2 values for this mode.
 
-### T6 — UHPC Stage 3, part b: optimisation, spill, closest fail (Sonnet high) — needs OD6
+### T6 — UHPC Stage 3, part b: optimisation, spill, closest fail (Sonnet high) — needs OD6, OD10
 
 Files: `src/+mwecmass/+realise/+modular_precast/solve.m` (rewrite), new `stage3_report.m`.
 
@@ -201,8 +206,12 @@ Files: `src/+mwecmass/+realise/+modular_precast/solve.m` (rewrite), new `stage3_
   unchanged — heave and pitch range penalties against the configured goals, evaluated with the
   **coupled** periods (fixes I20). Bounds: t_min ≤ t_i ≤ t_max,i (largest t for which module i
   keeps a void, from the kernel); ballast level within k*.
-- If no feasible point exists, allow the fill to enter k*+1 (k* becomes solid; fill measured
-  from the module bottom, OD6) and solve again.
+- Escalation order (owner decision; equalities held to the solver's constraint tolerance, OD10):
+  1. Draft fixed at the Stage-2 value; ballast within k*.
+  2. Draft fixed; ballast may enter k*+1 (k* becomes solid; fill measured from the module
+     bottom, OD6).
+  3. Draft free (last resort).
+  4. Closest fail (below).
 - If still infeasible: keep the iterate with the smallest constraint violation, set status
   `failed`, and report each metric (value, Stage-2 value, deviation, limit, pass/fail) and the
   active reason. Plot it, store it in `final_props` and the `.mat`, export its STEP files.
@@ -211,11 +220,12 @@ Acceptance: C1 run under the Octave shim; report printed; a forced-infeasible te
 unreachable GM) produces a stored, plotted, flagged closest-fail design. **Owner checkpoint
 after T6.**
 
-### T7 — Thin-shell rebuild on the kernel (Sonnet high) — needs OD8
+### T7 — Thin-shell rebuild on the kernel (Sonnet high) — needs OD10, OD11
 
 Also in T7: evaluate coupled periods in the objective (I20), and replace the fallback to Stage 2
 with the closest-fail rule (OD4): flagged status, per-metric report, plotted, stored in
-`final_props` and the `.mat`, STEP files exported.
+`final_props` and the `.mat`, STEP files exported. Escalation order: (t, z_ballast) at the
+Stage-2 draft first; free the draft only if equilibrium cannot be reached there (OD8, OD10).
 
 Files: `src/+mwecmass/+realise/+thin_shell/` (`build_geometry_grid.m`, `inner_properties_at_z.m`,
 `solve.m`, `evaluate_design_point.m`, `strip_partition_volumes.m`); delete D2 (last callers),
