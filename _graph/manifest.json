@@ -1,0 +1,53 @@
+{
+  "generated_files": {
+    "CODE_MAP.md": {
+      "bytes": 21964,
+      "sha256": "243ecac55d266318052a818a47a4263d99601d6164b5d1eaaa1668c15de9aecc"
+    },
+    "GRAPH_REPORT.md": {
+      "bytes": 1355,
+      "sha256": "eddca001695d1609afa617aa54464cf194910b3f30804766128c263d0a6ce2aa"
+    },
+    "code_map.html": {
+      "bytes": 510942,
+      "sha256": "686c4d24fdf87d0092809a6a136d6804a28233d57ac8772ac7142e225a1ab61f"
+    },
+    "graph.html": {
+      "bytes": 510936,
+      "sha256": "8a2572ff9d1a0d5da19d827af2dedd7b2657f8e570627cb84d7a9d8a7d1dc70a"
+    },
+    "graph.json": {
+      "bytes": 682913,
+      "sha256": "9cac5599d2445f6c12bf8e2b1ccd00dcdc6c9d1602921597367be1820daba5f2"
+    }
+  },
+  "graph_counts": {
+    "artifact_files": 33,
+    "class_nodes": 4,
+    "code_files": 158,
+    "document_files": 6,
+    "edge_count": 936,
+    "edges": 936,
+    "function_nodes": 336,
+    "input_nodes": 2,
+    "inventory_count": 197,
+    "mode_nodes": 3,
+    "nodes": 540,
+    "output_nodes": 31,
+    "relation_counts": {
+      "calls": 506,
+      "contains": 340,
+      "declares": 4,
+      "produces": 31,
+      "references": 42,
+      "references_handle": 7,
+      "uses": 6
+    }
+  },
+  "graph_name": "C1_graph",
+  "inventory_count": 197,
+  "inventory_sha256": "fa9e48321c8e1efdc5018361d200a35f0d9fbf26dbf039b35875bdd43b82fb21",
+  "manifest_hash_scope": "manifest.json is intentionally excluded from generated_files to avoid a self-hash cycle",
+  "target_archive": "MASS_SUITE_C1_COMPLETE_R2026a.zip",
+  "target_archive_sha256": "5ee90b4c86c1c19a9c9348e5c65af4f89b923de4a21aa56368797eac903bd079"
+}

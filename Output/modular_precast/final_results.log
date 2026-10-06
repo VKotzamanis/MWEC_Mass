@@ -1,0 +1,30 @@
+
+=== FINAL 3D DESIGN RESULTS ===
+
+  Optimal Draft: 2.357 m
+  Vertical Shift: 0.893 m
+
+  Density Profile:
+    Node 1 @ Z =  -2.93 m: rho =    2500 kg/m^3
+    Node 2 @ Z =  -2.29 m: rho =    1639 kg/m^3
+    Node 3 @ Z =  -1.66 m: rho =     211 kg/m^3
+    Node 4 @ Z =  -1.02 m: rho =     481 kg/m^3
+    Node 5 @ Z =   0.20 m: rho =    2500 kg/m^3
+
+  Mass Properties:
+    Total Mass:         20660.68 kg
+    Displaced Mass:     20660.68 kg
+    Mass Discrepancy:  -7.28e-12 kg
+    CG: [0.000, 0.000, -1.182] m
+
+  Hydrostatic Properties:
+    Submerged Volume: 20.1568 m^3
+    Waterplane Area:  1.9918 m^2
+    CB: [0.000, 0.000, -0.956] m
+    GM: 0.231 m
+
+  Natural Periods:
+    Heave: 7.77 s (Target: 7.77 s)
+    Pitch: 4.91 s (Target: 3.89 s)
+    Surge: Inf s
+

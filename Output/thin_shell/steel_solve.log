@@ -1,0 +1,18 @@
+
+    mwecmass.realise.thin_shell.solve (fmincon SQP, constrained):
+      Hull z=[-3.2500, 1.1000] m  t∈[0.02500, 0.4774] m  vs∈[-1.000, 3.150] m
+      Targets (from optimiser): GM_min=0.200 m  T_h=7.770 s  T_p=3.890 s  M=20660.9 kg
+      Warm-start vs (from x_opt_3d): 0.8931 m  (draft=2.3569 m)
+      Warm-start z_fill seed: -2.7144 m (analytic, M_buoy=20661 kg)
+      Solver: fmincon SQP  (DVs=3 ; ceq=buoyancy ; c=GM≥gm_min)
+      ──────────────── Steel-Solve Result (fmincon SQP) ────────────────
+      t_steel*       : 0.02726 m  (1.07 in)   *** at t_min bound ***
+      z_fill*        : -2.7306 m  (hull range [-3.250, 1.100])
+      vs*            : 0.8933 m  (optimiser was 0.8931 m)
+      M_total        : 20660.4 kg   target  : 20660.9 kg   (-0.002%)
+      Mass-balance   : 1.819e-11 kg  (0.0000% of M_total)  ← ceq residual
+      GM realised    : 0.4395 m   gm_min=0.200 m   gm_target=0.500 m
+      T_heave        : 7.770 s   target 7.777 s   (-0.09%)
+      T_pitch        : 3.890 s   target 3.471 s   (+12.07%)
+      Phi*           : 3.38113e-12  feasible=1  exitflag=2  iters=8  elapsed=458.92 s
+      ────────────────────────────────────────────────────────────────

@@ -1,0 +1,32 @@
+cff-version: 1.2.0
+message: "If you use this software in your work, please cite it using the metadata from this file."
+title: "Gradient-Based Optimization Framework for Mass Distribution of Floating Wave Energy Converter Hulls"
+type: software
+authors:
+  - family-names: "Kotzamanis"
+    given-names: "Vasileios"
+    orcid: "https://orcid.org/0000-0001-8774-195X"
+    affiliation: "University of Houston"
+  - family-names: "Kalliontzis"
+    given-names: "Dimitrios"
+    orcid: "https://orcid.org/0009-0009-4464-766X"
+    affiliation: "University of Houston"
+repository-code: "https://github.com/[Organization]/[Repository-Name]"
+identifiers:
+  - type: doi
+    value: "10.15473/[MHKDR-DOI-ID]"
+    description: "MHKDR Data Repository Dataset DOI"
+abstract: "A MATLAB suite that optimizes the internal mass distribution of floating wave energy converter hulls to tune heave and pitch response toward resonance with a target sea state while maintaining hydrostatic stability. It produces design mass distributions and inertial properties for theoretical, modular-precast, and thin-shell hull configurations with solid ballast."
+keywords:
+  - "MHK"
+  - "Marine"
+  - "MWEC"
+  - "optimization"
+  - "algorithm"
+  - "matlab"
+  - "Kotzamanis"
+  - "Kalliontzis"
+  - "WEC"
+  - "wave energy"
+  - "UHPC"
+license: "BSD-3-Clause"

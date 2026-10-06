@@ -1,0 +1,16 @@
+
+=== STAGE 2 SUMMARY ===
+
+  Convergence: 1
+
+  Constraints:
+    Monotonic density: 1
+    Mass balance: 1 (error: 1.61e-09 kg)
+    GM constraint: 1 (margin: 0.104 m)
+
+  Solver:
+    Exit flag: 2
+    Optimal: 0
+    Constraint violation: 7.79e-14
+    First-order optimality: 1.25e-06
+

@@ -1,0 +1,65 @@
+MultiSurf 1.44 
+Units: m kg
+Symmetry:  x y
+Extents:  -2.000 -2.513 -4.000 2.000 2.513 1.100
+View:  -30.00 60.00 1
+Places: 3
+Layers: FFFFFFFF FFFFFFFF FFFFFFFF FFFFFFFF FFFFFFFF FFFFFFFF FFFFFFFF FFFFFFFF
+DivMult: 1
+Attribute: SnapInc0 DOUBLE  SYSTEM(0.010000000000000000208)
+Attribute: SnapInc1 DOUBLE  SYSTEM(0.010000000000000000208)
+Attribute: SnapInc2 DOUBLE  SYSTEM(0.010000000000000000208)
+Attribute: SnapInc3 DOUBLE  SYSTEM(0.0010000000000000000208)
+Attribute: SnapInc4 DOUBLE  SYSTEM(0.0010000000000000000208)
+Attribute: SnapInc5 DOUBLE  SYSTEM(0.0010000000000000000208)
+Attribute: ahi_HomeTwist DOUBLE  SYSTEM(0)
+Attribute: ahi_IsViewShaded INTEGER  SYSTEM(1)
+Attribute: CurrentLayer INTEGER  SYSTEM(0)
+Attribute: __Nudge DOUBLE  SYSTEM(0.10000000000000000555)
+Attribute: RGKListCount INTEGER  SYSTEM
+Attribute: RGKListSize0 INTEGER  SYSTEM
+Attribute: RGKNoSym INTEGER  SYSTEM
+BeginModel;
+FramePoint X0 14 -1 / 0 * * 0.0 1.0 0.0 ;
+FramePoint pt6 14 -1 / 0 X0 X0 0.0 0.0 -4.0 ;
+FramePoint pt4 14 -1 / 0 X0 X0 -0.1 0.0 -1.0 ;
+FramePoint pt3 14 -1 / 0 X0 X0 -0.1 0.0 0.0 ;
+FramePoint pt5 14 -1 / 0 X0 X0 -2.0 0.0 -1.0 ;
+FramePoint X1 14 -1 / 0 X0 X0 0.0 0.0 1.0 ;
+FramePoint pt1 14 -1 / 0 X1 X1 0.0 0.0 0.1 ;
+FramePoint pt2 14 -1 / 0 X1 X1 -0.1 0.0 0.0 ;
+MirrPoint pt10 11 -1 / pt2 *X=0 ;
+MirrPoint pt9 11 -1 / pt3 *X=0 ;
+MirrPoint pt7 11 -1 / pt5 *X=0 ;
+MirrPoint pt8 11 -1 / pt4 *X=0 ;
+FramePoint pt1b 14 -1 / 0 pt1 pt1 -0.1 0.0 0.0 ;
+FramePoint pt11 14 -1 / 0 bead1 bead1 -0.5 0.0 0.0 ;
+BCurve curve1 11 -1 8x4
+    A:RGKListCount(1)
+    A:RGKListSize0(9) / * 2
+    { pt2 pt3 pt4 pt5 pt6 pt7 pt8 pt9 pt10 } ;
+AbsBead bead1 10 -1 / curve1 0.5 ;
+BCurve curve2 11 -1 8x4
+    A:RGKListCount(1)
+    A:RGKListSize0(8) / * 2
+    { pt1 pt1b pt2 pt3 pt4 pt5 pt11 bead1 } ;
+Arc curve3 11 -1 8x4 / * 2 pt1 X1 pt2 ;
+Arc curve4 11 -1 8x4 / * 2 pt10 X1 pt1 ;
+PolyCurve2 curve5 11 -1 8x4
+    A:RGKListCount(1)
+    A:RGKListSize0(3) / *
+    { curve3 curve1 curve4 } ;
+AbsBead BeadBottom 10 -1 / curve5 0.5 ;
+AbsBead BeadTop 10 -1 / curve5 0.0 ;
+BSubCurve curve6 11 -1 8x4
+    A:RGKListCount(1)
+    A:RGKListSize0(2) / * 2
+    { BeadTop BeadBottom } ;
+Line AXIS_OF_REV 6 -1 8x4 / * BeadBottom BeadTop ;
+RevSurf surface1 2 11 36x4 12x4 0 / * curve6 AXIS_OF_REV 270.0 360.0 ;
+EdgeSnake Edge_For_Dev 13 -1 8x4 / * 3 surface1 ;
+FramePoint ZERO 14 -1 / 0 * * 0.0 0.0 0.0 ;
+ProjCurve curve7 11 -1 8x4 / * Edge_For_Dev *Y=0 ;
+RuledSurf surface2 2 11 36x4 12x4 0 / * Edge_For_Dev curve7 ;
+EndModel;
+
