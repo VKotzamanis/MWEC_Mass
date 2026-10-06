@@ -46,6 +46,11 @@ the v1.0 reference results `Output/C1_modular_precast_results.mat` and
     `z_fill` becomes `z_ballast` everywhere (code, `.mat` fields, docs). Air is `rho_air` in
     both modes; the thin-shell solid fill density is `rho_ballast`. No variable may carry the name
     of one material and the value of another (see the rename table in the plan, task T0b).
+11. **Count every volume once.** Each height z in a module belongs to exactly one description:
+    below the ballast level the full outer section is solid (no separate wall term); above it,
+    wall + air. A 2D shell surface never overlaps a solid body. Tests assert volume closure to
+    machine precision: per module V_UHPC + V_air = V_module (thin shell: V_ballast + V_shell +
+    V_air = V_hull), and the module volumes sum to the hull volume.
 
 ---
 

@@ -147,8 +147,10 @@ tests.
 - Hydrostatics at a given draft from exact sections: V_sub, CB, A_w, I_wp (with the
   parallel-axis term about the centre of flotation).
 
-Acceptance: identity checks (outer volume equals `compute_hull`/divergence result; symmetric CG
-x = y = 0 to machine precision for C1); convergence of every quantity with quadrature order,
+Acceptance: volume closure to machine precision (AGENTS.md §1 rule 11) for every module and
+for the whole hull, with the ballast level placed inside a module, exactly at a module edge, and
+spilled into the next module; identity checks (outer volume equals `compute_hull`/divergence
+result; symmetric CG x = y = 0 to machine precision for C1); convergence of every quantity with quadrature order,
 reported; agreement with an independent `gmsh` mesh integration of the same body, reported.
 **Owner checkpoint after T3.**
 
