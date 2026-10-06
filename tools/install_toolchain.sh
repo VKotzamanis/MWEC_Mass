@@ -6,8 +6,8 @@ apt-get update
 # GNU Octave 8.4.0 (no octave-cli package on noble; 'octave' is the CLI+GUI meta pkg),
 # gnuplot-nox for headless print(), octave-optim 1.6.2 (provides fmincon/nonlin_min; pulls octave-statistics)
 apt-get install -y octave gnuplot-nox octave-optim
-# STEP verification: pip wheel bundles OpenCASCADE; no extra system libs were needed.
-python3 -m pip install gmsh
+# gmsh (STEP verification): the wheel bundles OpenCASCADE. h5py: reads MATLAB v7.3 files for tools/convert_v73_to_v5.py.
+python3 -m pip install gmsh h5py
 # sanity checks
 octave --no-gui --quiet --eval "disp(version())"
 python3 -c "import gmsh; print('gmsh', gmsh.__version__)"
