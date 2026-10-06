@@ -39,6 +39,10 @@ Status: written 2026-10-06 against commit `8da92d5` (v1.0, `Example_C1`). Work h
 8. **Testing runs in the cloud container** with GNU Octave (and Python `gmsh` only to verify
    written STEP files). Commit and push after every task; the container is ephemeral.
 9. Do not push the `STEP_Producer` zip the owner uploaded. It stays outside the repository.
+10. **Names say what the material is.** The solid region at the bottom is the *ballast*:
+    `z_fill` becomes `z_ballast` everywhere (code, `.mat` fields, docs). Air is `rho_air` in
+    both modes; the thin-shell solid fill density is `rho_ballast`. No variable may carry the name
+    of one material and the value of another (see the rename table in the plan, task T0b).
 
 ---
 
@@ -95,15 +99,31 @@ Status: written 2026-10-06 against commit `8da92d5` (v1.0, `Example_C1`). Work h
 
 ### 2.5 Stage 3, thin shell (steel) — current behaviour and how it differs
 
-- `thin_shell/solve.m`: fmincon over `[vs, t, z_fill]` — **one** global shell thickness and one
-  fill level. Objective: heave and pitch period penalties against the configured goals.
-  Equality: flotation. Inequality: GM ≥ `gm_min`. Reads only the Stage-2 vertical shift.
+- Stage 2 for thin shell: 5 modules with half-height end modules (C1 edges, body frame:
+  −3.25, −2.706, −1.619, −0.531, 0.556, 1.10 m); **no wall strip; no density floor**. Densities
+  are bounded only by `in.bounds.ballast_density_bounds` = [20, 2500] kg/m³ (the floors in
+  `build_config.m` run only when `enable_constructability`, i.e. modular precast).
+- `in.materials.thin_shell.t_min` = 25 mm and `t_init` = 20 mm. Both are used **only** in Stage 3
+  (lower bound and start of the thickness variable). No 15 mm value exists in the code.
+- `thin_shell/solve.m`: fmincon over `[vs, t, z_fill]` — the draft, **one** uniform shell
+  thickness for the whole hull, and one fill level free to rise through any module.
+  Objective: heave and pitch period penalties against the configured goals. Equality:
+  flotation. Inequality: GM ≥ `gm_min`. Reads only the Stage-2 vertical shift.
 - Materials: shell `rho_shell` (7500), fill `rho_fill` (defaults to `rho_shell`), air `rho_air`
   (1.2). Below `z_fill` the **full** outer section is fill; above it, a steel annulus encloses air.
-- Same in-plane `t/cos α` inner offset as UHPC; `t_max = 0.5 × compute_rmin_at_z` (a radius).
+- Same in-plane `t/cos α` inner offset as UHPC, plus a forced `cos α = 0.1` (offset 10 t) just
+  below the top of the hull. `t_max = 0.5 × compute_rmin_at_z` came out as **0.5025 m** in the
+  C1 run: the function measures centroid-to-*vertex* distances, and the neck's flat sides carry
+  no vertices, so it returned ≈1.005 m instead of the neck half-width 0.10 m.
 - If the solve is infeasible, `final_props` keeps the Stage-2 properties.
-- Differences from UHPC: no modules with own thickness, no wall strip, no Stage-2 density floors,
-  denser fill, plate material modelled as a surface for structural use.
+- C1 thin-shell example: Stage-2 densities [2500, 1297, 310.5, 310.5, 310.5]; Stage 3 built
+  t = 27.3 mm, `z_fill` = −2.731 m (body, inside module 1), realised densities
+  [6977, 286, 400, 2153, 2275]. A 15 mm steel shell alone already gives modules 4–5 at least
+  ≈1196 / 1336 kg/m³ (≈1978 / 2184 at 25 mm; Python estimate on the exact C1 geometry), so the
+  Stage-2 values 310.5 cannot be built.
+- Differences from UHPC: one uniform thickness instead of one per module, no wall strip, ballast
+  free to pass module edges, steel ballast up to 7500 kg/m³, plate modelled as a surface for
+  structural use.
 
 ### 2.6 Outputs
 
@@ -146,6 +166,15 @@ Figures: `WEC_Constructability_XZ`, `WEC_Constructability_Strips` (precast), `St
 11. Rebuild the thin-shell mode on the exact kernel without copying the UHPC logic.
 12. Stage 3 writes STEP files: UHPC — one per module plus one fused solid of all modules; steel —
     the ballast solid, the shell as a 2D surface, and (if possible) one file with both.
+13. Rename `z_fill` → `z_ballast` and remove the density naming trap, in code and docs.
+14. Thin shell is a separate pipeline:
+    1. Stage-2 densities start from (are floored by) a thin-shell minimum shell thickness that the
+       user sets in the input file (new or renamed variable; the owner recalls 15 mm).
+    2. Stage 2 runs again for this mode, without a solid wall.
+    3. Stage 3 finds **one uniform thickness** for all modules — built with care in the slender
+       neck — and `z_ballast`.
+    4. `z_ballast` may rise past module 1 into other modules without penalty; it is not a last
+       resort as in UHPC.
 
 ---
 
@@ -168,6 +197,10 @@ Figures: `WEC_Constructability_XZ`, `WEC_Constructability_Strips` (precast), `St
 | I13 | Silhouette for figures = widest x mirrored, labelled "midplane"; midplane points sampled with a 5 cm band | `build_silhouette_profile.m`, `extract_midplane_profile.m` | — |
 | I14 | Dead `config.shell` branches (always empty) | `compute_strip_equivalent_density.m`, figure and `properties_2d` branches | `build_config.m:283` is the only assignment |
 | I15 | No STEP output in the code | — | Owner requirement |
+| I16 | Thin-shell Stage 2 has no density floor, so it can request unbuildable densities | `build_config.m:358` (floors only for precast) | C1: modules 4–5 at 310.5 kg/m³; a 15 mm shell alone gives ≥ ≈1196 / 1336 |
+| I17 | `compute_rmin_at_z` measures distances to vertices only; flat faces have none | `geometry/compute_rmin_at_z.m:36–37` | C1 thin shell: `t_max` = 0.5025 m although the neck closes at t = 0.10 m |
+| I18 | Stage-2 density upper bound is 2500 kg/m³ in every mode, although steel ballast reaches 7500 | `WEC_User_Input.m` `ballast_density_bounds`, `stage2_bounds.m` | C1 thin shell: Stage 2 capped module 1 at 2500; Stage 3 built 6977 |
+| I19 | More material-name traps: the UHPC path passes UHPC density as `rho_steel` and stores UHPC volume and thickness as `V_steel`, `t_steel`; thin shell stores the fill density in `steel_data.rho_steel` | `modular_precast/solve_and_extract.m:56`, `solve.m`, `thin_shell/solve.m` packaging | — |
 
 Known approximations **not** in scope (report, do not change without approval): linear
 interpolation of the hydrostatic tables in Stages 1–2; angular sorting of contour points about
@@ -186,8 +219,11 @@ their mean (assumes star-shaped sections); CG_x = CG_y = 0 (declared symmetric-b
    optimise if needed (variables: draft, fill level in the ballast module, t_i of the hollow
    modules; equalities: flotation and GM = GM_Stage2; objective: closeness to the Stage-2
    solution) → spill into the next module only if needed → closest-fail report if infeasible.
-4. **Stage 3, thin shell** keeps its own formulation (`[vs, t, z_fill]`, GM ≥ `gm_min`), with the
-   exact-normal inner surface and an exact-geometry `t_max`.
+4. **Thin shell** keeps its own pipeline: Stage-2 floors from the user-set minimum shell
+   thickness on the exact geometry (no wall strip); Stage 3 solves one uniform thickness and
+   `z_ballast` (free to pass module edges) with the exact-normal inner surface, built correctly
+   in the slender neck, and an exact-geometry `t_max` (the thickness at which the void first
+   closes in the middle 80 % of the hull height).
 5. `final_props` and the `.mat` always describe the realised (or closest-fail) 3D design, with a
    status flag and a per-metric report.
 6. **Figures** draw true sections of the realised solid and honour the ballast level.
@@ -279,3 +315,10 @@ New folders created by the plan: `src/+mwecmass/+solid/` (exact geometry kernel)
   the owner sets any numeric fit tolerance.
 - **OD6** Ballast spill rule: confirm option (ii) — fill measured from the next module's bottom,
   module edges unchanged.
+- **OD7** Thin-shell minimum shell thickness: the input file says 25 mm; the owner recalls 15 mm.
+  Which value, and should one input (`t_shell_min`) set both the Stage-2 floors and the Stage-3
+  lower bound?
+- **OD8** Thin-shell Stage 3 also varies the draft (needed for flotation). Keep the draft as a
+  third variable?
+- **OD9** Stage-2 density upper bound for thin shell: raise it to `rho_ballast` (7500) instead of
+  the shared 2500?

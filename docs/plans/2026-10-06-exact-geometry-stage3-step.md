@@ -82,6 +82,27 @@ tests/run_tests.m` runs; `MS2Parser` parses C1 under Octave; a baseline file rec
 numbers quoted in AGENTS.md §2 for later comparison. Optionally add a SessionStart hook that runs
 the install script in future cloud sessions.
 
+### T0b — Rename the ballast and density variables (Sonnet medium)
+
+Runs right after T0, so every later task uses the new names. Pure renaming: no change to any
+formula or value. Covers `src/`, `WEC_User_Input.m`, `WEC_Output_Options.m`, `validation/`,
+`Input/WAMIT/` if affected, `docs/`, `README.md`, `AGENTS.md`.
+
+| Old name | New name | Meaning |
+|---|---|---|
+| `z_fill` (inputs, config, opts, local variables, `results.constructability.z_fill`, `results.steel_data.z_fill`, docs) | `z_ballast` | top of the solid ballast region |
+| `in.materials.modular_precast.rho_fill`, `config.constructability_rho_fill`, `constructability.rho_fill` | `rho_air`, `config.constructability_rho_air`, `constructability.rho_air` | air in the precast voids |
+| `in.materials.thin_shell.rho_void` | `rho_air` | air inside the steel shell (`config.rho_air` already) |
+| `in.materials.thin_shell.rho_fill`, `config.rho_fill`, `steel_data.rho_fill` | `rho_ballast` | solid steel ballast density |
+| thin-shell `V_fill`, `M_fill`, `z_cg_fill`, `strip_V_fill` and similar | `V_ballast`, `M_ballast`, `z_cg_ballast`, `strip_V_ballast` | ballast region quantities |
+| precast `rho_steel` (holds the UHPC density), `V_steel`, `M_steel`, `t_steel` in the UHPC path | `rho_uhpc`, `V_uhpc`, `M_uhpc`, `t_uhpc` | UHPC quantities |
+| `steel_data.rho_steel` (holds the fill density) | removed; use `rho_ballast` | — |
+
+Acceptance: `grep` finds none of the old names in the live code or docs (old names may appear
+only in a schema note that maps old `.mat` fields to new ones); all `.m` files still parse in
+Octave; the T0 smoke tests pass; `RESULT_SCHEMA.md`, `export_schema.m` and
+`check_export_schema.m` list the new field names.
+
 ### T1 — Kernel A: outer surface rows and normals (Sonnet high)
 
 Files: `src/+mwecmass/+solid/outer_rows.m`, `surface_normals.m`, tests.
@@ -128,17 +149,22 @@ x = y = 0 to machine precision for C1); convergence of every quantity with quadr
 reported; agreement with an independent `gmsh` mesh integration of the same body, reported.
 **Owner checkpoint after T3.**
 
-### T4 — Stage-2 floors from the kernel; ρ_air naming (Sonnet high)
+### T4 — Stage-2 floors from the kernel, both modes (Sonnet high) — needs OD7, OD9
 
-Files: `src/+mwecmass/+driver/build_config.m`, `WEC_User_Input.m`, delete D1, D3.
+Files: `src/+mwecmass/+driver/build_config.m`, `src/+mwecmass/+optim/stage2_bounds.m`,
+`WEC_User_Input.m`; delete D1, D3.
 
-- ρ_min,i = [ρ_UHPC·V_wall,i(t_min) + ρ_air·(V_i − V_wall,i)] / V_i with V_wall from the kernel;
-  `m_min_constructability` from the same values.
-- Rename the modular-precast air density input to `rho_air` (keep the value 1.2); assert that
-  every UHPC path reads that field; keep thin-shell `rho_fill` (solid fill) unchanged.
+- Modular precast: ρ_min,i = [ρ_UHPC·V_wall,i(t_min) + ρ_air·(V_i − V_wall,i)] / V_i with
+  V_wall from the kernel; `m_min_constructability` from the same values. Wall module pinned
+  solid as today.
+- Thin shell (new): the same floor with ρ_shell and the user-set minimum shell thickness
+  (`in.materials.thin_shell.t_shell_min`, OD7), no wall module. Upper bound per OD9.
+- Assert that every UHPC path reads `rho_air` (1.2) and the thin-shell paths read `rho_air` and
+  `rho_ballast` as named after T0b.
 
-Acceptance: C1 floors reported (expected near 608/284/211/610 kg/m³ from the Python estimate);
-no remaining caller of D1; Stage 2 still runs under the Octave shim.
+Acceptance: floors reported for both modes (Python estimates on C1 — precast ≈ 608/284/211/610
+kg/m³; thin shell at 15 mm ≈ 432/159/268/1196/1336, at 25 mm ≈ 711/264/446/1978/2184); no
+remaining caller of D1; Stage 2 runs under the Octave shim for both modes.
 
 ### T5 — UHPC Stage 3, part a: split, build, check, store (Sonnet high) — needs OD2
 
@@ -180,20 +206,27 @@ Acceptance: C1 run under the Octave shim; report printed; a forced-infeasible te
 unreachable GM) produces a stored, plotted, flagged closest-fail design. **Owner checkpoint
 after T6.**
 
-### T7 — Thin-shell rebuild on the kernel (Sonnet high) — needs OD4
+### T7 — Thin-shell rebuild on the kernel (Sonnet high) — needs OD4, OD8
 
 Files: `src/+mwecmass/+realise/+thin_shell/` (`build_geometry_grid.m`, `inner_properties_at_z.m`,
 `solve.m`, `evaluate_design_point.m`, `strip_partition_volumes.m`); delete D2 (last callers),
 D4, D6, D7.
 
-- Keep the thin-shell formulation: variables `[vs, t, z_fill]`, period-penalty objective,
-  flotation equality, GM ≥ `gm_min`, fill model (full section below `z_fill`).
-- Replace the inner geometry with the kernel's normal offset at one global t, and `t_max` with
-  the largest t for which the hull keeps a void over the middle 80 % of its height (same intent
-  as today, exact geometry).
+- Keep the thin-shell formulation: one uniform thickness t for the whole hull and `z_ballast`
+  free to pass module edges without penalty (plus the draft, OD8); period-penalty objective;
+  flotation equality; GM ≥ `gm_min`; ballast model (full section below `z_ballast`).
+- Replace the inner geometry with the kernel's normal offset at the single t. Build it with care
+  in the slender neck (C1 half-width 0.10 m): the void there is 0.20 − 2t wide and closes at
+  t = 0.10 m; the rounded top (radius 0.10 m) needs no fold trimming for t < 0.10 m. Remove the
+  forced `cos α = 0.1` near the top.
+- `t_max` = the thickness at which the void first closes at any height in the middle 80 % of the
+  hull (today's probe range, which excludes the keel point and the top cap), computed on the
+  exact geometry: 0.10 m for C1, set by the neck. It replaces 0.5 × `compute_rmin_at_z`
+  (0.5025 m in the C1 run).
 
-Acceptance: C1 thin-shell run under the Octave shim; no reference to D2/D4/D6/D7 remains; the
-modular-precast path does not call thin-shell functions.
+Acceptance: C1 thin-shell run under the Octave shim; realised module densities reported next to
+the T4 floors; no reference to D2/D4/D6/D7 remains; the modular-precast path does not call
+thin-shell functions.
 
 ### T8 — Figures from the realised solid (Sonnet high)
 
