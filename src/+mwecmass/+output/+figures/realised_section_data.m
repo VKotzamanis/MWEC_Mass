@@ -7,19 +7,22 @@ function data = realised_section_data(realised, z_plan, n_z)
 %   mode). z_plan [m, body]: extra heights for plan sections (default none). n_z: heights per module
 %   in the elevation (default 41, at least 2). Every section is the mwecmass.solid.body_section of
 %   the realised body (the solid that is also written to STEP); nothing is offset, scaled or clipped
-%   here. Sections at a module edge are taken 8 ulp of the largest |z| of the module edges: the faces
-%   on the two sides of a module edge end at rounding-level offsets from the edge plane, so the
-%   section exactly at the plane is not reliable.
+%   here. Sections at a module edge are taken 8 ulp of the largest |z| of the module edges inside the
+%   module: the faces on the two sides of a module edge end at rounding-level offsets from the edge
+%   plane, so the section exactly at the plane is not reliable.
 %
-%   Elevation (y = 0 plane). Each module is sampled at n_z heights between its two edges and at the
-%   ballast level. Where two consecutive sampled heights differ in type (solid or hollow, and the
-%   number of intervals the void has along y = 0), the height of the change is bisected to adjacent
-%   floating-point numbers, and every later change up to the next sampled height is found the same
-%   way; the cells next to a change get more heights. A feature that starts and ends inside one cell
-%   between two sampled heights of the same type is not resolved; n_z sets that resolution. The
-%   ballast top, the closing of the void at its poles and the changes of the void's interval count
-%   that are found are exact, and no polygon leaves a gap. The x of every crossing of y = 0 is found
-%   on the exact curves (section_y0_crossings).
+%   Elevation (y = 0 plane). Each module is sampled at n_z heights between its two edges, at the
+%   ballast level and at every height inside the module where the body has a face boundary
+%   (body.planes and the z of every body.brep vertex, i.e. the z ends of every face); a face height is
+%   sampled at itself and at the same margin below and above it, and a face height where the kernel
+%   gives no section is replaced by those two. Where two consecutive sampled heights differ in type
+%   (solid or hollow, and the number of intervals the void has along y = 0), the height of the change
+%   is bisected to adjacent floating-point numbers, and every later change up to the next sampled
+%   height is found the same way; the cells next to a change get more heights. A change between two
+%   sampled heights of the same type is not resolved. The ballast top, the closing of the void at its
+%   poles and the changes of the void's interval count that are found are exact, and no polygon
+%   leaves a gap. The x of every crossing of y = 0 is found on the exact curves
+%   (section_y0_crossings).
 %   data.polygons(k): module, role ('solid_module' | 'ballast' | 'shell' | 'void'), region
 %   (precast 'uhpc' | 'air'; thin shell 'ballast' | 'shell' | 'air'), z_lo, z_hi, xz [n x 2] = [x z]
 %   counter-clockwise, body frame. A role 'shell' is the shell around the air: the material around a
@@ -52,8 +55,9 @@ function data = realised_section_data(realised, z_plan, n_z)
 %
 %   Frame: body frame [m] throughout; world z = body z + data.vs. Also data.edges, data.z_ballast
 %   (body), data.waterline_z (body, = -vs), data.waterline_in_hull, data.solid_modules, data.CG,
-%   data.CB (world, from props), data.status, data.reason, data.failed, data.status_lines (cellstr: 'Stage 3 accepted', or
-%   'Stage 3 FAILED' followed by the reason split at '; ', one line per failed metric).
+%   data.CB (world, from props), data.status, data.reason, data.failed, data.status_lines (cellstr:
+%   'Stage 3 accepted', or 'Stage 3 FAILED' followed by the reason split at '; ', one line per failed
+%   metric).
 
 if nargin < 2
     z_plan = [];
@@ -122,25 +126,41 @@ end
 %% Elevation levels
 
 function [recs, omitted] = module_levels(body, e, m, n_z, z_ballast, margin)
-% Ascending level records of module m: uniform heights, the ballast level, the exact heights at which
-% the section changes between solid and hollow or in its number of void intervals, and more heights in
-% the cells next to those.
+% Ascending level records of module m: uniform heights, the ballast level, the face-boundary heights
+% and the heights next to them, the exact heights at which the section changes between solid and
+% hollow or in its number of void intervals, and more heights in the cells next to those.
 z_lo = e(m) + margin;
 z_hi = e(m + 1) - margin;
 dz = (z_hi - z_lo) / (n_z - 1);
 zs = linspace(z_lo, z_hi, n_z)';
 if z_ballast > z_lo && z_ballast < z_hi
-    zs = sort([zs; z_ballast]);
+    zs = [zs; z_ballast];
 end
+z_face = unique([body.planes(:); body.brep.vertices(:, 3)]);
+z_face = z_face(z_face > z_lo & z_face < z_hi);
 omitted = struct('z', {}, 'module', {}, 'reason', {});
 recs = [];
-for z = zs'
+z_done = zeros(0, 1);
+for z = z_face'
+    rec = level_record(body, z, m);
+    if ~isempty(rec)
+        recs = [recs, rec]; %#ok<AGROW>
+        z_done(end + 1, 1) = z; %#ok<AGROW>
+    end
+    zs = [zs; z - margin; z + margin]; %#ok<AGROW>
+end
+zs = unique(zs(zs >= z_lo & zs <= z_hi));
+for z = setdiff(zs, z_done)'
     [rec, reason] = level_record(body, z, m);
     if isempty(rec)
         omitted(end + 1) = struct('z', z, 'module', m, 'reason', reason); %#ok<AGROW>
     else
         recs = [recs, rec]; %#ok<AGROW>
     end
+end
+if ~isempty(recs)
+    [~, order] = sort([recs.z]);
+    recs = recs(order);
 end
 if isempty(recs)
     error('mwecmass:figures:NoSection', 'realised_section_data: module %d has no usable section', m);
@@ -480,7 +500,8 @@ while any(~used)
         if isempty(nxt)
             if ~isequal(T(cur, :), S(first, :))
                 error('mwecmass:figures:OutlineOpen', ...
-                    'realised_section_data: the void outline does not close at (x, z) = (%.17g, %.17g)', T(cur, 1), T(cur, 2));
+                    'realised_section_data: the void outline does not close at (x, z) = (%.17g, %.17g)', ...
+                    T(cur, 1), T(cur, 2));
             end
             nxt_start = P(first, 1:2);
         else

@@ -4,17 +4,20 @@ function test_realised_section_gap()
 %   mock_section/+mwecmass/+solid/body_section.m is a one-module body on [-1, 1] whose section along
 %   y = 0 changes type at given heights (0 solid, 1 one void interval |x| <= 0.5, 2 two intervals
 %   0.4 <= |x| <= 0.8 of one U-shaped void loop). Independent oracle: the closed forms of that mock.
-%   Cases: one interval to two; two changes (solid -> one -> two) inside a single sampling cell of
-%   n_z = 11 heights (cell width 0.2) at three height pairs; two intervals to one; one to two and back
-%   (a material island). Checked: the polygons tile the strip between the module-edge margins, the void
-%   area is the closed form, consecutive groups meet at adjacent floating-point heights, there is one
-%   void region whose outer loop less its holes has the void polygons' area, the island is one hole
-%   [-0.4, 0.4] x [z1, z2] to adjacent floats, and the horizontal boundary at every change between one
-%   and two intervals is [-0.8, -0.5], [-0.4, 0.4] and [0.5, 0.8]. A one-ulp bound on a height is the
-%   step between adjacent floats that bisection reaches; x bounds are 8 eps, the rounding of the y = 0
-%   crossing on a straight piece; area bounds are 64 eps relative, the rounding of polyarea over a few
-%   hundred vertices. Printed only: a feature inside one sampling cell
-%   (types [1 2 1 2] at 0.02, 0.05, 0.08), which n_z does not resolve (F12 docstring).
+%   Cases with no face boundary inside the module (body.planes and brep.vertices empty), so every change
+%   is found by bisection between the n_z = 11 uniform heights (cell width 0.2): one interval to two;
+%   two changes (solid -> one -> two) inside a single sampling cell at three height pairs; two
+%   intervals to one; one to two and back (a material island). Cases where the changes are face
+%   boundaries of the body, as on a real body whose faces are split where the section changes: types
+%   [1 2 1 2] from 0.02, 0.05, 0.08, three changes inside one sampling cell, given once as body.planes
+%   and once as the z of brep vertices. Checked: the polygons tile the strip between the module-edge
+%   margins, the void area is the closed form, consecutive groups meet at adjacent floating-point
+%   heights, there is one void region whose outer loop less its holes has the void polygons' area,
+%   the island is one hole [-0.4, 0.4] x [z1, z2] to adjacent floats, and the horizontal boundary at
+%   every change between one and two intervals is [-0.8, -0.5], [-0.4, 0.4] and [0.5, 0.8]. A one-ulp
+%   bound on a height is the step between adjacent floats that bisection reaches; x bounds are 8 eps,
+%   the rounding of the y = 0 crossing on a straight piece; area bounds are 64 eps relative, the
+%   rounding of polyarea over a few hundred vertices.
 
 root = fileparts(fileparts(fileparts(mfilename('fullpath'))));
 if exist('OCTAVE_VERSION', 'builtin')
@@ -29,30 +32,31 @@ addpath(mock_dir);
 cleanup = onCleanup(@() remove_mock(mock_dir));
 
 n_z = 11;
+none = zeros(1, 0);
 fprintf('one interval to two at 0.05\n');
-run_case([-Inf 0.05], [1 2], n_z);
+run_case([-Inf 0.05], [1 2], n_z, none, none);
 for zz = [0.05 0.07; 0.05 0.15; 0.25 0.30]'
     fprintf('two changes, solid -> 1 at %g -> 2 at %g\n', zz(1), zz(2));
-    run_case([-Inf zz(1) zz(2)], [0 1 2], n_z);
+    run_case([-Inf zz(1) zz(2)], [0 1 2], n_z, none, none);
 end
 fprintf('two intervals to one at 0.3\n');
-run_case([-Inf 0.3], [2 1], n_z);
+run_case([-Inf 0.3], [2 1], n_z, none, none);
 fprintf('one interval to two at 0.05 and back to one at 0.5 (material island)\n');
-run_case([-Inf 0.05 0.5], [1 2 1], n_z);
-
-fprintf('unresolved: types [1 2 1 2] from 0.02, 0.05, 0.08 with n_z = %d\n', n_z);
-data = mock_data([-Inf 0.02 0.05 0.08], [1 2 1 2], n_z);
-voids = data.polygons(strcmp({data.polygons.role}, 'void'));
-A_void = sum(arrayfun(@(p) polyarea(p.xz(:, 1), p.xz(:, 2)), voids));
-A_exp = void_area_closed_form([-Inf 0.02 0.05 0.08], [1 2 1 2]);
-fprintf('  void area %.15f, closed form %.15f, difference %.3e (printed, not gated)\n', A_void, A_exp, A_void - A_exp);
+run_case([-Inf 0.05 0.5], [1 2 1], n_z, none, none);
+z_changes = [0.02 0.05 0.08];
+fprintf('types [1 2 1 2] from 0.02, 0.05, 0.08 in one sampling cell, the changes in body.planes\n');
+run_case([-Inf z_changes], [1 2 1 2], n_z, z_changes, none);
+fprintf('types [1 2 1 2] from 0.02, 0.05, 0.08 in one sampling cell, the changes at brep vertices\n');
+run_case([-Inf z_changes], [1 2 1 2], n_z, none, z_changes);
 fprintf('all F12 gap tests passed\n');
 end
 
-function data = mock_data(z_from, type, n_z)
+function data = mock_data(z_from, type, n_z, planes, z_vertices)
 design = struct('mode', 'modular_precast', 'edges', [-1; 1], 'vs', 5, 't', 0.2, 'z_ballast', -2, 'solid_modules', []);
-realised = struct('hull_name', 'mock', 'design', design, ...
-    'body', struct('design', design, 'mock', struct('z_from', z_from, 'type', type)), ...
+vertices = [zeros(numel(z_vertices), 2), z_vertices(:)];
+body = struct('design', design, 'planes', planes, 'brep', struct('vertices', vertices), ...
+    'mock', struct('z_from', z_from, 'type', type));
+realised = struct('hull_name', 'mock', 'design', design, 'body', body, ...
     'props', struct('CG_total', [0 0 0], 'CB', [0 0 0]), 'status', 'accepted', 'reason', '', 'check', struct(), ...
     'vs', 5, 'mode', 'modular_precast');
 data = mwecmass.output.figures.realised_section_data(realised, [], n_z);
@@ -66,11 +70,11 @@ hi = [z_from(2:end), 1 - margin];
 A = sum(width(type + 1) .* (hi - lo));
 end
 
-function run_case(z_from, type, n_z)
+function run_case(z_from, type, n_z, planes, z_vertices)
 margin = 8 * eps(1);
 A_strip = 2 * (2 - 2 * margin);
 top = 1 - margin;
-data = mock_data(z_from, type, n_z);
+data = mock_data(z_from, type, n_z, planes, z_vertices);
 
 P = data.polygons;
 roles = {P.role};
