@@ -1,512 +1,486 @@
-function steel_data = solve(config, x_opt_3d, final_props, opts, fids)
-%SOLVE Optimise thin-shell vertical shift, thickness, and ballast elevation.
-% steel_data = solve(config,x_opt_3d,final_props,opts,fids) runs constrained
-% fmincon SQP for x=[vs;t_steel;z_ballast], enforcing buoyancy and GM constraints
-% with a heave/pitch range objective. config supplies geometry/material data;
-% opts overrides solver defaults and fids receives logs. Numeric results use SI.
-% See docs/METHODS_ENGINE.md#thin-shell-realisation-optimisation
+function realised = solve(config, x_opt, final3d, fids)
+%SOLVE  Thin-shell Stage 3: one shell thickness t and z_ballast that realise the Stage-2 design.
+%
+%   realised = mwecmass.realise.thin_shell.solve(config, x_opt, final3d, fids)
+%
+%   config: build_config output with hull_solid (S1b), ms2_model, boundary_cache, strip_edges,
+%   rho_shell, rho_ballast, rho_air, steel_t_min, steel_t_init, vertical_shift_bounds,
+%   mass_acceptable_pct, RHO_WATER, G and the hydrodynamic cache fields. x_opt = [vs; rho_1..N]
+%   and final3d (results.Final3D) are the Stage-2 solution. fids: report destinations (default 1).
+%   realised: S8 (results.stage3) of the realised design, or of the closest design when Stage 3
+%   fails; never the Stage-2 properties.
+%
+%   Body (contract S3, thin shell): below z_ballast the full outer section is steel ballast
+%   (rho_ballast); above it a steel shell of one normal thickness t (rho_shell) for every module
+%   encloses air (rho_air). z_ballast may lie in any module. Variables t in [t_min, t_max] with
+%   t_max = d_close - eps_fit/2 (F2b: at t_max the void closes), z_ballast in [z_min, z_max], and
+%   the draft last. Equalities, held to tol_eq (the fmincon ConstraintTolerance): flotation
+%   M = rho_w V_sub and GM = GM_Stage2. Objective: sum over Z_CG, coupled T_heave and coupled
+%   T_pitch of ((X3 - X2)/X2)^2 (AGENTS section 3 item 27).
+%
+%   Escalation (AGENTS section 3 items 20, 31): (t, z_ballast) at the Stage-2 draft; the draft
+%   is released only when mass balance cannot be met there, i.e. when rho_w V_sub at the Stage-2
+%   draft lies outside the mass range [M(t_min, z_min), M(t_min, z_max)] (with
+%   rho_air < rho_shell <= rho_ballast the mass rises with t and with z_ballast, and at z_max it
+%   no longer depends on t). At the Stage-2 draft the two equalities fix t and z_ballast, so the
+%   step is a solve (solve_fixed_draft), not an optimisation. With the draft released, a design
+%   meeting both equalities is searched first and fmincon (SQP) then minimises the objective
+%   under both equalities (solve_draft_free). The mass_acceptable_pct check on Z_CG, GM, T_heave
+%   and T_pitch then decides accepted or failed. Closest fail: when the equalities hold at the
+%   step's result it is the design; otherwise the evaluated design with the smallest equality
+%   violation, designs that hold flotation first (mass balance holds in every reported state
+%   when it can; AGENTS section 3 item 32).
+%
+%   Within a step the inner set is refitted on fixed knot vectors; the reported design uses the
+%   adaptive fit at its own t, and a changed knot structure restarts the step there (contract
+%   section 7 item 4). solver.iterations counts the design evaluations of the step.
 
-    if nargin < 5 || isempty(fids), fids = 1; end
-    t_solve_start = tic;
-    mwecmass.output.emit(fids, '\n    mwecmass.realise.thin_shell.solve (fmincon SQP, constrained):\n');
-
-    %% Input validation
-    if nargin < 3
-        error('mwecmass:thin_shell:NotEnoughInputs', ...
-              'solve(config, x_opt_3d, final_props[, opts]) requires 3+ args.');
+if nargin < 4 || isempty(fids)
+    fids = 1;
+end
+t_start = tic;
+required = {'hull_solid', 'ms2_model', 'boundary_cache', 'strip_edges', 'rho_shell', 'rho_ballast', ...
+    'rho_air', 'steel_t_min', 'steel_t_init', 'vertical_shift_bounds', 'mass_acceptable_pct', ...
+    'RHO_WATER', 'G'};
+for k = 1:numel(required)
+    if ~isfield(config, required{k}) || isempty(config.(required{k}))
+        error('mwecmass:realise:MissingConfig', 'thin_shell.solve: config.%s is missing or empty.', required{k});
     end
-    if nargin < 4 || isempty(opts), opts = struct(); end
+end
+geo = config.hull_solid;
+edges = config.strip_edges(:);
+N = numel(edges) - 1;
+x_opt = x_opt(:);
+if numel(x_opt) ~= N + 1
+    error('mwecmass:realise:BadOptVector', ...
+        'thin_shell.solve: x_opt must be [vs; rho_1..rho_%d] (got %d entries).', N, numel(x_opt));
+end
+rho = struct('ballast', config.rho_ballast, 'shell', config.rho_shell, 'air', config.rho_air);
+if ~(rho.air < rho.shell && rho.shell <= rho.ballast)
+    error('mwecmass:realise:DensityOrder', ...
+        'thin_shell.solve needs rho_air < rho_shell <= rho_ballast (got %g, %g, %g kg/m^3).', ...
+        rho.air, rho.shell, rho.ballast);
+end
+t_min = config.steel_t_min;
+tol_eq = 1e-6;
+z_min = geo.z_range(1);
+z_max = geo.z_range(2);
+stage2 = struct('vs', x_opt(1), 'rho', x_opt(2:end), 'mass', final3d.mass_total, ...
+    'Z_CG', final3d.CG_total(3), 'GM', final3d.GM_L, 'T_heave', final3d.periods.heave, ...
+    'T_pitch', final3d.periods.pitch);
 
-    required_cfg = {'ms2_model','hull_z_min','hull_z_max', ...
-                    'Aw_table_z','Aw_table','V_sub_table','CB_z_table', ...
-                    'I_wp_yy_table','RHO_WATER','G', ...
-                    'rho_shell','rho_ballast','rho_air','steel_t_init','steel_t_min', ...
-                    'steel_max_slope_factor','steel_n_z_grid', ...
-                    'vertical_shift_bounds','gm_min', ...
-                    'T_heave_goal','T_heave_range', ...
-                    'T_pitch_goal','T_pitch_range','zone_k_amp'};
-    for k = 1:length(required_cfg)
-        if ~isfield(config, required_cfg{k}) || isempty(config.(required_cfg{k}))
-            error('mwecmass:thin_shell:MissingConfig', ...
-                  'Required config field "%s" is missing or empty.', ...
-                  required_cfg{k});
-        end
-    end
-
-    x_opt_3d = x_opt_3d(:);
-    if length(x_opt_3d) < 2
-        error('mwecmass:thin_shell:BadOptVector', ...
-              'x_opt_3d must be [vertical_shift; rho_1; ...] (length >= 2).');
-    end
-
-    %% Resolve options
-    % rho_shell is wall density; rho_ballast is the density below z_ballast and
-    % defaults to rho_shell. opts can override these and solver settings.
-    rho_shell        = mwecmass.internal.option_or_config(opts, 'rho_shell',        config.rho_shell);
-    rho_ballast      = mwecmass.internal.option_or_config(opts, 'rho_ballast',      config.rho_ballast);
-    rho_air          = mwecmass.internal.option_or_config(opts, 'rho_air',          config.rho_air);
-    t_init           = mwecmass.internal.option_or_config(opts, 't_init',           config.steel_t_init);
-    t_min            = mwecmass.internal.option_or_config(opts, 't_min',            config.steel_t_min);
-    max_slope_factor = mwecmass.internal.option_or_config(opts, 'max_slope_factor', config.steel_max_slope_factor);
-    n_z_grid         = mwecmass.internal.option_or_config(opts, 'n_z_grid',         config.steel_n_z_grid);
-
-    assert(rho_shell   > 0,        'rho_shell must be > 0 (got %g)',        rho_shell);
-    assert(rho_ballast > 0,        'rho_ballast must be > 0 (got %g)',      rho_ballast);
-    assert(rho_air     > 0,        'rho_air must be > 0 (got %g)',          rho_air);
-    % Air must be lighter than both solid regions; the ballast ordering below
-    % also ensures a monotone cumulative integrand for the warm-start seed.
-    assert(rho_air     < min(rho_shell, rho_ballast), ...
-           'rho_air (%g) must be < min(rho_shell, rho_ballast) = %g', rho_air, min(rho_shell, rho_ballast));
-    assert(n_z_grid    >= 50,      'n_z_grid must be >= 50 (got %d)',       n_z_grid);
-    assert(t_min       >= 0,       't_min must be >= 0 (got %g)',           t_min);
-    % Enforce the ballast ordering at the solver boundary because opts may
-    % override the input values; this keeps the seed cumulative integral monotone.
-    assert(rho_ballast >= rho_shell, ...
-           ['rho_ballast (%g) must be >= rho_shell (%g): the analytic z_ballast seed''s cumulative ' ...
-            'integrand is only guaranteed monotone under this ordering (Amendment A2)'], ...
-           rho_ballast, rho_shell);
-
-    %% Hull bounds and thickness bracket
-
-    hull_z_min = config.hull_z_min;
-    hull_z_max = config.hull_z_max;
-    assert(hull_z_max > hull_z_min, 'hull extents inverted (%g >= %g)', ...
-           hull_z_min, hull_z_max);
-
-    % Upper bound on t_steel:  half the minimum hull radius in the
-    % middle 80% of the height (avoid the apex/keel-tip pinch points).
-    n_probe = 9;
-    z_probes = linspace(0.1*hull_z_min + 0.9*hull_z_max, ...
-                        0.9*hull_z_min + 0.1*hull_z_max, n_probe);
-    r_probes = zeros(n_probe, 1);
-
-    if ~isfield(config, 'boundary_cache') || ...
-            ~isstruct(config.boundary_cache) || ...
-            ~isfield(config.boundary_cache, 'sources')
-        error('mwecmass:thin_shell:NoBoundaryCache', ...
-              ['config.boundary_cache is missing or malformed. ' ...
-               'Configuration_Builder must populate it via ' ...
-               'mwecmass.geometry.precompute_boundary_cache.']);
-    end
-    cache = config.boundary_cache;
-    for k = 1:n_probe
-        r_probes(k) = mwecmass.geometry.compute_rmin_at_z( ...
-                          config.ms2_model, z_probes(k), 60, cache);
-    end
-    r_min_global = min(r_probes(r_probes > 0));
-    if isempty(r_min_global) || r_min_global <= 0
-        error('mwecmass:thin_shell:NoFiniteRadius', ...
-              'compute_rmin_at_z returned no positive radius across %d probes.', ...
-              n_probe);
-    end
-    t_max = 0.5 * r_min_global;
-    if t_min >= t_max
-        error('mwecmass:thin_shell:TMinExceedsTMax', ...
-              ['t_min = %.5f m >= t_max = %.5f m — hull too narrow ', ...
-               'for requested fabrication floor.'], t_min, t_max);
-    end
-
-    t_init_requested = t_init;
-    t_init = max(min(t_init, 0.9*t_max), max(t_min, 1e-4));
-    if abs(t_init - t_init_requested) > 1e-6
-        warning('mwecmass:thin_shell:TInitClamped', ...
-                'Initial t_steel guess clamped %.5f → %.5f m.', ...
-                t_init_requested, t_init);
-    end
-
-    vs_lb = config.vertical_shift_bounds(1);
-    vs_ub = config.vertical_shift_bounds(2);
-    vs_opt = x_opt_3d(1);
-    draft_opt = abs(hull_z_min + vs_opt);
-
-    mwecmass.output.emit(fids, '      Hull z=[%.4f, %.4f] m  t∈[%.5f, %.4f] m  vs∈[%.3f, %.3f] m\n', ...
-            hull_z_min, hull_z_max, t_min, 0.95*t_max, vs_lb, vs_ub);
-    mwecmass.output.emit(fids, '      Targets (from optimiser): GM_min=%.3f m  T_h=%.3f s  T_p=%.3f s  M=%.1f kg\n', ...
-            config.gm_min, config.T_heave_goal, config.T_pitch_goal, ...
-            final_props.mass_total);
-    mwecmass.output.emit(fids, '      Warm-start vs (from x_opt_3d): %.4f m  (draft=%.4f m)\n', ...
-            vs_opt, draft_opt);
-
-    %% Analytic z_ballast seed at the optimiser draft and initial thickness
-    %  Picks the z_ballast that satisfies buoyancy balance for the warm-start
-    %  hull mass at the optimiser's draft, so fmincon starts near
-    %  feasibility on ceq. z_ballast remains a free fmincon design variable
-    %  z_ballast remains a free design variable; this seed affects convergence only.
-    %  The default (rho_ballast == rho_shell) branch below inverts the
-    %  single-density closed form exactly. The general
-    %  branch's cumulative integrand g(z) is piecewise LINEAR between
-    %  z_grid_seed nodes, so its cumulative integral is piecewise
-    %  QUADRATIC; inverting it via interp1 on the node values of
-    %  cumtrapz linearly interpolates a function that is
-    %  actually quadratic between those nodes -- not exact. The general
-    %  branch now inverts the exact quadratic on the bracketing segment
-    %  (invert_piecewise_linear_cumulative, local function below). The
-    %  z_ballast_seed = hull_z_min+1e-3 / hull_z_max-1e-3 clamps at the two
-    %  ends of the C_target range are BOUNDED FALLBACKS (nearest feasible
-    %  seed to an out-of-range target), not exact solutions.
-    V_sub_at_vs_opt = max(0, interp1(config.Aw_table_z, ...
-                                      config.V_sub_table, ...
-                                      -vs_opt, 'linear', 0));
-    M_buoy_target = config.RHO_WATER * V_sub_at_vs_opt;
-
-    [grids_seed, n_zero_seed] = mwecmass.realise.thin_shell.build_geometry_grid( ...
-        config, t_init, n_z_grid, max_slope_factor);
-    if n_zero_seed > 0.05 * n_z_grid
-        error('mwecmass:thin_shell:DegenerateSeedGeometry', ...
-              'Seed geometry grid has %d/%d (>5%%) degenerate sections.', ...
-              n_zero_seed, n_z_grid);
-    end
-    z_grid_seed = grids_seed.z;
-    A_o_seed    = grids_seed.A_outer;
-    A_i_seed    = grids_seed.A_inner;
-    V_jacket    = trapz(z_grid_seed, A_o_seed - A_i_seed);
-    V_inner     = trapz(z_grid_seed, A_i_seed);
-
-    % two-density seed (no root-find): the single-solid-density closed form
-    % below generalises to a weighted-cumulative inversion. At rho_ballast == rho_shell the general
-    % form is mathematically identical to the single-density inversion but has
-    % a different accumulation order in the general branch
-    % (cumtrapz(c*f) accumulates rounding differently than c*cumtrapz(f)) -- short-circuited to
-    % the single-density expressions in that case so the default stays bit-for-bit,
-    % rho_ballast >= rho_shell for C(z) to be monotone, as enforced above.
-    if rho_ballast == rho_shell
-        V_inner_below_target = (M_buoy_target - rho_shell*V_jacket - ...
-                                rho_air*V_inner) / (rho_shell - rho_air);
-
-        if V_inner_below_target < 0
-            z_ballast_seed = hull_z_min + 1e-3;
-        elseif V_inner_below_target > V_inner
-            z_ballast_seed = hull_z_max - 1e-3;
-        else
-            cumV = cumtrapz(z_grid_seed, A_i_seed);
-            interior = A_i_seed > 1e-10;
-            if sum(interior) < 2
-                z_ballast_seed = 0.5 * (hull_z_min + hull_z_max);
-            else
-                [V_uniq, ia_uniq] = unique(cumV(interior), 'stable');
-                z_int = z_grid_seed(interior);
-                z_ballast_seed = interp1(V_uniq, z_int(ia_uniq), ...
-                                         V_inner_below_target, 'linear', 'extrap');
-            end
-            z_ballast_seed = max(hull_z_min + 1e-3, ...
-                                 min(hull_z_max - 1e-3, z_ballast_seed));
-        end
-    else
-        % C(z) = integral_{hull_z_min}^{z} [(rho_ballast-rho_shell)*(A_o-A_i) +
-        %        (rho_ballast-rho_air)*A_i] dz'; solve C(z_ballast) = M_buoy_target -
-        %        rho_shell*V_jacket - rho_air*V_inner. Reduces to the single-density inversion (scaled)
-        % when rho_ballast == rho_shell -- see the M-1 derivation cited above.
-        C_target = M_buoy_target - rho_shell*V_jacket - rho_air*V_inner;
-        g_seed   = (rho_ballast - rho_shell)*(A_o_seed - A_i_seed) + (rho_ballast - rho_air)*A_i_seed;
-        C_full   = trapz(z_grid_seed, g_seed);
-
-        if C_target < 0
-            z_ballast_seed = hull_z_min + 1e-3;   % bounded fallback, not exact
-        elseif C_target > C_full
-            z_ballast_seed = hull_z_max - 1e-3;   % bounded fallback, not exact
-        else
-            % Exact quadratic-segment inversion, not a linear interp1 of the
-            % cumulative table.
-            z_ballast_seed = invert_piecewise_linear_cumulative(z_grid_seed, g_seed, C_target);
-            z_ballast_seed = max(hull_z_min + 1e-3, ...
-                                 min(hull_z_max - 1e-3, z_ballast_seed));
-        end
-    end
-    mwecmass.output.emit(fids, '      Warm-start z_ballast seed: %.4f m (analytic, M_buoy=%.0f kg)\n', ...
-            z_ballast_seed, M_buoy_target);
-
-    %% Context shared by nested objective and constraint
-    ctx = struct();
-    ctx.config           = config;
-    ctx.rho_shell        = rho_shell;
-    ctx.rho_ballast      = rho_ballast;
-    ctx.rho_air          = rho_air;
-    ctx.max_slope_factor = max_slope_factor;
-    ctx.n_z_grid         = n_z_grid;
-    ctx.hull_z_min       = hull_z_min;
-    ctx.hull_z_max       = hull_z_max;
-
-    %% fmincon SQP
-    %  DVs:        x = [vs; t_steel; z_ballast]
-    %  Bounds:     lb / ub on each
-    %  Equality:   ceq = M_total / (ρ_w·V_sub(-vs)) − 1 = 0
-    %  Inequality: c   = 1 − GM/gm_min ≤ 0
-    %  Objective:  Φ = phi(r_heave) + phi(r_pitch)
-
-    lb = [vs_lb;     t_min;          hull_z_min + 1e-3];
-    ub = [vs_ub;     0.95*t_max;     hull_z_max - 1e-3];
-    x0 = [vs_opt;    t_init;         z_ballast_seed];
-
-    % Clamp x0 into bounds (defensive)
-    x0 = max(lb, min(ub, x0));
-
-    fminopts = optimoptions('fmincon', ...
-        'Algorithm',              'sqp', ...
-        'Display',                'iter', ...
-        'StepTolerance',          1e-8, ...
-        'OptimalityTolerance',    1e-6, ...
-        'ConstraintTolerance',    1e-6, ...
-        'MaxIterations',          200, ...
-        'MaxFunctionEvaluations', 1000);
-
-    mwecmass.output.emit(fids, '      Solver: fmincon SQP  (DVs=3 ; ceq=buoyancy ; c=GM≥gm_min)\n');
-    [x_star, phi_star, exitflag, output] = fmincon( ...
-        @obj_fn, x0, [], [], [], [], lb, ub, @con_fn, fminopts);
-
-    vs_star = x_star(1);
-    t_star  = x_star(2);
-    zb_star = x_star(3);
-
-    t_min_active = ((t_star - t_min) / max(t_max - t_min, eps) < 0.01);
-
-    %% Evaluate at the optimum
-    [grids_star, n_zero_interior] = mwecmass.realise.thin_shell.build_geometry_grid( ...
-        config, t_star, n_z_grid, max_slope_factor);
-    if n_zero_interior > 0.05 * n_z_grid
-        error('mwecmass:thin_shell:TooManyDegenerateSections', ...
-              'Cross-section evaluation failed at %d/%d interior z-grid points (>5%%).', ...
-              n_zero_interior, n_z_grid);
-    end
-    realised = mwecmass.realise.thin_shell.evaluate_design_point( ...
-        vs_star, t_star, zb_star, grids_star, ctx);
-    if ~realised.feasible
-        warning('mwecmass:thin_shell:InfeasibleOptimum', ...
-                'fmincon optimum is infeasible — realised hydrostatics produced NaN/Inf.');
-    end
-
-    %% Package output
-    steel_data = struct();
-    steel_data.t_steel          = t_star;
-    steel_data.z_ballast        = zb_star;
-    steel_data.draft            = realised.draft;
-    steel_data.vertical_shift   = realised.vertical_shift;
-    steel_data.draft_optimiser  = draft_opt;
-    steel_data.vs_optimiser     = vs_opt;
-    steel_data.rho_shell        = rho_shell;
-    steel_data.rho_ballast      = rho_ballast;
-    steel_data.rho_air          = rho_air;
-    steel_data.t_max            = t_max;
-    steel_data.t_min            = t_min;
-    steel_data.t_min_active     = t_min_active;
-
-    % V_steel and M_steel are the aggregates (shell + ballast); V_shell, V_ballast, M_shell and
-    % M_ballast are the per-region fields.
-    steel_data.V_steel          = realised.V_steel;
-    steel_data.V_air            = realised.V_air;
-    steel_data.V_hull           = realised.V_steel + realised.V_air;
-    steel_data.V_shell          = realised.V_shell;
-    steel_data.V_ballast        = realised.V_ballast;
-    steel_data.M_steel          = realised.M_steel;
-    steel_data.M_air            = realised.M_air;
-    steel_data.M_shell          = realised.M_shell;
-    steel_data.M_ballast        = realised.M_ballast;
-    steel_data.M_total          = realised.M_total;
-
-    steel_data.z_cg_steel       = realised.z_cg_steel;
-    steel_data.z_cg_air         = realised.z_cg_air;
-    steel_data.z_cg_ballast     = realised.z_cg_ballast;
-    steel_data.z_cg_shell       = realised.z_cg_shell;
-    steel_data.CG_z_body        = realised.CG_z_body;
-    steel_data.CG_z_world       = realised.CG_z_world;
-
-    steel_data.Iyy_total_origin = realised.Iyy_total_origin;
-    steel_data.Iyy_about_cg     = realised.Iyy_about_cg;
-    steel_data.Ixx_total_origin = realised.Ixx_total_origin;
-    steel_data.Ixx_about_cg     = realised.Ixx_about_cg;
-    steel_data.Izz_total_origin = realised.Izz_total_origin;
-    steel_data.Izz_about_cg     = realised.Izz_about_cg;
-
-    steel_data.V_sub            = realised.V_sub;
-    steel_data.Aw               = realised.Aw;
-    steel_data.I_wp_yy          = realised.I_wp_yy;
-    steel_data.CB_z_world       = realised.CB_z_world;
-    steel_data.KM_world         = realised.KM_world;
-
-    steel_data.GM_realised      = realised.GM;
-    steel_data.T_heave_realised = realised.T_heave;
-    steel_data.T_pitch_realised = realised.T_pitch;
-    steel_data.K33_hydro        = realised.K33_hydro;
-    steel_data.K55_hydro        = realised.K55_hydro;
-
-    steel_data.A11              = realised.A11;
-    steel_data.A33              = realised.A33;
-    steel_data.A55              = realised.A55;
-
-    % Targets struct (kept for downstream reporting + plot_steel_solve)
-    tgt = struct( ...
-        'GM',      final_props.GM_L, ...
-        'T_heave', final_props.periods.heave, ...
-        'T_pitch', final_props.periods.pitch, ...
-        'mass',    final_props.mass_total);
-    steel_data.targets = tgt;
-    steel_data.residuals.dGM_pct      = 100 * (realised.GM      - tgt.GM)      / tgt.GM;
-    steel_data.residuals.dT_heave_pct = 100 * (realised.T_heave - tgt.T_heave) / tgt.T_heave;
-    steel_data.residuals.dT_pitch_pct = 100 * (realised.T_pitch - tgt.T_pitch) / tgt.T_pitch;
-    steel_data.residuals.dmass_pct    = 100 * (realised.M_total - tgt.mass)    / tgt.mass;
-    steel_data.mass_balance_error_pct = 100 * realised.mass_balance_error_abs / max(realised.M_total, eps);
-
-    steel_data.phi_star = phi_star;
-    steel_data.feasible = realised.feasible;
-    steel_data.exitflag = exitflag;
-    steel_data.solver   = 'fmincon-sqp';
-
-    steel_data.z_grid           = grids_star.z;
-    steel_data.A_outer_grid     = grids_star.A_outer;
-    steel_data.A_inner_grid     = grids_star.A_inner;
-    steel_data.A_jacket_grid    = grids_star.A_outer - grids_star.A_inner;
-    steel_data.Iyy_outer_grid   = grids_star.Iyy_outer;
-    steel_data.Iyy_inner_grid   = grids_star.Iyy_inner;
-
-    %% Per-strip realised equivalent density
-    %  Integrate the realised material distribution over each strip
-    %  defined in config.strip_edges so the cake-layer visualisations
-    %  (visualize_3d_cross_section, visualize_2d_equivalent,
-    %  visualize_3D_equivalent) can colour the hull by the AS-BUILT
-    %  effective density instead of the optimiser's continuous rho.
-    %    Below z_ballast: solid steel (entire cross-section A_outer)
-    %    Above z_ballast: steel jacket annulus + air interior
-    %  The helper inserts z_ballast only for strips that contain it, preserving
-    %  volume closure at strip boundaries.
-    if isfield(config, 'strip_edges') && ~isempty(config.strip_edges)
-        [V_env_s, V_sol_s, V_vd_s, V_ballast_s, V_shell_s] = ...
-            mwecmass.realise.thin_shell.strip_partition_volumes( ...
-                steel_data.z_grid, steel_data.A_outer_grid, ...
-                steel_data.A_inner_grid, zb_star, config.strip_edges);
-
-        % Preserve the single-density operation order when densities match while
-        % retaining the physically correct two-region mass expression.
-        M_strip_s = rho_shell * V_sol_s + (rho_ballast - rho_shell) * V_ballast_s + rho_air * V_vd_s;   % [kg]
-        rho_eff   = M_strip_s ./ max(V_env_s, eps);            % [kg/m^3]
-        rho_eff(V_env_s <= 1e-12) = NaN;   % degenerate strip: no volume
-
-        steel_data.strip_rho_eff   = rho_eff;
-        steel_data.strip_edges     = config.strip_edges(:);
-        steel_data.strip_V_env     = V_env_s;     % [m^3]
-        steel_data.strip_V_solid   = V_sol_s;     % [m^3]
-        steel_data.strip_V_void    = V_vd_s;      % [m^3]
-        steel_data.strip_V_ballast = V_ballast_s; % [m^3] two-density model
-        steel_data.strip_V_shell   = V_shell_s;   % [m^3] two-density model
-    else
-        steel_data.strip_rho_eff   = [];
-        steel_data.strip_edges     = [];
-        steel_data.strip_V_env     = [];
-        steel_data.strip_V_solid   = [];
-        steel_data.strip_V_void    = [];
-        steel_data.strip_V_ballast = [];
-        steel_data.strip_V_shell   = [];
-    end
-        steel_data.fill_method = 'steel_fill';
-
-    steel_data.elapsed_seconds  = toc(t_solve_start);
-
-    %% Console report
-    mwecmass.output.emit(fids, '      ──────────────── Steel-Solve Result (fmincon SQP) ────────────────\n');
-    if t_min_active
-        mwecmass.output.emit(fids, '      t_steel*       : %.5f m  (%.2f in)   *** at t_min bound ***\n', ...
-                t_star, t_star/0.0254);
-    else
-        mwecmass.output.emit(fids, '      t_steel*       : %.5f m  (%.2f in)\n', ...
-                t_star, t_star/0.0254);
-    end
-    mwecmass.output.emit(fids, '      z_ballast*     : %.4f m  (hull range [%.3f, %.3f])\n', ...
-            zb_star, hull_z_min, hull_z_max);
-    mwecmass.output.emit(fids, '      vs*            : %.4f m  (optimiser was %.4f m)\n', ...
-            vs_star, vs_opt);
-    mwecmass.output.emit(fids, '      M_total        : %.1f kg   target  : %.1f kg   (%+.3f%%)\n', ...
-            realised.M_total, tgt.mass, steel_data.residuals.dmass_pct);
-    mwecmass.output.emit(fids, '      Mass-balance   : %.3e kg  (%.4f%% of M_total)  ← ceq residual\n', ...
-            realised.mass_balance_error_abs, steel_data.mass_balance_error_pct);
-    mwecmass.output.emit(fids, '      GM realised    : %.4f m   gm_min=%.3f m   gm_target=%.3f m\n', ...
-            realised.GM, config.gm_min, config.gm_target);
-    mwecmass.output.emit(fids, '      T_heave        : %.3f s   target %.3f s   (%+.2f%%)\n', ...
-            realised.T_heave, tgt.T_heave, steel_data.residuals.dT_heave_pct);
-    mwecmass.output.emit(fids, '      T_pitch        : %.3f s   target %.3f s   (%+.2f%%)\n', ...
-            realised.T_pitch, tgt.T_pitch, steel_data.residuals.dT_pitch_pct);
-    mwecmass.output.emit(fids, '      Phi*           : %.6g  feasible=%d  exitflag=%d  iters=%d  elapsed=%.2f s\n', ...
-            phi_star, realised.feasible, exitflag, output.iterations, ...
-            steel_data.elapsed_seconds);
-    mwecmass.output.emit(fids, '      ────────────────────────────────────────────────────────────────\n');
-
-    %% --- Nested functions (close over ctx) -----------------------
-
-    function f = obj_fn(x)
-        % Objective: phi(r_heave) + phi(r_pitch)
-        vs_ = x(1);  t_ = x(2);  zb_ = x(3);
-        [grids_, n_zero_] = mwecmass.realise.thin_shell.build_geometry_grid( ...
-            ctx.config, t_, ctx.n_z_grid, ctx.max_slope_factor);
-        if n_zero_ > 0.05 * ctx.n_z_grid
-            f = 1e4; return;
-        end
-        r_ = mwecmass.realise.thin_shell.evaluate_design_point(vs_, t_, zb_, grids_, ctx);
-        if ~isfinite(r_.T_heave) || ~isfinite(r_.T_pitch)
-            f = 1e4; return;
-        end
-        cfg_ = ctx.config;
-        heave_half = 0.5 * (cfg_.T_heave_range(2) - cfg_.T_heave_range(1));
-        pitch_half = 0.5 * (cfg_.T_pitch_range(2) - cfg_.T_pitch_range(1));
-        r_h = (r_.T_heave - cfg_.T_heave_goal) / max(heave_half, 1e-6);
-        r_p = (r_.T_pitch - cfg_.T_pitch_goal) / max(pitch_half, 1e-6);
-        f = mwecmass.optim.range_penalty(r_h, cfg_.zone_k_amp) + ...
-            mwecmass.optim.range_penalty(r_p, cfg_.zone_k_amp);
-    end
-
-    function [c, ceq] = con_fn(x)
-        % c   = 1 − GM/gm_min ≤ 0   (stability floor)
-        % ceq = M_total/(ρ_w·V_sub(-vs)) − 1 = 0   (buoyancy balance)
-        vs_ = x(1);  t_ = x(2);  zb_ = x(3);
-        [grids_, n_zero_] = mwecmass.realise.thin_shell.build_geometry_grid( ...
-            ctx.config, t_, ctx.n_z_grid, ctx.max_slope_factor);
-        if n_zero_ > 0.05 * ctx.n_z_grid
-            c = 1.0;  ceq = 1.0;  return;
-        end
-        r_ = mwecmass.realise.thin_shell.evaluate_design_point(vs_, t_, zb_, grids_, ctx);
-        if ~isfinite(r_.M_total) || ~isfinite(r_.mass_buoyant_force) || ...
-                r_.mass_buoyant_force <= 0
-            c = 1.0;  ceq = 1.0;  return;
-        end
-        ceq = r_.M_total / r_.mass_buoyant_force - 1.0;
-        if isfinite(r_.GM)
-            c = 1.0 - r_.GM / ctx.config.gm_min;
-        else
-            c = 1.0;
-        end
-    end
-
+d_close = mwecmass.solid.void_closing_distance(config.ms2_model, config.boundary_cache, geo, geo.z_range);
+eps_fit = 0.01 * t_min;
+t_max = d_close - eps_fit / 2;
+if t_min >= t_max
+    error('mwecmass:realise:TMinExceedsTMax', ...
+        'thin_shell.solve: t_min = %.5f m >= t_max = %.5f m (void closing distance %.5f m).', ...
+        t_min, t_max, d_close);
 end
 
+ctx = struct('config', config, 'geo', geo, 'edges', edges, 'rho', rho, 'stage2', stage2, ...
+    't_min', t_min, 't_max', t_max, 'tol_eq', tol_eq, ...
+    'sets', containers.Map('KeyType', 'char', 'ValueType', 'any'), ...
+    'adaptive_sets', containers.Map('KeyType', 'char', 'ValueType', 'any'), ...
+    'hydro', containers.Map('KeyType', 'char', 'ValueType', 'any'), ...
+    'state', containers.Map('KeyType', 'char', 'ValueType', 'any'));
+ctx.state('history') = zeros(0, 6);
+ctx.state('points') = containers.Map('KeyType', 'char', 'ValueType', 'any');
 
-function z_star = invert_piecewise_linear_cumulative(z_grid, g, target)
-%INVERT_PIECEWISE_LINEAR_CUMULATIVE Invert the cumulative trapezoidal integral
-% of piecewise-linear g(z) at target. The integral is quadratic within each
-% grid segment, so this solves that local quadratic rather than interpolating
-% cumulative node values. Requires nonnegative g (monotone cumulative).
-% z_grid and g are [N×1] vectors; z_star lies in the grid range.
+emit = @(varargin) mwecmass.output.emit(fids, varargin{:});
+emit('\n    mwecmass.realise.thin_shell.solve (exact geometry):\n');
+emit('      Hull z = [%.4f, %.4f] m (body); %d modules; edges %s m\n', z_min, z_max, N, mat2str(edges', 6));
+emit('      t in [%.5f, %.5f] m: t_min (input), t_max = d_close - eps_fit/2, d_close = %.5f m, eps_fit = %.3g m\n', ...
+    t_min, t_max, d_close, eps_fit);
+emit('      Stage 2: vs %.4f m, M %.1f kg, Z_CG %.4f m, GM %.4f m, T_heave %.4f s, T_pitch %.4f s (coupled)\n', ...
+    stage2.vs, stage2.mass, stage2.Z_CG, stage2.GM, stage2.T_heave, stage2.T_pitch);
 
-    cumG = cumtrapz(z_grid, g);
-    idx = find(cumG >= target, 1, 'first');
-    if isempty(idx) || idx <= 1
-        z_star = z_grid(1);
-        return;
-    end
-    i = idx - 1;
-    z_i  = z_grid(i);   dz  = z_grid(i+1) - z_i;
-    g_i  = g(i);        g_ip1 = g(i+1);
-    dC   = target - cumG(i);
-    slope = (g_ip1 - g_i) / dz;
+t0 = min(max(config.steel_t_init, t_min), t_max);
+ev0 = mwecmass.realise.thin_shell.evaluate_design_point(ctx, stage2.vs, t0, z_min, true);
+ctx.state('ref') = ev0.inner;
+ctx.sets(num2hex(t0)) = ev0.inner;
 
-    if abs(slope) < 1e-12 * max(abs(g_i), 1)
-        % g effectively constant on this segment: C(z) is linear, not quadratic.
-        if g_i > 1e-12
-            delta = dC / g_i;
-        else
-            delta = 0.5 * dz;   % zero-integrand segment: C(z) does not move; any point in it
-                                 % is an equally valid inverse -- midpoint is the neutral choice.
+% mass range at the Stage-2 draft
+ev_lo = point(ctx, [stage2.vs, t_min, z_min]);
+ev_hi = point(ctx, [stage2.vs, t_min, z_max]);
+reachable = ev_lo.ceq(1) <= tol_eq && ev_hi.ceq(1) >= -tol_eq;
+emit('      Mass at the Stage-2 draft: target rho_w V_sub = %.1f kg; buildable [%.1f, %.1f] kg -> %s\n', ...
+    config.RHO_WATER * ev_lo.V_sub, ev_lo.mass, ev_hi.mass, ...
+    ternary(reachable, 'reachable, draft fixed', 'unreachable, draft released'));
+
+if reachable
+    step = 'fixed_draft';
+    solve_once = @(p) solve_fixed_draft(ctx, stage2.vs);
+else
+    step = 'draft_free';
+    solve_once = @(p) solve_draft_free(ctx, t0, p);
+end
+[ev, solver] = run_step(ctx, step, solve_once, emit);
+
+if any(~(abs(ev.ceq) <= tol_eq))
+    p = closest(ctx.state('history'), tol_eq);
+    if ~isempty(p)
+        ev_best = mwecmass.realise.thin_shell.evaluate_design_point(ctx, p(1), p(2), p(3), true);
+        if ranks_before(violation_rank(ev_best.ceq, tol_eq), violation_rank(ev.ceq, tol_eq))
+            ev = ev_best;
         end
-    else
-        % 0.5*slope*delta^2 + g_i*delta - dC = 0; take the root with delta in [0, dz].
-        disc  = max(g_i^2 + 2*slope*dC, 0);   % nonneg by construction when g >= 0 (rho_ballast>=rho_shell)
-        delta = (-g_i + sqrt(disc)) / slope;
     end
-    delta  = max(0, min(dz, delta));
-    z_star = z_i + delta;
+end
+
+realised = package(ctx, ev, step, solver, config);
+emit_report(emit, realised, toc(t_start));
+end
+
+% ---------------------------------------------------------------- escalation steps
+
+function [ev, info] = run_step(ctx, step, solve_once, emit)
+% Runs one escalation step, then rebuilds its result with the adaptive inner set at the final t;
+% a changed knot structure restarts the step on the new knots.
+seen = {};
+n0 = size(ctx.state('history'), 1);
+p = [];
+while true
+    [p, exitflag] = solve_once(p);
+    ev = mwecmass.realise.thin_shell.evaluate_design_point(ctx, p(1), p(2), p(3), true);
+    ref = ctx.state('ref');
+    if same_knots(ev.inner, ref) || any(cellfun(@(s) same_knots(ev.inner, s), seen))
+        break
+    end
+    emit('      Knot structure of the inner set changed at t = %.6f m: step restarted there\n', p(2));
+    seen{end + 1} = ref; %#ok<AGROW>
+    ctx.state('ref') = ev.inner;
+    remove(ctx.sets, keys(ctx.sets));
+    remove(ctx.state('points'), keys(ctx.state('points')));
+    ctx.sets(num2hex(p(2))) = ev.inner;
+end
+info = struct('step', step, 'exitflag', exitflag, 'iterations', size(ctx.state('history'), 1) - n0, ...
+    'fval', ev.objective, 'max_eq_violation', max(abs(ev.ceq)));
+emit('      Step %s: exitflag %d, %d design evaluations; t %.6f m, z_ballast %.6f m, vs %.6f m\n', ...
+    step, exitflag, info.iterations, p(2), p(3), p(1));
+end
+
+function [p, exitflag] = solve_fixed_draft(ctx, vs)
+% At a fixed draft the two equalities fix t and z_ballast (AGENTS section 5): along the
+% flotation curve z_ballast(t) the mass moves from the ballast top up into the thicker shell, so
+% Z_CG rises and the GM residual changes monotonically with t. Root in t of the GM residual on
+% the curve, from t_min to the t where the curve reaches z_min; without a sign change the end
+% with the smaller residual is the closest design (flotation held). exitflag 1: root, 0: end.
+t_min = ctx.t_min;
+t_c = curve_end(ctx, vs);
+g = @(t) gm_on_curve(ctx, vs, t);
+g_lo = g(t_min);
+g_hi = g(t_c);
+exitflag = 0;
+if g_lo == 0
+    t = t_min;
+    exitflag = 1;
+elseif g_hi == 0
+    t = t_c;
+    exitflag = 1;
+elseif sign(g_lo) ~= sign(g_hi)
+    t = fzero(g, [t_min, t_c]);
+    exitflag = 1;
+elseif abs(g_lo) <= abs(g_hi)
+    t = t_min;
+else
+    t = t_c;
+end
+p = [vs, t, ballast_for_flotation(ctx, vs, t)];
+end
+
+function [p, exitflag] = solve_draft_free(ctx, t0, p_prev)
+% Draft released: first a design that floats and meets GM = GM_Stage2 at t0, searched along the
+% drafts where flotation can be met at t0 (rho_w V_sub falls as vs rises, so these drafts form
+% one interval); then fmincon over (vs, t, z_ballast) with the objective and both equalities
+% from there. exitflag: fmincon's, or that of the first search (1: root, 0: closest end) when
+% fmincon cannot start because the objective is not finite there.
+zr = ctx.geo.z_range;
+cfg = ctx.config;
+b = cfg.vertical_shift_bounds;
+if isempty(p_prev)
+    M_lo = mass_of(ctx, [ctx.stage2.vs, t0, zr(1)]);
+    M_hi = mass_of(ctx, [ctx.stage2.vs, t0, zr(2)]);
+    f_hi = @(v) cfg.RHO_WATER * displaced_volume(ctx, v) - M_hi;
+    f_lo = @(v) cfg.RHO_WATER * displaced_volume(ctx, v) - M_lo;
+    % lowest draft at which rho_w V_sub <= M_hi, highest at which rho_w V_sub >= M_lo
+    if f_hi(b(1)) <= 0
+        vs_a = b(1);
+    elseif f_hi(b(2)) > 0
+        vs_a = Inf;
+    else
+        vs_a = fzero(f_hi, b);
+    end
+    if f_lo(b(2)) >= 0
+        vs_b = b(2);
+    elseif f_lo(b(1)) < 0
+        vs_b = -Inf;
+    else
+        vs_b = fzero(f_lo, b);
+    end
+    exitflag = 0;
+    if vs_a > vs_b
+        % no draft within the bounds floats a design at t0: the bound nearer to flotation
+        r = [flotation_of(ctx, [b(1), t0, zr(2)]), flotation_of(ctx, [b(2), t0, zr(1)])];
+        [~, k] = min(abs(r));
+        p = [b(k), t0, zr(3 - k)];
+        return
+    end
+    G = @(vs) gm_of(ctx, [vs, t0, ballast_for_flotation(ctx, vs, t0)]);
+    G_a = G(vs_a);
+    G_b = G(vs_b);
+    if sign(G_a) ~= sign(G_b)
+        vs = fzero(G, [vs_a, vs_b]);
+        exitflag = 1;
+    elseif abs(G_a) <= abs(G_b)
+        vs = vs_a;
+    else
+        vs = vs_b;
+    end
+    p = [vs, t0, ballast_for_flotation(ctx, vs, t0)];
+else
+    p = p_prev;
+    exitflag = 0;
+end
+if ~isfinite(objective_of(ctx, p))
+    return
+end
+% SQP starts from an identity Hessian, so the variables enter in units of their own size: t in
+% t_min, z_ballast and vs in hull heights.
+h = zr(2) - zr(1);
+scale = [h; ctx.t_min; h];
+map = @(x) scale' .* x(:)';
+lb = [b(1); ctx.t_min; zr(1)];
+ub = [b(2); ctx.t_max; zr(2)];
+opts = optimoptions('fmincon', 'Algorithm', 'sqp', 'Display', 'off', 'StepTolerance', 1e-8, ...
+    'OptimalityTolerance', 1e-6, 'ConstraintTolerance', ctx.tol_eq, 'MaxIterations', 200, ...
+    'MaxFunctionEvaluations', 1000);
+[x, ~, exitflag] = fmincon(@(x) objective_of(ctx, map(x)), p(:) ./ scale, [], [], [], [], ...
+    lb ./ scale, ub ./ scale, @(x) constraints(ctx, map(x)), opts);
+p = map(x);
+end
+
+function [c, ceq] = constraints(ctx, p)
+c = [];
+ev = point(ctx, p);
+ceq = ev.ceq;
+end
+
+function f = objective_of(ctx, p)
+ev = point(ctx, p);
+f = ev.objective;
+end
+
+function r = flotation_of(ctx, p)
+ev = point(ctx, p);
+r = ev.ceq(1);
+end
+
+function r = gm_of(ctx, p)
+ev = point(ctx, p);
+r = ev.ceq(2);
+end
+
+function m = mass_of(ctx, p)
+ev = point(ctx, p);
+m = ev.mass;
+end
+
+function V = displaced_volume(ctx, vs)
+key = num2hex(vs);
+if ~isKey(ctx.hydro, key)
+    ctx.hydro(key) = mwecmass.solid.hydrostatics_at_draft(ctx.geo, vs, struct());
+end
+hs = ctx.hydro(key);
+V = hs.V_sub;
+end
+
+function t_c = curve_end(ctx, vs)
+% Largest t of the flotation curve at this draft: where flotation needs no ballast. The mass
+% rises with t; its upper bracket is searched by halving the distance to t_max (where the void
+% closes and the kernel cannot evaluate), so no step size is chosen. When even the last
+% representable t below t_max floats with no ballast, that t ends the curve.
+r = @(t) flotation_of(ctx, [vs, t, ctx.geo.z_range(1)]);
+t = ctx.t_min;
+if r(t) >= 0
+    t_c = t;
+    return
+end
+while true
+    t_next = (t + ctx.t_max) / 2;
+    if t_next <= t || t_next >= ctx.t_max
+        t_c = t;
+        return
+    end
+    r_next = r(t_next);
+    if ~isfinite(r_next)
+        t_c = t;
+        return
+    end
+    if r_next >= 0
+        t_c = fzero(r, [t, t_next]);
+        return
+    end
+    t = t_next;
+end
+end
+
+function g = gm_on_curve(ctx, vs, t)
+g = gm_of(ctx, [vs, t, ballast_for_flotation(ctx, vs, t)]);
+end
+
+function zb = ballast_for_flotation(ctx, vs, t)
+% z_ballast that floats (vs, t): the mass rises with z_ballast, so a sign change brackets one
+% root; without one, the end nearer to flotation.
+z = ctx.geo.z_range;
+r = @(zz) flotation_of(ctx, [vs, t, zz]);
+r_lo = r(z(1));
+r_hi = r(z(2));
+if r_lo >= 0
+    zb = z(1);
+elseif r_hi <= 0
+    zb = z(2);
+else
+    zb = fzero(r, z);
+end
+end
+
+function ev = point(ctx, p)
+% One kernel evaluation per design point, shared by every search; every evaluated design is
+% recorded for the closest-fail choice. A kernel error (e.g. VoidClosed) marks the point as not
+% realisable.
+points = ctx.state('points');
+key = [num2hex(p(1)), num2hex(p(2)), num2hex(p(3))];
+if isKey(points, key)
+    ev = points(key);
+    return
+end
+try
+    full = mwecmass.realise.thin_shell.evaluate_design_point(ctx, p(1), p(2), p(3), false);
+    ev = struct('objective', full.objective, 'ceq', full.ceq, 'mass', full.props.mass_total, ...
+        'V_sub', full.props.V_sub);
+catch err
+    if ~strncmp(err.identifier, 'mwecmass:solid:', numel('mwecmass:solid:'))
+        rethrow(err);
+    end
+    ev = struct('objective', NaN, 'ceq', [NaN; NaN], 'mass', NaN, 'V_sub', NaN);
+end
+points(key) = ev; %#ok<NASGU> containers.Map is a handle
+ctx.state('history') = [ctx.state('history'); p, ev.objective, abs(ev.ceq')];
+end
+
+function p = closest(hist, tol_eq)
+% The evaluated design with the smallest equality violation (violation_rank); ties: the smaller
+% objective.
+p = [];
+ok = all(isfinite(hist(:, 5:6)), 2);
+hist = hist(ok, :);
+if isempty(hist)
+    return
+end
+rank = cell2mat(arrayfun(@(k) violation_rank(hist(k, 5:6)', tol_eq), (1:size(hist, 1))', ...
+    'UniformOutput', false));
+[~, order] = sortrows([rank, hist(:, 4)]);
+p = hist(order(1), 1:3);
+end
+
+function r = violation_rank(ceq, tol_eq)
+% [tier, size], ordered lexicographically: designs holding flotation within tol_eq (tier 0,
+% sized by the GM residual) come before the others (tier 1, sized by the Euclidean norm of both
+% residuals), so mass balance holds in every reported state when it can.
+if ~all(isfinite(ceq))
+    r = [Inf, Inf];
+elseif abs(ceq(1)) <= tol_eq
+    r = [0, abs(ceq(2))];
+else
+    r = [1, norm(ceq)];
+end
+end
+
+function yes = ranks_before(a, b)
+yes = a(1) < b(1) || (a(1) == b(1) && a(2) < b(2));
+end
+
+function same = same_knots(a, b)
+same = numel(a.patches) == numel(b.patches);
+k = 0;
+while same && k < numel(a.patches)
+    k = k + 1;
+    same = isequal(a.patches(k).surf.knots, b.patches(k).surf.knots) && ...
+        isequal(a.patches(k).surf.degree, b.patches(k).surf.degree);
+end
+end
+
+% ---------------------------------------------------------------- S8
+
+function realised = package(ctx, ev, step, solver, config)
+e = ctx.edges;
+N = numel(e) - 1;
+design = ev.design;
+zb = design.z_ballast;
+rho_floor = NaN(N, 1);
+if isfield(config, 'per_strip_density_lb') && numel(config.per_strip_density_lb) == N
+    rho_floor = config.per_strip_density_lb(:);
+end
+names = {'ballast', 'shell', 'air'};
+modules = struct('z_lo', num2cell(e(1:end - 1)), 'z_hi', num2cell(e(2:end)));
+for i = 1:N
+    m = ev.bp.modules(i);
+    modules(i).t = NaN;
+    if m.V_air > 0
+        modules(i).t = design.t(i);
+    end
+    modules(i).h_ballast = min(max(zb - e(i), 0), e(i + 1) - e(i));
+    modules(i).V = m.V;
+    for r = 1:numel(names)
+        modules(i).(['V_' names{r}]) = m.(['V_' names{r}]);
+    end
+    modules(i).mass = m.mass;
+    modules(i).rho_eff = m.rho_eff;
+    modules(i).rho_stage2 = ctx.stage2.rho(i);
+    modules(i).rho_floor = rho_floor(i);
+    modules(i).CG_world = m.CG_body + [0 0 design.vs];
+end
+status = 'failed';
+if ev.check.pass
+    status = 'accepted';
+end
+realised = struct('mode', 'thin_shell', 'hull_name', ctx.geo.hull_name, 'status', status, ...
+    'reason', ev.check.reason, 'escalation', step, 'vs', design.vs, 'draft', ev.hs.draft, ...
+    'stage2', ctx.stage2, 'rho', ctx.rho, 'design', design, 'k_star', [], 'V_uhpc_target', [], ...
+    'modules', {modules}, 'props', ev.props, 'check', ev.check, 'solver', solver, ...
+    'fit', ev.inner.report, 'body', ev.body, ...
+    'step_files', {struct('name', {}, 'path', {}, 'bodies', {})});
+end
+
+function emit_report(emit, r, elapsed)
+emit('      ---------------- Thin-shell Stage 3: %s (%s) ----------------\n', upper(r.status), r.escalation);
+emit('      t %.5f m (%.3f in), z_ballast %.4f m (body), vs %.4f m, draft %.4f m\n', ...
+    r.design.t(1), r.design.t(1) / 0.0254, r.design.z_ballast, r.vs, r.draft);
+emit('      %-9s %12s %12s %10s %8s %s\n', 'metric', 'Stage 3', 'Stage 2', 'deviation', 'limit', 'pass');
+for m = r.check.metrics
+    emit('      %-9s %12.5f %12.5f %9.3f%% %7.1f%% %d\n', m.name, m.value, m.stage2, 100 * m.rel_dev, ...
+        100 * m.limit, m.pass);
+end
+for q = r.check.equalities
+    emit('      equality %-9s residual %10.3e  tol %.1e  pass %d\n', q.name, q.residual, q.tol, q.pass);
+end
+emit('      %-6s %9s %9s %10s %10s %10s %10s %11s %11s %11s\n', 'module', 'z_lo', 'z_hi', 'V_ballast', ...
+    'V_shell', 'V_air', 'mass', 'rho_eff', 'rho_floor', 'rho_stage2');
+for i = 1:numel(r.modules)
+    m = r.modules(i);
+    emit('      %-6d %9.4f %9.4f %10.4f %10.4f %10.4f %10.1f %11.1f %11.1f %11.1f\n', i, m.z_lo, m.z_hi, ...
+        m.V_ballast, m.V_shell, m.V_air, m.mass, m.rho_eff, m.rho_floor, m.rho_stage2);
+end
+emit('      M %.1f kg (Stage 2 %.1f kg); elapsed %.1f s\n', r.props.mass_total, r.stage2.mass, elapsed);
+if ~isempty(r.reason)
+    emit('      reason: %s\n', r.reason);
+end
+end
+
+function s = ternary(cond, a, b)
+if cond
+    s = a;
+else
+    s = b;
+end
 end

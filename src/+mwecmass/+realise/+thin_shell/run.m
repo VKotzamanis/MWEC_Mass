@@ -1,68 +1,49 @@
 function [results, final_props] = run(config, x_opt, opt_results)
-%RUN Perform thin-shell material realisation after Stage 2.
-%   [results,final_props] = run(config,x_opt,opt_results) solves for steel
-%   thickness/ballast level when enabled, rebuilds realised properties when feasible,
-%   and stores steel_data plus realised stage2_3d.properties. x_opt is
-%   [1+N x 1] ([vertical shift; densities]); infeasible solves retain the
-%   optimiser properties as a documented fallback.
+%RUN  Thin-shell Stage 3 (contract F14): realise the Stage-2 design on the exact geometry.
+%
+%   [results, final_props] = mwecmass.realise.thin_shell.run(config, x_opt, opt_results)
+%
+%   x_opt = [vs; rho_1..N] and opt_results.Final3D are the Stage-2 solution. The realised design,
+%   or the closest design when Stage 3 fails (status 'failed', per-metric report), is stored as
+%   results.stage3 (S8), drawn (mwecmass.output.figures.plot_steel_solve) and exported as STEP
+%   (mwecmass.output.step.export_stage3), whatever its status; final_props describes it and
+%   never the Stage-2 properties. results.Final3D keeps the Stage-2 properties.
+%   Switches (config.output, when present): out.save.stage3.steel_solve_log (report log),
+%   out.save.stage3.steel_solve (figure), out.save.stage3.step (STEP files); a caller without
+%   config.output gets the report on the console, the figure and the STEP files.
 
-    % Preserve the optimiser record for the infeasible-solve fallback.
-    x_opt_3d = x_opt;
-    final_props_optimiser = opt_results.Final3D;
-    final_props = final_props_optimiser;
-    steel_data  = [];
-
-    if isfield(config, 'enable_steel_solve') && config.enable_steel_solve
-        % The steel-solve console text is written to Output/thin_shell/steel_solve.log whenever
-        % config.output (WEC_Output_Options) is present and out.save.stage3.steel_solve_log is
-        % true, echoed to stdout too when out.console_echo is true. A caller that
-        % invokes this realisation directly with no config.output keeps the unconditional
-        % console-only print (solve.m defaults fids to 1), matching the figure gate immediately
-        % below.
-        if isfield(config, 'output') && config.output.save.stage3.steel_solve_log
-            out = config.output;
-            fid_steel = mwecmass.output.open_log(out, 'thin_shell', 'steel_solve');
-            % onCleanup ensures cleanup on all exit paths; the helper is idempotent against
-            % the explicit close_log call (fopen returns '' for closed files).
-            steel_log_cleanup = onCleanup(@() close_fid_if_open(fid_steel));
-            if out.console_echo
-                fids_steel = [1 fid_steel];
-            else
-                fids_steel = fid_steel;
-            end
-            steel_data = mwecmass.realise.thin_shell.solve(config, x_opt_3d, final_props_optimiser, [], fids_steel);
-            mwecmass.output.close_log(fid_steel);
-        else
-            steel_data = mwecmass.realise.thin_shell.solve(config, x_opt_3d, final_props_optimiser);
-        end
-        % The steel-fill diagnostic writes every configured export format when it is wanted. A
-        % configuration carrying no output options -- a caller that
-        % invokes this realisation directly rather than through mwecmass.driver.run -- keeps the
-        % unconditional draw.
-        if ~isfield(config, 'output') || config.output.save.stage3.steel_solve
-            mwecmass.output.figures.plot_steel_solve(config, steel_data);
-        end
-        if isfield(steel_data, 'feasible') && steel_data.feasible
-            final_props = mwecmass.realise.build_realised_properties( ...
-                final_props_optimiser, steel_data, config);
-        else
-            warning('mwecmass:thin_shell:SteelInfeasibleNoSwap', ...
-                'Steel solve infeasible — final_props NOT updated, falling back to optimiser.');
-        end
+has_output = isfield(config, 'output');
+fids = 1;
+if has_output && config.output.save.stage3.steel_solve_log
+    out = config.output;
+    fid = mwecmass.output.open_log(out, 'thin_shell', 'steel_solve');
+    log_cleanup = onCleanup(@() close_fid_if_open(fid));
+    if out.console_echo
+        fids = [1 fid];
+    else
+        fids = fid;
     end
+end
+realised = mwecmass.realise.thin_shell.solve(config, x_opt, opt_results.Final3D, fids);
+clear log_cleanup
+if ~has_output || config.output.save.stage3.steel_solve
+    mwecmass.output.figures.plot_steel_solve(realised, config);
+end
+if ~has_output || config.output.save.stage3.step
+    realised.step_files = mwecmass.output.step.export_stage3(realised, ...
+        mwecmass.output.output_dir('thin_shell'));
+end
 
-    % results = opt_results: opt_results already holds every result field except the two this
-    %   realisation type changes (results.steel_data and results.stage2_3d.properties, both
-    %   overwritten immediately below). results.Final3D is left untouched: it must stay at the
-    %   pre-realisation value, which is what the optimisation step put there.
-    results = opt_results;
-    results.steel_data = steel_data;
-    results.stage2_3d.properties = final_props;
+final_props = realised.props;
+final_props.stage3_status = realised.status;
+final_props.stage3_check = realised.check;
+results = opt_results;
+results.stage3 = realised;
+results.stage2_3d.properties = final_props;
 end
 
 function close_fid_if_open(fid)
-%CLOSE_FID_IF_OPEN Close a file identifier only if it is still open; safe against prior close_log calls.
-    if ~isempty(fid) && fid > 0 && ~isempty(fopen(fid))
-        mwecmass.output.close_log(fid);
-    end
+if ~isempty(fid) && fid > 0 && ~isempty(fopen(fid))
+    mwecmass.output.close_log(fid);
+end
 end
