@@ -473,7 +473,8 @@ for q = 2:numel(keep)
 end
 runs{end + 1} = cur;
 
-fr = struct('name', {}, 'n_nodes', {}, 'n_knots', {}, 'n_passes', {}, 'n_removed', {}, 'cap_reached', {});
+fr = struct('name', {}, 'n_nodes', {}, 'n_knots', {}, 'n_passes', {}, 'n_removed', {}, 'cap_reached', {}, ...
+    't_local', {});
 names = G(1).name;
 kf = C.knots_from;
 for q = 1:numel(runs)
@@ -486,7 +487,8 @@ for q = 1:numel(runs)
         X = segs(w1(2)).ctrl(end, :);
         c2 = arc2(X, parts(1).X0, parts(1).X1, C.d);
         nominal = [0 1];
-        frq = struct('name', name, 'n_nodes', 0, 'n_knots', numel(c2.knots), 'n_passes', 0, 'n_removed', 0, 'cap_reached', false);
+        frq = struct('name', name, 'n_nodes', 0, 'n_knots', numel(c2.knots), 'n_passes', 0, 'n_removed', 0, ...
+            'cap_reached', false, 't_local', []);
     elseif all(arrayfun(@(p) segs(what(p.k, 2)).linear, parts))
         % straight segments: translated exactly, ends at the trim points
         pts = parts(1).X0;
@@ -501,7 +503,8 @@ for q = 1:numel(runs)
         pts = snap_axis(pts, parts, segs, what, open0, open1, nseg);
         c2 = struct('degree', 1, 'ctrl', pts, 'knots', [0 sig 1], 'weights', []);
         nominal = [segs(w1(2)).ua segs(w2(2)).ub];
-        frq = struct('name', name, 'n_nodes', 0, 'n_knots', numel(c2.knots), 'n_passes', 0, 'n_removed', 0, 'cap_reached', false);
+        frq = struct('name', name, 'n_nodes', 0, 'n_knots', numel(c2.knots), 'n_passes', 0, 'n_removed', 0, ...
+            'cap_reached', false, 't_local', []);
     else
         [c2, frq] = fit_run(parts, segs, what, C, sn, open0, open1, nseg, name, kf);
         nominal = [segs(w1(2)).ua segs(w2(2)).ub];
@@ -640,17 +643,18 @@ if ~isempty(kf)
         error('mwecmass:solid:KnotsFromMismatch', 'offset_surface: knots_from has no patch %s', name);
     end
     k = kf.patches(i).surf.knots{1};
+    p = kf.patches(i).surf.degree(1);
     k = (k - k(1)) / (k(end) - k(1));
-    ki = k(4:end - 4);
+    ki = k(p + 2:end - p - 1);
     [u, ~, j] = unique(ki);
     mult = accumarray(j(:), 1)';
-    prob.breaks = u(mult >= 3);
-    prob.knots = u(mult < 3);
+    prob.breaks = u(mult >= p);
+    prob.knots = u(mult < p);
     fopts.knots_fixed = true;
 end
 [c2, r] = mwecmass.solid.fit_bspline_surface(prob, fopts);
 frq = struct('name', name, 'n_nodes', r.n_nodes, 'n_knots', r.n_knots, 'n_passes', r.n_passes, ...
-    'n_removed', r.n_removed, 'cap_reached', r.cap_reached);
+    'n_removed', r.n_removed, 'cap_reached', r.cap_reached, 't_local', [r.info.t_local_min r.info.t_local_max]);
 end
 
 function Q = run_sample(s, parts, sig, segs, what, d, sn)
@@ -666,20 +670,45 @@ end
 end
 
 function [ok, info] = judge_run(c, segs, C)
-% M1/M2 in the meridian plane: distance of check points of the fitted profile (Gauss points and
-% the midpoint of every span) to the whole outer profile chain
+% M1/M2 in the meridian plane: distance of points of the fitted profile to the whole outer profile
+% chain, at the check points (Gauss points and the midpoint of every span) and at the extremes of
+% the distance between them: 24 more points per span, then two rounds of parabolic interpolation
+% about every local minimum and maximum of the samples of a span (the distance is smooth inside a span)
 ku = unique(c.knots);
-[xg, ~] = gauss_legendre(C.n_gauss);
 nsp = numel(ku) - 1;
-s = zeros(0, 1);
-sp = zeros(0, 1);
-for j = 1:nsp
-    sj = [ku(j) + (ku(j + 1) - ku(j)) * (xg + 1) / 2; (ku(j) + ku(j + 1)) / 2];
-    s = [s; sj]; %#ok<AGROW>
-    sp = [sp; repmat(j, numel(sj), 1)]; %#ok<AGROW>
+[xg, ~] = gauss_legendre(C.n_gauss);
+f = [(xg + 1) / 2; 0.5; (0:24)' / 24];
+s = reshape(ku(1:nsp) + f * diff(ku), [], 1);
+sp = reshape(repmat(1:nsp, numel(f), 1), [], 1);
+% the end of a span is evaluated on that span (the evaluator takes the next span at an interior knot)
+e1 = reshape(repmat(f == 1, 1, nsp), [], 1);
+s(e1) = s(e1) - eps(s(e1)) .* (s(e1) < ku(end));
+dist = profile_distance(segs, mwecmass.solid.eval_bspline_curve(c, s));
+for pass = 1:2
+    sn = zeros(0, 1);
+    spn = zeros(0, 1);
+    for j = 1:nsp
+        in = find(sp == j);
+        [sj, o] = sort(s(in));
+        dj = dist(in(o));
+        i = find((dj(2:end - 1) <= dj(1:end - 2) & dj(2:end - 1) <= dj(3:end)) | ...
+            (dj(2:end - 1) >= dj(1:end - 2) & dj(2:end - 1) >= dj(3:end))) + 1;
+        for q = i'
+            sn(end + 1, 1) = parabola_vertex(sj(q - 1:q + 1), dj(q - 1:q + 1)); %#ok<AGROW>
+            spn(end + 1, 1) = j; %#ok<AGROW>
+        end
+    end
+    if isempty(sn)
+        break
+    end
+    lo = reshape(ku(spn), [], 1);
+    hi = reshape(ku(spn + 1), [], 1);
+    hi = hi - eps(hi) .* (hi < ku(end));
+    sn = min(max(sn, lo), hi);
+    s = [s; sn]; %#ok<AGROW>
+    sp = [sp; spn]; %#ok<AGROW>
+    dist = [dist; profile_distance(segs, mwecmass.solid.eval_bspline_curve(c, sn))]; %#ok<AGROW>
 end
-X = mwecmass.solid.eval_bspline_curve(c, s);
-dist = profile_distance(segs, X);
 ok = true(1, nsp);
 for j = 1:nsp
     dj = dist(sp == j);
@@ -688,10 +717,21 @@ end
 info = struct('t_local_min', min(dist), 't_local_max', max(dist));
 end
 
+function x = parabola_vertex(s, d)
+% abscissa of the vertex of the parabola through three points, kept inside their interval
+den = (s(2) - s(1)) * (d(2) - d(3)) - (s(2) - s(3)) * (d(2) - d(1));
+x = s(2);
+if den ~= 0
+    x = s(2) - ((s(2) - s(1))^2 * (d(2) - d(3)) - (s(2) - s(3))^2 * (d(2) - d(1))) / (2 * den);
+end
+x = min(max(x, s(1)), s(3));
+end
+
 function dist = profile_distance(segs, X)
 % distance from the points X to the outer profile segments: Newton with descent safeguard on each
-% segment from the three nearest of 81 samples (several local minima occur behind a fold),
-% skipping segments whose sample box is farther than the best sample distance so far
+% segment from the three nearest of 81 samples (several local minima occur behind a fold), the
+% three starts in one batch and only unconverged points iterated; segments whose sample box is
+% farther than the best sample distance so far are skipped
 dist = Inf(size(X, 1), 1);
 G = cell(1, numel(segs));
 for k = 1:numel(segs)
@@ -710,40 +750,45 @@ for k = 1:numel(segs)
     if isempty(idx)
         continue
     end
-    Xi = X(idx, :);
-    D = (Xi(:, 1) - Q(:, 1)').^2 + (Xi(:, 2) - Q(:, 2)').^2;
+    D = (X(idx, 1) - Q(:, 1)').^2 + (X(idx, 2) - Q(:, 2)').^2;
     [~, order] = sort(D, 2);
-    for start = 1:3
-    u = s(order(:, start));
+    Xi = repmat(X(idx, :), 3, 1);
+    u = s(reshape(order(:, 1:3), [], 1));
     dcur = sqrt(sum((seg_eval(sg, u) - Xi).^2, 2));
+    act = (1:numel(u))';
     for it = 1:30
-        [P0, P1, P2] = seg_eval(sg, u);
-        r = P0 - Xi;
+        [P0, P1, P2] = seg_eval(sg, u(act));
+        r = P0 - Xi(act, :);
         g = sum(r .* P1, 2);
         H = sum(P1 .* P1, 2) + sum(r .* P2, 2);
         H(H <= 0) = sum(P1(H <= 0, :).^2, 2);
         du = -g ./ max(H, realmin);
         % descent: halve a step that does not decrease the distance
-        lam = ones(size(u));
+        lam = ones(size(act));
+        un = u(act);
+        dn = dcur(act);
+        todo = (1:numel(act))';
         for h = 1:12
-            un = min(max(u + lam .* du, sg.ua), sg.ub);
-            dn = sqrt(sum((seg_eval(sg, un) - Xi).^2, 2));
-            worse = dn > dcur;
-            if ~any(worse)
+            ut = min(max(u(act(todo)) + lam(todo) .* du(todo), sg.ua), sg.ub);
+            dt = sqrt(sum((seg_eval(sg, ut) - Xi(act(todo), :)).^2, 2));
+            better = dt <= dcur(act(todo));
+            un(todo(better)) = ut(better);
+            dn(todo(better)) = dt(better);
+            todo = todo(~better);
+            if isempty(todo)
                 break
             end
-            lam(worse) = lam(worse) / 2;
+            lam(todo) = lam(todo) / 2;
         end
-        un(worse) = u(worse);
-        dn(worse) = dcur(worse);
-        if isequal(un, u)
+        moved = un ~= u(act);
+        u(act) = un;
+        dcur(act) = dn;
+        act = act(moved);
+        if isempty(act)
             break
         end
-        u = un;
-        dcur = dn;
     end
-    dist(idx) = min(dist(idx), dcur);
-    end
+    dist(idx) = min(dist(idx), min(reshape(dcur, [], 3), [], 2));
 end
 end
 
@@ -1213,6 +1258,7 @@ for k = 1:numel(E)
     v = e.visible;
     pv = prim(v);
     fr = fitrep{pv};
+    tl_fit = [];
     base = regexprep(e.name, '^.*_inner', '_inner');
     if ~isempty(fr)
         i = find(cellfun(@(x) ~isempty(regexp(x, [base '$'], 'once')), {fr.name}), 1);
@@ -1220,6 +1266,7 @@ for k = 1:numel(E)
             q.n_nodes = fr(i).n_nodes;
             q.n_passes = fr(i).n_passes;
             q.n_removed = fr(i).n_removed;
+            tl_fit = fr(i).t_local;
             cap = cap || fr(i).cap_reached;
         end
     end
@@ -1236,6 +1283,8 @@ for k = 1:numel(E)
     X = mwecmass.solid.eval_bspline_surface(e.surf, UU(:), VV(:));
     tl = surface_distance(C.outer, X);
     q.n_check = numel(tl);
+    % with the extremes the profile fit found between the check points
+    tl = [tl; tl_fit(:)];
     q.t_local_min = min(tl);
     q.t_local_max = max(tl);
     q.M1 = all(tl >= C.t_min);
@@ -1320,9 +1369,10 @@ function dmin = surface_distance(E, X)
 % a cell is polynomial or rational without interior knots, so the iteration does not cross a
 % crease). The grid points of all cells give an upper bound first; a cell is then searched only
 % for the points whose distance to its grid's bounding box, grown by the box's size, is below it.
+% The searches of all cells of a face run as one batch.
 m = size(X, 1);
-cells = struct('k', {}, 'lo', {}, 'hi', {}, 'U', {}, 'V', {}, 'G', {});
 dmin = Inf(m, 1);
+cells = cell(1, numel(E));
 for k = 1:numel(E)
     s = E(k).surf;
     if isempty(s)
@@ -1330,6 +1380,7 @@ for k = 1:numel(E)
     end
     ku = unique(s.knots{1});
     kv = unique(s.knots{2});
+    cl = struct('lo', {}, 'hi', {}, 'U', {}, 'V', {}, 'G', {});
     for a = 1:numel(ku) - 1
         for b = 1:numel(kv) - 1
             % at an interior knot the evaluator takes the next span: stay just below it
@@ -1338,78 +1389,105 @@ for k = 1:numel(E)
             vs = kv(b) + (0:8)' / 8 * (hi(2) - kv(b));
             [UU, VV] = ndgrid(us, vs);
             G = mwecmass.solid.eval_bspline_surface(s, UU(:), VV(:));
-            cells(end + 1) = struct('k', k, 'lo', [ku(a) kv(b)], 'hi', hi, 'U', UU(:), 'V', VV(:), 'G', G); %#ok<AGROW>
+            cl(end + 1) = struct('lo', [ku(a) kv(b)], 'hi', hi, 'U', UU(:), 'V', VV(:), 'G', G); %#ok<AGROW>
             D = (X(:, 1) - G(:, 1)').^2 + (X(:, 2) - G(:, 2)').^2 + (X(:, 3) - G(:, 3)').^2;
             dmin = min(dmin, sqrt(min(D, [], 2)));
         end
     end
+    cells{k} = cl;
 end
-for c = cells
-    s = E(c.k).surf;
-    G = c.G;
-    ext = max(max(G, [], 1) - min(G, [], 1));
-    lb = sqrt(sum(max(0, max(min(G, [], 1) - X, X - max(G, [], 1))).^2, 2));
-    idx = find(lb <= dmin + ext);
-    if isempty(idx)
+for k = 1:numel(E)
+    s = E(k).surf;
+    if isempty(cells{k})
         continue
     end
-    Xi = X(idx, :);
-    D = (Xi(:, 1) - G(:, 1)').^2 + (Xi(:, 2) - G(:, 2)').^2 + (Xi(:, 3) - G(:, 3)').^2;
-    [~, order] = sort(D, 2);
-    for start = 1:3
-        j = order(:, start);
-        u = c.U(j);
-        v = c.V(j);
-        dcur = sqrt(sum((mwecmass.solid.eval_bspline_surface(s, u, v) - Xi).^2, 2));
-        for it = 1:25
-            [S, Su, Sv, Suu, Suv, Svv] = mwecmass.solid.eval_bspline_surface(s, u, v);
-            r = S - Xi;
-            g1 = sum(r .* Su, 2);
-            g2 = sum(r .* Sv, 2);
-            h11 = sum(Su .* Su, 2) + sum(r .* Suu, 2);
-            h12 = sum(Su .* Sv, 2) + sum(r .* Suv, 2);
-            h22 = sum(Sv .* Sv, 2) + sum(r .* Svv, 2);
-            bad = ~(h11 .* h22 - h12.^2 > 0 & h11 > 0);
-            h11(bad) = sum(Su(bad, :).^2, 2) + realmin;
-            h22(bad) = sum(Sv(bad, :).^2, 2) + realmin;
-            h12(bad) = 0;
-            dt = h11 .* h22 - h12.^2;
-            du = -(h22 .* g1 - h12 .* g2) ./ dt;
-            dv = -(h11 .* g2 - h12 .* g1) ./ dt;
-            % a parameter held at a bound of the cell: Newton in the other one alone
-            hu = (u <= c.lo(1) & du < 0) | (u >= c.hi(1) & du > 0);
-            hv = (v <= c.lo(2) & dv < 0) | (v >= c.hi(2) & dv > 0);
-            du(hv & ~hu) = -g1(hv & ~hu) ./ h11(hv & ~hu);
-            dv(hv) = 0;
-            dv(hu & ~hv) = -g2(hu & ~hv) ./ h22(hu & ~hv);
-            du(hu) = 0;
-            du(~isfinite(du)) = 0;
-            dv(~isfinite(dv)) = 0;
-            % descent: a step toward a stationary point that is not a minimum is halved until the
-            % distance decreases, or dropped
-            lam = ones(size(u));
-            for h = 1:12
-                un = min(max(u + lam .* du, c.lo(1)), c.hi(1));
-                vn = min(max(v + lam .* dv, c.lo(2)), c.hi(2));
-                dn = sqrt(sum((mwecmass.solid.eval_bspline_surface(s, un, vn) - Xi).^2, 2));
-                worse = dn > dcur;
-                if ~any(worse)
-                    break
-                end
-                lam(worse) = lam(worse) / 2;
-            end
-            un(worse) = u(worse);
-            vn(worse) = v(worse);
-            dn(worse) = dcur(worse);
-            if isequal(un, u) && isequal(vn, v)
+    pt = zeros(0, 1);
+    u = zeros(0, 1);
+    v = zeros(0, 1);
+    lo = zeros(0, 2);
+    hi = zeros(0, 2);
+    for c = cells{k}
+        G = c.G;
+        ext = max(max(G, [], 1) - min(G, [], 1));
+        lb = sqrt(sum(max(0, max(min(G, [], 1) - X, X - max(G, [], 1))).^2, 2));
+        idx = find(lb <= dmin + ext);
+        if isempty(idx)
+            continue
+        end
+        D = (X(idx, 1) - G(:, 1)').^2 + (X(idx, 2) - G(:, 2)').^2 + (X(idx, 3) - G(:, 3)').^2;
+        [~, order] = sort(D, 2);
+        j = reshape(order(:, 1:3), [], 1);
+        pt = [pt; repmat(idx, 3, 1)]; %#ok<AGROW>
+        u = [u; c.U(j)]; %#ok<AGROW>
+        v = [v; c.V(j)]; %#ok<AGROW>
+        lo = [lo; repmat(c.lo, numel(j), 1)]; %#ok<AGROW>
+        hi = [hi; repmat(c.hi, numel(j), 1)]; %#ok<AGROW>
+    end
+    if isempty(pt)
+        continue
+    end
+    Xi = X(pt, :);
+    dcur = sqrt(sum((mwecmass.solid.eval_bspline_surface(s, u, v) - Xi).^2, 2));
+    act = (1:numel(pt))';
+    for it = 1:25
+        [S, Su, Sv, Suu, Suv, Svv] = mwecmass.solid.eval_bspline_surface(s, u(act), v(act));
+        r = S - Xi(act, :);
+        g1 = sum(r .* Su, 2);
+        g2 = sum(r .* Sv, 2);
+        h11 = sum(Su .* Su, 2) + sum(r .* Suu, 2);
+        h12 = sum(Su .* Sv, 2) + sum(r .* Suv, 2);
+        h22 = sum(Sv .* Sv, 2) + sum(r .* Svv, 2);
+        bad = ~(h11 .* h22 - h12.^2 > 0 & h11 > 0);
+        h11(bad) = sum(Su(bad, :).^2, 2) + realmin;
+        h22(bad) = sum(Sv(bad, :).^2, 2) + realmin;
+        h12(bad) = 0;
+        dt = h11 .* h22 - h12.^2;
+        du = -(h22 .* g1 - h12 .* g2) ./ dt;
+        dv = -(h11 .* g2 - h12 .* g1) ./ dt;
+        ua = u(act);
+        va = v(act);
+        la = lo(act, :);
+        ha = hi(act, :);
+        % a parameter held at a bound of the cell: Newton in the other one alone
+        hu = (ua <= la(:, 1) & du < 0) | (ua >= ha(:, 1) & du > 0);
+        hv = (va <= la(:, 2) & dv < 0) | (va >= ha(:, 2) & dv > 0);
+        du(hv & ~hu) = -g1(hv & ~hu) ./ h11(hv & ~hu);
+        dv(hv) = 0;
+        dv(hu & ~hv) = -g2(hu & ~hv) ./ h22(hu & ~hv);
+        du(hu) = 0;
+        du(~isfinite(du)) = 0;
+        dv(~isfinite(dv)) = 0;
+        % descent: a step toward a stationary point that is not a minimum is halved until the
+        % distance decreases, or dropped
+        lam = ones(size(act));
+        un = ua;
+        vn = va;
+        dn = dcur(act);
+        todo = (1:numel(act))';
+        for h = 1:12
+            ut = min(max(ua(todo) + lam(todo) .* du(todo), la(todo, 1)), ha(todo, 1));
+            vt = min(max(va(todo) + lam(todo) .* dv(todo), la(todo, 2)), ha(todo, 2));
+            dtry = sqrt(sum((mwecmass.solid.eval_bspline_surface(s, ut, vt) - Xi(act(todo), :)).^2, 2));
+            better = dtry <= dcur(act(todo));
+            un(todo(better)) = ut(better);
+            vn(todo(better)) = vt(better);
+            dn(todo(better)) = dtry(better);
+            todo = todo(~better);
+            if isempty(todo)
                 break
             end
-            u = un;
-            v = vn;
-            dcur = dn;
+            lam(todo) = lam(todo) / 2;
         end
-        dmin(idx) = min(dmin(idx), dcur);
+        moved = un ~= ua | vn ~= va;
+        u(act) = un;
+        v(act) = vn;
+        dcur(act) = dn;
+        act = act(moved);
+        if isempty(act)
+            break
+        end
     end
+    dmin = min(dmin, accumarray(pt, dcur, [m 1], @min, Inf));
 end
 end
 
