@@ -398,7 +398,7 @@ their mean (assumes star-shaped sections); CG_x = CG_y = 0 (declared symmetric-b
    single highest or lowest point inside a patch ends in a pole row there. Bands end at one set of
    heights for the whole hull, and a point where a seam, crease or cut ends inside another face's
    row is joined by a cut to a vertex of that face's opposite row, so every face boundary has one
-   neighbour and is shared bitwise (no T-junctions); a flat region (one connected constant-z area
+   neighbour and is shared as the same curve (contract S1; bitwise between fitted faces; no T-junctions); a flat region (one connected constant-z area
    at one height, merged across seams and mirror planes) is one plane face bounded only by rows of
    lateral faces. The mirror of a fitted face is its source's face with the control points
    flipped, exactly 0 in the flipped coordinate on a boundary in the mirror plane, and its source

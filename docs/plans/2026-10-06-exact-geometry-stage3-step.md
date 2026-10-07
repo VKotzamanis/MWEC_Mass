@@ -345,7 +345,8 @@ Files: `src/+mwecmass/+solid/fit_z_faces.m` (and helpers named `fit_z_*.m`), tes
   there by F3b, or at their existing knots where the band end is the height of a constant-z interval),
   and every vertex that would lie inside a face row (the end or z-extreme of a seam or crease, the end
   of a closed-loop cut, a vertex of a mirror face's rows flipped back) is joined by a cut to a vertex
-  of the face's opposite row, so every face boundary has one neighbour and is shared bitwise (contract
+  of the face's opposite row, so every face boundary has one neighbour and is shared as the same curve (contract S1; bitwise
+  between fitted faces; contract
   §8 Cuts, Mirrors). A flat region is one connected constant-z area at one height, merged across seams
   and mirror planes, bounded only by lateral-face rows, and written by F5 as one plane face. The mirror
   of a fitted face is its source's face with the control points flipped, exactly 0 in the flipped
@@ -371,7 +372,7 @@ for a shell at t = t_min (the offset folds at every convex corner) as the kernel
 the written faces (S2r); at the same check points the oracle t_local (to the exact profile) lies in
 [t − e, t + ε + e], e the largest oracle distance of the written outer faces from the exact surface
 (≤ ε/4, asserted above), and its difference from the kernel's t_local is printed per face; every
-face is `z_of_u` with monotone z and F3b cuts it at a module-edge height; seams pass the I2 bitwise
+face is `z_of_u` with monotone z and F3b cuts it at a module-edge height; seams pass the I2 same-curve
 test and the seam fields pair up (contract I2). No T-junction (contract §8 Cuts): at each of the
 highest points of the N, S and Q rims (φ = 180°, where each rim's crease branches end and no seam
 runs) and at the disk centres T and K (where the self-seams of the top and bottom disks end), every
@@ -756,7 +757,8 @@ check that no shape-assumption pattern remains (`grep` for `sqrt(.*/pi)`, `pi\s*
 Contract: documents S1–S8 and F1–F14 as implemented; last in the contract §4 order of every doc file.
 
 Rewrite the methods, runtime and schema sections listed under D12; document the kernel, the new
-Stage 3, the status/report fields and the STEP outputs; update `CHANGELOG.md` and `AGENTS.md`.
+Stage 3, the status/report fields and the STEP outputs; update `CHANGELOG.md`, `AGENTS.md` and the folders table of `tests/README.md` (`tests/solid/`,
+`tests/standins/`, `tests/standin_kit/`).
 
 ### T13 — Final review (Opus high)
 
