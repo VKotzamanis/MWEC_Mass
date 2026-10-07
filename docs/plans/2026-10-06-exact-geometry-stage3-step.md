@@ -33,16 +33,16 @@ both Stage-3 realisations, the stored contours, the figures and the STEP writer
   happens in the cloud container only.
 - **Waves.** Tasks in one wave run in parallel; a wave starts when the previous one is merged.
   - A: T0 harness, T1 kernel rows and normals, T9 STEP writer.
-  - B: T0b renames, T2 offset, fold trimming and spline fit.
-  - C: T3 bodies and exact properties, T4a Stage-2 changes that do not need the kernel.
-    **Owner checkpoint after T3.**
-  - D: T4b Stage-2 floors from the kernel, both modes.
+  - B: T0c parser entity lookups, T0d geometry cache, T2 offset, fold trimming and spline fit.
+  - C: T0b renames, T3 bodies and exact properties. **Owner checkpoint after T3.**
+  - D: T4a, then T4b (both edit `build_config.m` and the Stage-2 files).
   - E: T5 then T6 (UHPC Stage 3), in parallel with T7 (thin shell). **Owner checkpoint after T6.**
   - F: T8 figures, T10 Stage-3 STEP exports. **Owner checkpoint after T10.**
   - G: T11 cleanup, then T12 docs, then T13 final review.
 - **Baseline:** the Octave regression baseline (T0, `tests/baseline/`) may change only in a task
   that intends to change results (T4a, T4b, T5, T6, T7). That task updates the baseline in the
-  same commit and prints the changed quantities. Renames (T0b) leave every number identical.
+  same commit and prints the changed quantities. Renames (T0b), parser lookups (T0c) and the
+  geometry cache (T0d) leave every number identical.
 - Checkpoints with the owner report measured numbers, not claims.
 - Deletions happen in the same commit as the code that replaces them. The pipeline must not sit
   in a broken state between tasks.
@@ -102,7 +102,8 @@ the install script in future cloud sessions.
 
 ### T0b — Rename the ballast and density variables (Sonnet medium)
 
-Wave B, so every later task uses the new names. Pure renaming: no change to any
+Wave C (after T0d, which also edits `build_config.m`), so every Stage-2 and Stage-3 task uses
+the new names. Pure renaming: no change to any
 formula or value; every number in the baseline stays identical. Covers `src/`, `WEC_User_Input.m`, `WEC_Output_Options.m`, `validation/`,
 `Input/WAMIT/` if affected, `docs/`, `README.md`, `AGENTS.md`.
 
@@ -120,6 +121,50 @@ Acceptance: `grep` finds none of the old names in the live code or docs (old nam
 only in a schema note that maps old `.mat` fields to new ones); all `.m` files still parse in
 Octave; the T0 smoke tests pass; `RESULT_SCHEMA.md`, `export_schema.m` and
 `check_export_schema.m` list the new field names.
+
+### T0c — Parser: resolve each entity once (Sonnet high)
+
+Wave B; owner request (2026-10-07). Files: `src/+mwecmass/+geometry/MS2Parser.m`, new tests and
+fixtures.
+
+- Every point evaluation looks up its curves and surfaces by name in a `containers.Map`. Octave
+  profile of `build_config` (C1, thin shell): 2,067 s in total, of which `containers.Map`
+  subsref, isKey and key encoding take 1,083 s over 14.5 million lookups, and `feval` dispatch
+  54 s. Resolve each entity's references and its evaluator once (at parse time or on first use)
+  and evaluate through them.
+- No change to any formula, operation or operation order: every output stays bit-identical. The
+  public API and every caller stay unchanged.
+
+Acceptance: before the change, save the outputs of the unchanged parser to `tests/fixtures/`
+(every visible surface and every curve on a dense parameter grid; `extract_isocurve_at_z` at 50
+or more heights); after the change the same calls return identical arrays (`isequal`). The T0
+regression baseline reproduces exactly. The Octave time of `build_config` and the top profile
+entries are printed before and after.
+
+### T0d — Save and reload the geometry products of `build_config` (Sonnet high)
+
+Wave B; owner request (2026-10-07). Files: `src/+mwecmass/+driver/build_config.m`, one new helper
+under `src/+mwecmass/+internal/`, `WEC_User_Input.m`, `.gitignore`, `tests/run_tests.m`.
+
+- Save the products of the expensive geometry steps of `build_config` (boundary cache;
+  waterplane, V_sub/CB_z and S_wet tables; strip geometry; Y-span table; per-strip density
+  bounds; hull volume) to a `.mat` file and reload them when the fingerprint matches; otherwise
+  recompute and overwrite. Print which of the two happened. Store plain arrays and structs only
+  (Octave cannot save classdef objects).
+- Fingerprint: a hash of the `.ms2` file bytes, of every input field these steps read, and of the
+  source of every `.m` file they can call (whole folders are acceptable; a missing file is not).
+  Hash with `java.security.MessageDigest`; Octave uses the T0 shim.
+- Cache folder from a new input `in.files.geometry_cache_dir` (default `Output/cache/`, ignored
+  by git); tests use a temporary folder. Later tasks that add expensive geometry steps to
+  `build_config` (T4b) put them inside the cached block.
+- `tests/run_tests.m` runs the full-pipeline regression tests only when the environment variable
+  `MWEC_REGRESSION=1` is set. Graders of tasks that must keep numbers (T0b, T0c, T0d) or change
+  them on purpose (T4a, T4b, T5, T6, T7) set it.
+
+Acceptance: a reloaded config equals a freshly built one (`isequal`); changing the `.ms2` file,
+any keyed input, or any keyed source file triggers a rebuild (one test each); the grader checks,
+by reading the cached steps, that every input they read is in the key; the T0 regression
+baseline reproduces exactly; build and load times are printed.
 
 ### T1 — Kernel A: outer surface rows and normals (Sonnet high)
 
