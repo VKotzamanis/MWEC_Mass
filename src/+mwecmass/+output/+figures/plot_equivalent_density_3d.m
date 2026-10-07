@@ -12,9 +12,7 @@ function plot_equivalent_density_3d(props, config)
             rho_eq = props.realised_strip_density(:);
             rho_source_is_realised = true;
         else
-            densities_at_nodes = [props.components.density];
-            rho_eq = mwecmass.output.figures.compute_strip_equivalent_density( ...
-                         config, densities_at_nodes);
+            rho_eq = [props.components.density]';
             rho_source_is_realised = false;
         end
 

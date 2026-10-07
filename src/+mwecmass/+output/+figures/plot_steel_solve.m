@@ -1,307 +1,130 @@
-function fig = plot_steel_solve(config, steel_data)
-%PLOT_STEEL_SOLVE 2D cross-section of realised steel-fill geometry with zones, outline, ballast level.
-% Renders solid-steel zone (z≤z_ballast), jacket annulus, air cavity with 45° hatching, and
-% outlines (hull, inner offset for thickness, waterline at draft, z_ballast cut). Zone
-% annotations (ρ values). NaN-resilient: when solver returns
-% infeasible, uses optimiser frame and draws red banner. Uses polygon offset from
-% mwecmass.internal.offset_polygon and silhouette from build_silhouette_profile.
+function fig = plot_steel_solve(realised, config)
+%PLOT_STEEL_SOLVE Stage-3 thin-shell realisation: elevation of the realised solid with its ballast level.
+% Inputs: realised (results.stage3: the realised or closest-fail design with its body and status);
+% config (output options). Draws the exact y = 0 section of the realised body
+% (mwecmass.output.figures.realised_section_data): solid ballast below z_ballast, the shell of
+% uniform thickness above it with its air void, the waterline, the ballast level and the status of
+% the realisation. Nothing is offset or clipped here. Returns the figure handle.
 
     style = mwecmass.output.figures.presentation_style(config);
+    if ~isstruct(realised) || ~isfield(realised, 'mode') || ~strcmp(realised.mode, 'thin_shell')
+        error('mwecmass:figures:BadRealised', 'plot_steel_solve needs the thin_shell realisation (results.stage3).');
+    end
+    data = mwecmass.output.figures.realised_section_data(realised);
+    if ~isempty(data.omitted)
+        warning('mwecmass:figures:SectionsOmitted', ...
+            '%d section heights had no usable section and are left out of the figure (first: z = %g, %s).', ...
+            numel(data.omitted), data.omitted(1).z, data.omitted(1).reason);
+    end
+    vs = data.vs;
+    profile = data.outline.profile;
 
-    %% ── Validation ────────────────────────────────────────────────────
-    if isempty(steel_data) || ~isstruct(steel_data)
-        error('plot_steel_solve:NoSteelData', 'steel_data is empty or not a struct.');
-    end
-    required = {'t_steel','z_ballast','draft','vertical_shift','feasible', ...
-                'M_steel','M_air','M_total','V_steel','V_air', ...
-                'GM_realised','T_heave_realised','T_pitch_realised', ...
-                'CG_z_world','CB_z_world','rho_air', ...
-                'targets','residuals','mass_balance_error_pct', ...
-                'vs_optimiser','draft_optimiser','t_min','t_min_active'};
-    for k = 1:length(required)
-        if ~isfield(steel_data, required{k})
-            error('plot_steel_solve:MissingField', ...
-                  'steel_data.%s missing.', required{k});
-        end
-    end
-    if ~isfield(config, 'profile') || isempty(config.profile)
-        error('plot_steel_solve:NoProfile', ...
-              'config.profile missing — needed for hull silhouette.');
-    end
-
-    %% ── Plotting frame (NaN-safe) ─────────────────────────────────────
-    if isfinite(steel_data.vertical_shift)
-        vs_plot      = steel_data.vertical_shift;
-        draft_plot   = steel_data.draft;
-        is_real      = true;
-    else
-        vs_plot      = steel_data.vs_optimiser;
-        draft_plot   = steel_data.draft_optimiser;
-        is_real      = false;
-    end
-
-    %% ── Smooth silhouette in WORLD frame (waterline = 0) ─────────────
-    % Preserve the builder's ordered profile; only the legacy raw fallback
-    % needs plotting-only side ordering before offsetting and clipping.
-    profile_is_raw = false;
-    try
-        prof_body = mwecmass.output.figures.build_silhouette_profile(config);
-        if isequal(prof_body, config.profile)
-            profile_is_raw = true;
-        end
-    catch
-        prof_body = config.profile;
-        profile_is_raw = true;
-    end
-    if profile_is_raw
-        profile_error = 'mwecmass:figures:plot_steel_solve:ProfileInvalid';
-        if ~isnumeric(prof_body) || ~isreal(prof_body) || ...
-                ~ismatrix(prof_body) || size(prof_body, 2) ~= 2 || ...
-                any(~isfinite(prof_body(:)))
-            error(profile_error, ...
-                'The fallback hull profile must be finite real numeric Nx2 [X,Z] data.');
-        end
-        points = unique(prof_body, 'rows', 'stable');
-        if size(points, 1) < 6
-            error(profile_error, 'The fallback hull profile has too few distinct boundary points.');
-        end
-        right  = sortrows(points(points(:, 1) > 0, :), 2);
-        left   = sortrows(points(points(:, 1) < 0, :), 2);
-        centre = sortrows(points(points(:, 1) == 0, :), 2);
-        if size(right, 1) < 2 || size(left, 1) < 2 || size(centre, 1) ~= 2
-            error(profile_error, ...
-                'Expected two hull sides and exactly two centreline endpoints (keel and top).');
-        end
-        if any(diff(right(:, 2)) <= 0) || any(diff(left(:, 2)) <= 0)
-            error(profile_error, ...
-                'Each stored hull side must have a single boundary point at each Z level.');
-        end
-        tolerance = 1e-10 * max(1, max(abs(points(:))));
-        if centre(1, 2) >= min([right(:, 2); left(:, 2)]) || ...
-                centre(2, 2) <= max([right(:, 2); left(:, 2)]) || ...
-                size(right, 1) ~= size(left, 1) || ...
-                any(abs(right(:, 1) + left(:, 1)) > tolerance) || ...
-                any(abs(right(:, 2) - left(:, 2)) > tolerance)
-            error(profile_error, ...
-                'Fallback hull profile sides are not valid symmetric paired XZ samples.');
-        end
-        % Traverse right side bottom-to-top, then left side top-to-bottom.
-        % Reordering and exact deduplication only; coordinate values are kept.
-        prof_body = [centre(1, :); right; centre(2, :); flipud(left); centre(1, :)];
-        edge_lengths = hypot(diff(prof_body(:, 1)), diff(prof_body(:, 2)));
-        signed_area = 0.5 * sum(prof_body(1:end-1, 1) .* prof_body(2:end, 2) - ...
-            prof_body(2:end, 1) .* prof_body(1:end-1, 2));
-        if any(~isfinite(edge_lengths)) || any(edge_lengths <= 0) || ...
-                ~isfinite(signed_area) || signed_area <= 0
-            error(profile_error, 'The ordered fallback hull boundary is invalid.');
-        end
-    end
-    profile_world = prof_body + [0, vs_plot];
-    px_outer = profile_world(:, 1);
-    pz_outer = profile_world(:, 2);
-    z_ballast_world = steel_data.z_ballast + vs_plot;
-
-    %% ── Inner jacket offset (the THICKNESS visualisation) ────────────
-    if isfinite(steel_data.t_steel) && steel_data.t_steel > 1e-6
-        [px_inner, pz_inner] = mwecmass.internal.offset_polygon( ...
-                                   px_outer, pz_outer, steel_data.t_steel);
-    else
-        px_inner = [];  pz_inner = [];
-    end
-    has_inner = length(px_inner) >= 3;
-
-    %% ── Sutherland–Hodgman clips at z_ballast (no polyshape) ────────────
-    [x_below_o, z_below_o] = clip_polygon_below_z(px_outer, pz_outer, z_ballast_world);
-    [x_above_o, z_above_o] = clip_polygon_above_z(px_outer, pz_outer, z_ballast_world);
-    if has_inner
-        [x_above_i, z_above_i] = clip_polygon_above_z(px_inner, pz_inner, z_ballast_world);
-    else
-        x_above_i = [];  z_above_i = [];
-    end
-
-    %% ── Figure ───────────────────────────────────────────────────────
     fig = mwecmass.output.figures.new_figure(style, 'tall_double_column');
-    % This single-panel diagnostic needs additional vertical plot-box room so
-    % axis equal can display the full hull at a useful physical width beneath
-    % the 2x2 legend. Keep the shared preset unchanged for other figures.
+    % This single-panel figure needs vertical room so axis equal can show the full hull beneath
+    % the 2 x 2 legend; the shared size preset stays unchanged for other figures.
     set(fig, 'Units', 'centimeters');
     fig.Position(3:4) = [17, 15];
-    set(fig, 'Name', 'Steel-Fill Solver');
+    set(fig, 'Name', 'Stage 3: Thin Shell');
+    ax = axes(fig);
+    hold(ax, 'on');
+    axis(ax, 'equal');
 
-    %% ============= 2D cross-section =====================
-    ax1 = axes(fig);
-    hold(ax1, 'on'); axis(ax1, 'equal');
-
-    % ─ PASS 1: filled regions ──────────────────────────────────────
-    if length(x_below_o) >= 3
-        patch(ax1, x_below_o, z_below_o, style.fill_palette.solid_material, ...
-              'EdgeColor', 'none', 'FaceAlpha', 1.0, ...
-              'HandleVisibility', 'off');
-    end
-    if length(x_above_o) >= 3
-        patch(ax1, x_above_o, z_above_o, style.fill_palette.jacket_material, ...
-              'EdgeColor', 'none', 'FaceAlpha', 1.0, ...
-              'HandleVisibility', 'off');
-    end
-    if length(x_above_i) >= 3
-        patch(ax1, x_above_i, z_above_i, style.fill_palette.void, ...
-              'EdgeColor', 'none', 'FaceAlpha', 1.0, ...
-              'HandleVisibility', 'off');
-
-        % ─ PASS 2: 45° hatch over the air cavity ────────────────
-        try
-            draw_hatch(ax1, x_above_i, z_above_i, style.fill_palette.hatch, style.hatch_spacing, ...
-                       style.line_width.hatch);
-        catch ME
-            warning('plot_steel_solve:HatchFailed', ...
-                    'Hatch rendering failed (non-fatal): %s', ME.message);
+    for k = 1:numel(data.polygons)
+        p = data.polygons(k);
+        if ~strcmp(p.role, 'void')
+            patch(ax, p.xz(:, 1), p.xz(:, 2) + vs, role_color(p.role, style), 'EdgeColor', 'none', ...
+                'FaceAlpha', 1.0, 'HandleVisibility', 'off');
         end
     end
-
-    % ─ PASS 3: outlines ────────────────────────────────────────────
-    h_hull = plot(ax1, [px_outer; px_outer(1)], [pz_outer; pz_outer(1)], ...
-                  '-', 'Color', style.fill_palette.boundary, ...
-                  'HandleVisibility', 'off');
+    for k = 1:numel(data.polygons)
+        p = data.polygons(k);
+        if strcmp(p.role, 'void')
+            patch(ax, p.xz(:, 1), p.xz(:, 2) + vs, style.fill_palette.void, 'EdgeColor', 'none', ...
+                'FaceAlpha', 1.0, 'HandleVisibility', 'off');
+            h_in = plot(ax, p.xz([1:end, 1], 1), p.xz([1:end, 1], 2) + vs, '--', ...
+                'Color', style.fill_palette.inner_boundary, 'HandleVisibility', 'off');
+            mwecmass.output.figures.style_line(h_in, style, 'boundary');
+            mwecmass.output.figures.draw_hatch_strips(ax, p.xz(:, 1), p.xz(:, 2) + vs, ...
+                style.hatch_spacing, style.fill_palette.hatch);
+        end
+    end
+    h_hull = plot(ax, profile([1:end, 1], 1), profile([1:end, 1], 2) + vs, '-', ...
+        'Color', style.fill_palette.boundary, 'HandleVisibility', 'off');
     mwecmass.output.figures.style_line(h_hull, style, 'boundary');
 
-    h_inner = [];
-    if has_inner
-        h_inner = plot(ax1, [px_inner; px_inner(1)], [pz_inner; pz_inner(1)], ...
-                       '--', 'Color', style.fill_palette.inner_boundary, ...
-                       'HandleVisibility', 'off');
-        mwecmass.output.figures.style_line(h_inner, style, 'boundary');
-    end
-
-    % Keep the waterline and x-limits close to the realised hull so the
-    % equal-aspect axes use the available width beneath the legend.
-    hull_x_limits = [min(px_outer), max(px_outer)];
-    hull_x_margin = 0.05 * max(diff(hull_x_limits), eps);
-    x_range = hull_x_limits + [-hull_x_margin, hull_x_margin];
-    h_wl    = plot(ax1, x_range, [0, 0], '--', ...
-                   'Color', style.fill_palette.waterline);
+    x_limits = [min(profile(:, 1)), max(profile(:, 1))];
+    x_margin = 0.05 * max(diff(x_limits), eps);
+    x_range = x_limits + [-x_margin, x_margin];
+    h_wl = plot(ax, x_range, [0, 0], '--', 'Color', style.fill_palette.waterline);
     mwecmass.output.figures.style_line(h_wl, style, 'reference');
-
-    latex_slash = char(92);
-
-    % Infeasibility banner
-    if ~is_real
-        yl = ylim(ax1);
-        h_infeas = text(ax1, mean(x_range), yl(2) - 0.05*(yl(2)-yl(1)), ...
-             'INFEASIBLE — geometry rendered with optimiser draft', ...
-             'HorizontalAlignment', 'center', 'Color', style.status_palette.bad, ...
-             'FontWeight', 'bold');
-        mwecmass.output.figures.style_text(h_infeas, style, 'annotation');
+    handles = [];
+    labels = {};
+    if data.z_ballast > data.z_range(1) && data.z_ballast < data.z_range(2)
+        h_zb = plot(ax, x_range, data.z_ballast * [1 1] + vs, '-', 'Color', style.fill_palette.ballast_level);
+        mwecmass.output.figures.style_line(h_zb, style, 'reference');
+        handles = h_zb;
+        labels = {'Ballast level, $z_{\mathrm{ballast}}$'};
     end
 
-    % ─ PASS 4: legend (build conditionally) ─────────────────────────
-    h_solid_proxy  = patch(ax1, NaN, NaN, style.fill_palette.solid_material,  'EdgeColor', 'none');
-    h_jacket_proxy = patch(ax1, NaN, NaN, style.fill_palette.jacket_material, 'EdgeColor', 'none');
-    h_air_proxy    = patch(ax1, NaN, NaN, style.fill_palette.void, ...
-                           'EdgeColor', style.fill_palette.hatch, 'LineStyle', '--');
-
-    rho_material_txt = num2str(steel_data.rho_ballast, '%.0f');
-    shell_thickness_txt = num2str(steel_data.t_steel, '%.4f');
-    air_density_txt = num2str(steel_data.rho_air, '%.1f');
-    leg_h = [h_solid_proxy, h_jacket_proxy, h_air_proxy, h_wl];
-    leg_l = {['Solid Ballast, $' latex_slash 'rho_{' latex_slash ...
-              'mathrm{material}} = ' rho_material_txt '$ [kg/m$^3$]'], ...
-             ['Thin Shell, $t_{plate} = ' shell_thickness_txt '$ [m]'], ...
-             ['Hollow Volume, $' latex_slash 'rho_{' latex_slash ...
-              'mathrm{Air}} = ' air_density_txt '$ [kg/m$^3$]'], ...
-             'Waterline, $Z = 0$ m'};
-
-    lg = legend(ax1, leg_h, leg_l, 'Location', 'northoutside', ...
-        'NumColumns', 2, 'AutoUpdate', 'off');
+    present = unique({data.polygons.role});
+    t = realised.design.t(isfinite(realised.design.t));
+    if any(strcmp(present, 'ballast'))
+        h_b = patch(ax, NaN, NaN, role_color('ballast', style), 'EdgeColor', 'none');
+        handles = [h_b, handles];
+        labels = [{sprintf('Solid Ballast, $\\rho_{\\mathrm{ballast}} = %.0f$ [kg/m$^3$]', realised.rho.ballast)}, labels];
+    end
+    if any(strcmp(present, 'wall'))
+        h_s = patch(ax, NaN, NaN, role_color('wall', style), 'EdgeColor', 'none');
+        handles = [handles, h_s];
+        labels = [labels, {sprintf('Thin Shell, $t$ = %.1f [mm]', 1000 * t(1))}];
+    end
+    if any(strcmp(present, 'void'))
+        h_a = patch(ax, NaN, NaN, style.fill_palette.void, 'EdgeColor', style.fill_palette.hatch, 'LineStyle', '--');
+        handles = [handles, h_a];
+        labels = [labels, {sprintf('Hollow Volume, $\\rho_{\\mathrm{air}} = %.1f$ [kg/m$^3$]', realised.rho.air)}];
+    end
+    handles = [handles, h_wl];
+    labels = [labels, {'Waterline, $Z = 0$ m'}];
+    lg = legend(ax, handles, labels, 'Location', 'northoutside', 'NumColumns', 2, 'AutoUpdate', 'off');
     mwecmass.output.figures.style_legend(lg, style);
     lg.FontSize = min(style.font_size.legend, 8.5);
 
-    xlabel(ax1, {'X [m]', ...
-        ['Stage 3: Thin Shell Construction, $' latex_slash 'rho_{' latex_slash ...
-         'mathrm{material}} = ' ...
-         rho_material_txt '$ [kg/m$^3$]']});
-    ylabel(ax1, 'Z [m]');
-    mwecmass.output.figures.apply_axes_style(ax1, style);
-    set(ax1, 'Box', 'on', 'XGrid', 'off', 'YGrid', 'off', ...
-        'XMinorGrid', 'off', 'YMinorGrid', 'off');
-    hull_z_limits = [min([pz_outer; 0]), max([pz_outer; 0])];
-    hull_z_margin = 0.05 * max(diff(hull_z_limits), eps);
-    xlim(ax1, hull_x_limits + [-1.1, 1.1] * hull_x_margin);
-    zlim(ax1, hull_z_limits + [-1.1, 1.1] * hull_z_margin);
-    hold(ax1, 'off');
+    if strcmp(data.status, 'accepted')
+        colour = style.status_palette.ok;
+    else
+        colour = style.status_palette.bad;
+    end
+    z_world = profile(:, 2) + vs;
+    z_limits = [min([z_world; 0]), max([z_world; 0])];
+    z_margin = 0.05 * max(diff(z_limits), eps);
+    h_status = text(ax, 0.02, 0.02, strrep(strrep(data.status_lines, '_', '\_'), '%', '\%'), 'Units', 'normalized', ...
+        'VerticalAlignment', 'bottom', 'BackgroundColor', 'w', 'Margin', 1, 'Color', colour, 'FontWeight', 'bold');
+    mwecmass.output.figures.style_text(h_status, style, 'annotation');
 
-    %% ── Save ────────────────────────────────────────────────────────
-    save_figure(fig, config);
-end
+    xlabel(ax, {'X [m]', 'Stage 3: Thin Shell Construction'});
+    ylabel(ax, 'Z [m]');
+    mwecmass.output.figures.apply_axes_style(ax, style);
+    set(ax, 'Box', 'on', 'XGrid', 'off', 'YGrid', 'off', 'XMinorGrid', 'off', 'YMinorGrid', 'off');
+    xlim(ax, x_limits + [-1.1, 1.1] * x_margin);
+    ylim(ax, z_limits + [-1.1, 1.1] * z_margin);
+    hold(ax, 'off');
 
-
-% =======================================================================
-%  POLYGON CLIPPING (Sutherland–Hodgman against horizontal half-plane)
-% =======================================================================
-
-function [xc, zc] = clip_polygon_below_z(x, z, z_cut)
-% Returns the polygon clipped to z <= z_cut.
-    [xc, zc] = mwecmass.internal.clip_z(x, z, z_cut, 'below');
-end
-
-function [xc, zc] = clip_polygon_above_z(x, z, z_cut)
-% Returns the polygon clipped to z >= z_cut.
-    [xc, zc] = mwecmass.internal.clip_z(x, z, z_cut, 'above');
-end
-
-
-% =======================================================================
-%  HATCH (45° diagonal lines clipped to a polygon)
-% =======================================================================
-
-function draw_hatch(ax, x_poly, z_poly, color, spacing, line_width)
-% Sweep lines x − z = c and clip to polygon via inpolygon.
-% line_width [pt] from style.line_width.hatch (role-sourced, not hardcoded).
-    if length(x_poly) < 3, return; end
-
-    x_lo = min(x_poly);  x_hi = max(x_poly);
-    z_lo = min(z_poly);  z_hi = max(z_poly);
-    if (x_hi - x_lo) < 1e-9 || (z_hi - z_lo) < 1e-9, return; end
-
-    c_min = x_lo - z_hi;
-    c_max = x_hi - z_lo;
-    c_vals = c_min : spacing : c_max;
-
-    for ci = 1:length(c_vals)
-        c = c_vals(ci);
-        z_line = linspace(z_lo, z_hi, 200)';
-        x_line = z_line + c;
-
-        in = inpolygon(x_line, z_line, x_poly, z_poly);
-        if ~any(in), continue; end
-
-        d = diff(in);
-        starts = find(d == 1) + 1;
-        stops  = find(d == -1);
-        if in(1),   starts = [1; starts];          end %#ok<AGROW> -- starts is rebuilt from find(d==1) fresh each ci iteration; this prepends at most one element, not an accumulating loop.
-        if in(end), stops  = [stops; length(in)];  end %#ok<AGROW> -- stops is rebuilt from find(d==-1) fresh each ci iteration; this appends at most one element, not an accumulating loop.
-        n_seg = min(length(starts), length(stops));
-        for s = 1:n_seg
-            plot(ax, x_line(starts(s):stops(s)), ...
-                     z_line(starts(s):stops(s)), '-', ...
-                 'Color', color, 'LineWidth', line_width, ...
-                 'HandleVisibility', 'off');
-        end
+    out_dir = mwecmass.output.output_dir('thin_shell');
+    try
+        files = mwecmass.output.figures.export_figure(fig, 'Steel_Solve', config, out_dir);
+        fprintf('      Steel-fill plot saved: %s\n', files{1});
+    catch err
+        warning('mwecmass:figures:SaveFailed', 'Could not save Steel_Solve: %s', err.message);
     end
 end
 
-
-% =======================================================================
-%  SAVE FIGURE
-% =======================================================================
-
-function save_figure(fig, config)
-    out_dir = mwecmass.output.output_dir('thin_shell');
-    try
-        [png_files, ~] = mwecmass.output.figures.export_figure( ...
-            fig, 'Steel_Solve', config, out_dir);
-        fprintf('      Steel-fill plot saved: %s\n', png_files{1});
-    catch ME
-        warning('plot_steel_solve:SaveFailed', ...
-                'Could not save figure: %s', ME.message);
+function c = role_color(role, style)
+    switch role
+        case 'ballast'
+            c = style.fill_palette.solid_material;
+        case 'wall'
+            c = style.fill_palette.jacket_material;
+        otherwise
+            error('mwecmass:figures:UnknownRole', 'Unknown section role ''%s'' for a thin-shell figure.', role);
     end
 end

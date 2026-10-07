@@ -1,6 +1,6 @@
 function plot_equivalent_density_2d(props, config, x_opt)
 %PLOT_EQUIVALENT_DENSITY_2D Draw XZ cross-section colour-filled by strip-average equivalent density.
-% Inputs: props (hull properties); config (density_nodes_z, shell, strip_edges, hull_z_min, shell_thickness); x_opt (vertical shift, core densities). Waterline at z=0; SI units.
+% Inputs: props (hull properties); config (density_nodes_z, strip_edges, hull_z_min, hull_solid); x_opt (vertical shift, core densities). The hull outline is the exact y = 0 section of config.hull_solid. Waterline at z=0; SI units.
 % Fall back to continuous optimiser densities if props.realised_strip_density is unavailable.
 
     opts  = mwecmass.output.figures.output_options(config);
@@ -36,9 +36,13 @@ function plot_equivalent_density_2d(props, config, x_opt)
         ax = nexttile(t);
         hold(ax, 'on'); axis(ax, 'equal');
 
-        smooth_p2 = mwecmass.output.figures.build_silhouette_profile(config);
-        px = smooth_p2(:, 1);
-        pz = smooth_p2(:, 2) + draft_final;
+        if ~isfield(config, 'hull_solid') || isempty(config.hull_solid)
+            error('mwecmass:figures:NoHullSolid', ...
+                'config.hull_solid (the exact hull geometry) is required to draw the hull outline.');
+        end
+        outline = mwecmass.output.figures.hull_outline_data(config.hull_solid).profile;
+        px = outline(:, 1);
+        pz = outline(:, 2) + draft_final;
         shifted_profile = [px, pz];
         node_z_wl = config.density_nodes_z + draft_final;
 
@@ -48,14 +52,12 @@ function plot_equivalent_density_2d(props, config, x_opt)
         if rho_source_is_realised
             rho_eq = props.realised_strip_density(:);
             if length(rho_eq) ~= length(densities_core)
-                % Shape mismatch — fall back to optimiser-derived
-                rho_eq = mwecmass.output.figures.compute_strip_equivalent_density( ...
-                             config, densities_core);
+                % Shape mismatch — fall back to the optimiser densities
+                rho_eq = densities_core(:);
                 rho_source_is_realised = false;
             end
         else
-            rho_eq = mwecmass.output.figures.compute_strip_equivalent_density( ...
-                         config, densities_core);
+            rho_eq = densities_core(:);
         end
 
         cmap  = mwecmass.output.figures.figure_colormap(style, 256);
@@ -73,13 +75,6 @@ function plot_equivalent_density_2d(props, config, x_opt)
         % Fill outer hull with equivalent density
         mwecmass.output.figures.draw_density_strips( ...
             ax, shifted_profile, node_z_wl, rho_eq, cmap, [d_min, d_max], sb3, style);
-
-        % Overlay inner offset spline to show shell boundary
-        if ~isempty(config.shell)
-            inner_prof = mwecmass.output.figures.compute_inner_profile( ...
-                shifted_profile, config.shell_thickness);
-            mwecmass.output.figures.plot_inner_spline(ax, inner_prof, style);
-        end
 
         % Outer hull boundary
         h_hull = plot(ax, px, pz, '-', 'Color', style.fill_palette.boundary);

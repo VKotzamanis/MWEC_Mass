@@ -34,7 +34,8 @@ function data = realised_section_data(realised, z_plan, n_z)
 %
 %   Frame: body frame [m] throughout; world z = body z + data.vs. Also data.edges, data.z_ballast
 %   (body), data.waterline_z (body, = -vs), data.waterline_in_hull, data.solid_modules, data.CG,
-%   data.CB (world, from props), data.status, data.reason, data.failed, data.status_text.
+%   data.CB (world, from props), data.status, data.reason, data.failed, data.status_lines (cellstr: 'Stage 3 accepted', or
+%   'Stage 3 FAILED' followed by the reason split at '; ', one line per failed metric).
 
 if nargin < 2
     z_plan = [];
@@ -83,16 +84,16 @@ if isfield(realised.check, 'failed')
     failed = realised.check.failed;
 end
 if strcmp(realised.status, 'accepted')
-    status_text = 'Stage 3 accepted';
+    status_lines = {'Stage 3 accepted'};
 else
-    status_text = sprintf('Stage 3 FAILED: %s', realised.reason);
+    status_lines = [{'Stage 3 FAILED'}, strsplit(realised.reason, '; ')];
 end
 data = struct('hull_name', realised.hull_name, 'mode', realised.mode, 'vs', realised.vs, ...
     'edges', e, 'z_range', [e(1) e(end)], 'z_ballast', z_ballast, ...
     'waterline_z', -realised.vs, 'waterline_in_hull', -realised.vs > e(1) && -realised.vs < e(end), ...
     'solid_modules', solid_modules, 'polygons', polygons, 'outline', outline, 'plan', plan, ...
     'strip_panels', panels, 'omitted', omitted, 'CG', realised.props.CG_total, 'CB', realised.props.CB, ...
-    'status', realised.status, 'reason', realised.reason, 'failed', {failed}, 'status_text', status_text);
+    'status', realised.status, 'reason', realised.reason, 'failed', {failed}, 'status_lines', {status_lines});
 end
 
 %% Elevation levels

@@ -88,13 +88,6 @@ strip_height = (hull_z_max - hull_z_min) / num_strips;
 z_strips    = linspace(hull_z_min + strip_height/2, ...
                        hull_z_max - strip_height/2, num_strips)';
 
-% Pre-compute deduplicated shell lookup table (z_levels may have duplicates at strip
-% boundaries from linspace overlap in the thin-shell solve). interp1 needs unique sorted points.
-if ~isempty(config.shell)
-    [z_shell_unique, ia_shell] = unique(config.shell.z_levels, 'stable');
-    sf_shell_unique = config.shell.shell_fraction(ia_shell);
-end
-
 total_mass   = 0;
 cg_numerator = [0, 0];
 V_sub_strips = 0;
@@ -152,19 +145,7 @@ for i = 1:num_strips
     rho     = max(config.ballast_density_bounds(1), ...
               min(config.ballast_density_bounds(2), rho_raw));
 
-    % Composite shell branching: rho applies only to the core region when shell is enabled;
-    % shell mass uses fixed rho_shell. Reduces to mass = vol*rho when shell is disabled.
-    if ~isempty(config.shell)
-        sf = interp1(z_shell_unique, sf_shell_unique, ...
-                     z_body, 'linear', 'extrap');
-        sf = max(0, min(1, sf));
-
-        shell_vol  = strip_vol * sf;
-        core_vol   = strip_vol * (1 - sf);
-        strip_mass = shell_vol * config.shell.rho_shell + core_vol * rho;
-    else
-        strip_mass = strip_vol * rho;
-    end
+    strip_mass = strip_vol * rho;
 
     total_mass   = total_mass + strip_mass;
     cg_numerator = cg_numerator + strip_mass * [mean(x_coords), z_cur];
@@ -254,17 +235,7 @@ if props.mass_total > 1e-6
         rho     = max(config.ballast_density_bounds(1), ...
                   min(config.ballast_density_bounds(2), rho_raw));
 
-        % Composite shell branching (same as Section 4)
-        strip_vol_iyy = strip_area * strip_eff_w * k_vol;
-        if ~isempty(config.shell)
-            sf = interp1(z_shell_unique, sf_shell_unique, ...
-                         z_body, 'linear', 'extrap');
-            sf = max(0, min(1, sf));
-            strip_mass = strip_vol_iyy * sf * config.shell.rho_shell + ...
-                         strip_vol_iyy * (1 - sf) * rho;
-        else
-            strip_mass = strip_area * strip_eff_w * k_vol * rho;
-        end
+        strip_mass = strip_area * strip_eff_w * k_vol * rho;
 
         % Parallel-axis: d is vector from CG to strip centroid
         d = [mean(x_coords), 0, z_cur] - props.CG_total;

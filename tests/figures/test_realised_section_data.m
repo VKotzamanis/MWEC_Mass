@@ -70,6 +70,18 @@ else
     check(all(ismember(regions, {'ballast', 'shell', 'air'})), '%s: thin-shell regions %s', tag, strjoin(regions, ','));
 end
 roles = {data.polygons.role};
+expected_roles = {};
+if zb > e(1)
+    expected_roles{end + 1} = 'ballast';
+end
+if ~isempty(solid)
+    expected_roles{end + 1} = 'solid_module';
+end
+if any([lay.air])
+    expected_roles = [expected_roles, {'void', 'wall'}];
+end
+check(isequal(sort(unique(roles)), sort(expected_roles)), '%s: roles drawn are %s, expected %s', tag, ...
+    strjoin(unique(roles), ','), strjoin(expected_roles, ','));
 check(all(strcmp({data.polygons(strcmp(roles, 'void')).region}, 'air')), '%s: voids are air', tag);
 
 % outline: constant half-width, exact to the evaluation of the curves
@@ -222,13 +234,13 @@ design = struct('mode', 'modular_precast', 'edges', config.strip_edges, 'vs', 0.
 realised = sti_realised(config, design, struct('uhpc', 2500, 'air', 1.2), stage2, struct('t_min', 0.1));
 check(strcmp(realised.status, 'failed'), 'the stand-in design is expected to fail the Stage-2 check');
 d = mwecmass.output.figures.realised_section_data(realised, [], 3);
-check(strcmp(d.status, 'failed') && strncmp(d.status_text, 'Stage 3 FAILED: ', 16) && ...
-    ~isempty(strfind(d.status_text, realised.reason)) && ~isempty(d.failed), 'failed status text');
-fprintf('status text: %s\n', d.status_text);
+check(strcmp(d.status, 'failed') && strcmp(d.status_lines{1}, 'Stage 3 FAILED') && ...
+    isequal(d.status_lines(2:end), strsplit(realised.reason, '; ')) && ~isempty(d.failed), 'failed status lines');
+fprintf('status lines: %s\n', strjoin(d.status_lines, ' | '));
 realised.status = 'accepted';
 realised.reason = '';
 d = mwecmass.output.figures.realised_section_data(realised, [], 3);
-check(strcmp(d.status_text, 'Stage 3 accepted'), 'accepted status text');
+check(isequal(d.status_lines, {'Stage 3 accepted'}), 'accepted status lines');
 
 % z_plan: user heights give plan sections at exactly those heights
 d = mwecmass.output.figures.realised_section_data(realised, [-2.2, 0.3], 3);
