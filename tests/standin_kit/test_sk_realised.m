@@ -1,13 +1,12 @@
 function test_sk_realised()
-%TEST_SK_REALISED  sti_config, sti_stage2, sti_realised and the F9, F10 stand-ins on both fixtures and modes.
-%   Reads no stand-in marker of F1-F7; the F9 stand-in identifies a fixture by hull_name when
-%   geo.analytic is empty, as the real F1 returns it. J2, which merges the real F9, F10 and deletes
-%   their stand-ins, deletes or rewrites this test.
+%TEST_SK_REALISED  sti_config, sti_stage2, sti_realised and F9, F10 on both fixtures and modes.
+%   Reads no stand-in marker of F1-F7. F9 and F10 are the real src functions (T5), which shadow
+%   their stand-ins; final_props adds stage3_status and stage3_check to the F9 fields.
 
 root = fileparts(fileparts(fileparts(mfilename('fullpath'))));
 setup(root);
 schema = mwecmass.output.export_schema();
-fp_names = setdiff({schema.final_props_fields.name}, {'realised_strips'});
+fp_names = setdiff({schema.final_props_fields.name}, {'stage3_status', 'stage3_check'});
 s8 = {'mode', 'hull_name', 'status', 'reason', 'escalation', 'vs', 'draft', 'stage2', 'rho', 'design', ...
     'k_star', 'V_uhpc_target', 'modules', 'props', 'check', 'solver', 'fit', 'body', 'step_files'};
 % {fixture, mode, Stage-2 strip densities (NaN: solved for flotation), t, z_ballast, solid_modules, vs}

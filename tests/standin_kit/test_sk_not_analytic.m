@@ -2,11 +2,11 @@ function test_sk_not_analytic()
 %TEST_SK_NOT_ANALYTIC  Every stand-in errors mwecmass:standin:NotAnalytic on C1 data.
 %   The C1 inputs: the parsed Input/C1.ms2; a geo with analytic = [] (as a real F1 returns); an
 %   S1-like patch built from C1's curve1 (quadratic B-spline control points from MS2Parser) ruled to
-%   its projection on y = 0, u-degree 2; a body and props without the stand-in marker; a config
-%   whose hull_solid is that geo. F3 (eval_bspline_curve, eval_bspline_surface) is exempt: its
+%   its projection on y = 0, u-degree 2; a body without the stand-in marker. F3 (eval_bspline_curve, eval_bspline_surface) is exempt: its
 %   signature carries neither a geo nor a patch and its evaluation is exact for every NURBS.
-%   J1 deletes the rows of the F1-F7 and F6b stand-ins it removes, J2 the rows of F9 and F10; the
-%   rows of the fixture helpers sti_closed_form and sti_inner_box stay.
+%   J1 deletes the rows of the F1-F7 and F6b stand-ins it removes; the rows of F9 and F10 went with
+%   T5, whose real functions in src shadow those stand-ins; the rows of the fixture helpers
+%   sti_closed_form and sti_inner_box stay.
 
 root = fileparts(fileparts(fileparts(mfilename('fullpath'))));
 if exist('OCTAVE_VERSION', 'builtin')
@@ -38,11 +38,6 @@ edges = [-3.25; -2.706; -1.619; -0.531; 0.556; 1.10];
 design = struct('mode', 'modular_precast', 'edges', edges, 'vs', 0.9828, 't', [0.0762; 0.0762; 0.0762; 0.0762; NaN], ...
     'z_ballast', -2.3, 'solid_modules', 5);
 body = struct('design', design, 'inner_t', 0.0762, 'planes', edges(2:end - 1)', 'brep', [], 'shells', [], 'analytic', []);
-props = struct('CG_total', [0 0 -1.04], 'GM_L', 0.2, 'periods', struct('heave', 3, 'pitch', 5.03), ...
-    'mass_total', 20387.7, 'V_sub', 20.16);
-stage2 = struct('vs', 0.9828, 'rho', [2500; 1430; 369.4; 369.4; 2500], 'mass', 20387.7, 'Z_CG', -1.04, ...
-    'GM', 0.2, 'T_heave', 3, 'T_pitch', 5.03);
-config = struct('hull_solid', geo, 'RHO_WATER', 1025, 'G', 9.80665);
 opts = struct('t_min', 0.0762);
 
 calls = {
@@ -55,8 +50,6 @@ calls = {
     'body_properties', @() mwecmass.solid.body_properties(body, struct('uhpc', 2500, 'air', 1.2), struct())
     'body_section', @() mwecmass.solid.body_section(body, -1)
     'hydrostatics_at_draft', @() mwecmass.solid.hydrostatics_at_draft(geo, 0.9828, struct())
-    'evaluate_realised', @() mwecmass.realise.evaluate_realised(struct(), struct(), design, config)
-    'check_against_stage2', @() mwecmass.realise.check_against_stage2(props, stage2, 10, 1e-6, 1025)
     'sti_closed_form fixture', @() sti_closed_form('fixture', geo)
     'sti_inner_box', @() sti_inner_box(geo, 0.0762, 0.0762)
     };

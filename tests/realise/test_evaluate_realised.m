@@ -7,7 +7,7 @@ function test_evaluate_realised()
 root = fileparts(fileparts(fileparts(mfilename('fullpath'))));
 setup(root);
 schema = mwecmass.output.export_schema();
-want = setdiff({schema.final_props_fields.name}, {'stage3_status', 'stage3_check', 'realised_strips'});
+want = setdiff({schema.final_props_fields.name}, {'stage3_status', 'stage3_check'});
 for name = {'cylinder', 'box'}
     config = sti_config(name{1});
     geo = mwecmass.solid.outer_nurbs(config.ms2_model);

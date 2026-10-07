@@ -94,8 +94,7 @@ function overrides = preset_overrides(mode, preset)
     case 'full'
     case 'fast'
       overrides = [overrides; {'geometry.n_z_levels', 40; ...
-                               'materials.thin_shell.n_z_grid', 60; ...
-                               'materials.modular_precast.n_z_grid', 60}];
+                               'materials.thin_shell.n_z_grid', 60}];
     otherwise
       error('baseline_run:preset', 'unknown preset %s (full or fast).', preset);
   end
@@ -134,11 +133,6 @@ end
 
 function summary = summarise(mode, results, final_props)
   s2 = results.stage2_3d;
-  if strcmp(mode, 'thin_shell')
-    c = results.steel_data;
-  else
-    c = results.constructability;
-  end
   summary = struct();
   summary.mode = mode;
   summary.stage1_x = row(results.stage1_2d.x_optimal);
@@ -155,36 +149,17 @@ function summary = summarise(mode, results, final_props)
   summary.vertical_shift = final_props.vertical_shift;
   summary.draft = final_props.draft;
   summary.realised_strip_density = row(final_props.realised_strip_density);
+  r = results.stage3;
   stage3 = struct();
-  % The wall material names the thickness and volume keys. The production field is read under
-  % its v1.0 name (t_steel, V_steel, which held UHPC quantities in modular precast) or its new name.
-  if strcmp(mode, 'thin_shell')
-    wall = 'steel';
-  else
-    wall = 'uhpc';
-  end
-  names = {['t_' wall], 'vertical_shift', 'draft', 't_max', 't_min_active', ['V_' wall], ...
-           'V_air', 'M_total', 'CG_z_world', 'GM_realised', 'T_heave_realised', ...
-           'T_pitch_realised', 'mass_balance_error_pct', 'phi_star', 'feasible', 'exitflag'};
-  for k = 1:numel(names)
-    for source = {names{k}, strrep(names{k}, '_uhpc', '_steel')}
-      if isfield(c, source{1})
-        stage3.(names{k}) = double(c.(source{1}));
-        break;
-      end
-    end
-  end
-  % The ballast level field is read under either of its two names.
-  for name = {'z_ballast', 'z_fill'}
-    if isfield(c, name{1})
-      stage3.z_ballast = double(c.(name{1}));
-      break;
-    end
-  end
-  if isfield(c, 't_offset_strip')
-    t = row(c.t_offset_strip);
-    stage3.t_offset_strip_finite = t(isfinite(t));
-  end
+  stage3.status = r.status;
+  stage3.escalation = r.escalation;
+  stage3.z_ballast = r.design.z_ballast;
+  t = row(r.design.t);
+  stage3.t_finite = t(isfinite(t));
+  stage3.exitflag = r.solver(end).exitflag;
+  stage3.feasible = double(strcmp(r.status, 'accepted'));
+  stage3.rel_dev = row([r.check.metrics.rel_dev]);
+  stage3.eq_residual = row([r.check.equalities.residual]);
   summary.stage3 = stage3;
 end
 

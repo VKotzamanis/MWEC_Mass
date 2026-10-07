@@ -31,18 +31,8 @@ function export_results(results, final_props, in, path)
         end
     end
 
-    if ~isfield(results, 'constructability') || isempty(results.constructability)
-        results.constructability = struct();
-    end
-    for k = 1:numel(schema.constructability_fields)
-        f = schema.constructability_fields(k);
-        if ~isfield(results.constructability, f.name)
-            results.constructability.(f.name) = mass_typed_empty(f.class);
-        end
-    end
-
-    if ~isfield(results, 'steel_data')
-        results.steel_data = [];
+    if ~isfield(results, 'stage3')
+        results.stage3 = [];
     end
 
     results_out = results;

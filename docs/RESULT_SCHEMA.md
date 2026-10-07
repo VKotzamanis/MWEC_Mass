@@ -31,8 +31,7 @@ final_props = S.final_props;
 | `stage1_2d` | struct | Stage-1 surrogate result and history. | Draft screening and Stage-1 review. |
 | `stage2_3d` | struct | Stage-2 solution, convergence data, and final properties. | Optimisation review. |
 | `Final3D` | struct | Theoretical Stage-2 design before realisation. | Comparing theoretical and realised designs. |
-| `constructability` | struct or typed-empty fields | Modular-precast realisation record. | Modular-precast analysis. |
-| `steel_data` | struct or `[]` | Thin-shell realisation record. | Thin-shell analysis. |
+| `stage3` | struct or `[]` | Stage-3 realised design (thin shell and modular precast); `[]` for `preliminary`. | Realised-design analysis. |
 | `optimization_time` | double, s | Stage-1 and Stage-2 elapsed time. | Runtime reporting. |
 | `schema_version` | char | Result-schema version. | Schema identification. |
 | `realisation_type` | char | `'preliminary'`, `'thin_shell'`, or `'modular_precast'`. | Selecting mode-specific fields. |
@@ -108,43 +107,34 @@ final_props = S.final_props;
 | `components`, `densities_at_nodes`, `cross_section` | Density and geometry data | Mass-distribution plots and downstream geometry use. |
 | `MassMatrix_CG`, `MassMatrix_Origin` | 6x6 rigid-body matrices | Coupled rigid-body analysis. |
 
-### `results.constructability`
+### `results.stage3`
 
-`results.constructability` stores the modular-precast realisation record.
+`results.stage3` stores the realised Stage-3 design of both realising types. It always describes
+the realised design, accepted or failed; Stage 3 never falls back to the Stage-2 design.
 
-| Fields | Units / convention | Used for |
+| Field | Type / units | Meaning |
 | --- | --- | --- |
-| `t_uhpc`, `t_offset_strip`, `t_UHPC`, `t_min`, `t_min_active` | m. `Inf` thickness denotes a solid strip. | Precast wall and strip geometry. |
-| `z_ballast` | m, body frame. Top of the solid ballast region. | Precast ballast level. |
-| `wall_strip_idx`, `wall_z_bottom`, `wall_z_top`, `wall_height`, `strip_edges`, `strip_z_lo`, `strip_z_hi` | Indices and body-frame elevations [m]. | Wall and strip layout. |
-| `rho_hull`, `rho_uhpc`, `rho_air`, `strip_rho_eff` | kg/m³. `rho_air` is the density of the air in the voids. | Material definition. |
-| `V_uhpc`, `V_air`, `V_hull`, `M_uhpc`, `M_air`, `z_cg_uhpc`, `z_cg_air` | m³, kg and m (body frame). | Volume, mass and centroid accounting. |
-| `strip_V_total`, `strip_V_UHPC`, `strip_V_void`, `strip_mass_UHPC`, `strip_mass_void`, `strip_mass_total` | m³ and kg. | Per-strip mass accounting. |
-| `strip_is_wall`, `strip_is_solid`, `strip_is_feasible`, `is_solid_strip`, `feasibility` | Logical values and summary struct. | Constructability reporting. |
-| `strip_Iyy_UHPC`, `strip_Iyy_void`, `strip_z_cg` | kg·m² and m. | Per-strip inertia and centre-of-gravity data. |
-| `contours_outer`, `contours_inner` | Cell arrays of `[x,y]` polygon vertices [m]. | Cross-section visualisation. |
-| `M_total`, `V_hull`, `V_sub`, `Aw`, `CB_z_world`, `KM_world`, `GM_realised`, `T_heave_realised`, `T_pitch_realised` | Mass, hydrostatic, and period outputs. | Final design reporting. |
-| `targets`, `residuals`, `mass_balance_error_pct`, `phi_star`, `feasible`, `exitflag`, `solver`, `elapsed_seconds` | Solver and residual data. | Realisation-solve review. |
-
-### `results.steel_data`
-
-`results.steel_data` stores the thin-shell realisation record.
-
-| Fields | Units / convention | Used for |
-| --- | --- | --- |
-| `t_steel`, `z_ballast`, `draft`, `vertical_shift`, `draft_optimiser`, `vs_optimiser` | m. `z_ballast` is body-frame elevation. | Thin-shell geometry and Stage-2 comparison. |
-| `rho_shell`, `rho_ballast`, `rho_air` | kg/m³. `rho_ballast` is the density of the solid ballast. | Material definition. |
-| `V_steel`, `V_shell`, `V_ballast`, `V_air`, `V_hull` | m³. `V_steel` = shell + ballast. | Volume accounting. |
-| `M_steel`, `M_shell`, `M_ballast`, `M_air`, `M_total` | kg. `M_steel` = shell + ballast. | Mass accounting. |
-| `CG_z_body`, `CG_z_world`, `CB_z_world`, `KM_world`, `GM_realised` | m | Stability reporting. |
-| `Ixx_total_origin`, `Iyy_total_origin`, `Izz_total_origin`, `Ixx_about_cg`, `Iyy_about_cg`, `Izz_about_cg` | kg·m² | Inertia reporting. |
-| `T_heave_realised`, `T_pitch_realised`, `K33_hydro`, `K55_hydro`, `A11`, `A33`, `A55` | Dynamic properties. | Realised-response reporting. |
-| `strip_rho_eff`, `strip_edges`, `strip_V_env`, `strip_V_solid`, `strip_V_void`, `strip_V_ballast`, `strip_V_shell` | Per-strip density, geometry, and volumes. | Strip-level reporting. |
-| `targets`, `residuals`, `mass_balance_error_pct`, `phi_star`, `feasible`, `exitflag`, `solver`, `elapsed_seconds` | Solver and residual data. | Realisation-solve review. |
+| `mode`, `hull_name` | char | Realisation type and deck stem. |
+| `status`, `reason` | char | `'accepted'` or `'failed'`; `reason` names the failed checks (empty when accepted). |
+| `escalation` | char | Last Stage-3 step run: `'split'`, `'fixed_draft'`, `'spill'` or `'draft_free'`. |
+| `vs`, `draft` | m | Vertical shift and draft of the realised design. |
+| `stage2` | struct | Stage-2 reference: `vs`, `rho` [kg/m³], `mass` [kg], `Z_CG` (`Final3D.CG_total(3)`, world) [m], `GM` [m], coupled `T_heave`, `T_pitch` [s]. |
+| `rho` | struct, kg/m³ | Region densities: `uhpc`, `air` (modular precast); `ballast`, `shell`, `air` (thin shell). |
+| `design` | struct | `mode`, `edges` (module edges, body frame) [m], `vs` [m], `t` (shell thickness per module, NaN without void) [m], `z_ballast` (body frame) [m], `solid_modules`. |
+| `k_star`, `V_uhpc_target` | index, m³ | Modular precast: ballast module and the UHPC volume of the Stage-2 split, V_i (ρ_i − ρ_air)/(ρ_UHPC − ρ_air). Empty for thin shell. |
+| `modules` | struct array | Per module: `z_lo`, `z_hi` [m, body], `t` [m], `h_ballast` (from the module bottom) [m], `V` and `V_<region>` [m³], `mass` [kg], `rho_eff`, `rho_stage2`, `rho_floor` [kg/m³], `CG_world` [m]. |
+| `props` | struct | Realised properties (the `final_props` fields). |
+| `check` | struct | Comparison with Stage 2: `metrics` (`Z_CG`, `GM`, `T_heave`, `T_pitch`: `value`, `stage2`, `rel_dev`, `limit` = `mass_acceptable_pct`/100, `pass`), `equalities` (`flotation` M/(ρ_w V_sub) − 1 and `GM` GM/GM₂ − 1: `residual`, `tol`, `pass`), `pass` (all metrics and flotation), `failed`, `reason`. |
+| `solver` | struct array | Per step run: `step`, `exitflag`, `iterations`, `fval` (Σ((X₃ − X₂)/X₂)² over Z_CG, T_heave, T_pitch), `max_eq_violation`. |
+| `fit` | struct array | Fit report of every inner shell surface. |
+| `body` | struct | B-rep of the realised body (faces, edges, bodies, shells), body frame, metres. |
+| `step_files` | struct array | Written STEP files: `name`, `path`, `bodies`. |
 
 ### Field names that changed
 
 Results written before the ballast and material renaming carry the old names. They map as follows.
+Results written before `results.stage3` carry the realisation in `results.constructability`
+(modular precast) or `results.steel_data` (thin shell), with the names below.
 
 | Old `.mat` field | New field |
 | --- | --- |
@@ -168,26 +158,16 @@ Results written before the ballast and material renaming carry the old names. Th
 | Field | Type / units | Meaning | Used for |
 | --- | --- | --- | --- |
 | `fill_method` | char | `'steel_fill'`, `'uhpc_fill'`, or empty for `preliminary`. | Identifying the final design representation. |
-| `density_profile_source` | char | Source of realised strip density data. | Downstream interpretation. |
-| `realised_strip_density` | double, N×1, kg/m³ | As-built effective density by strip. | Mass-distribution analysis. |
-| `realised_strip_edges` | double, (N+1)×1, m | Body-frame strip boundaries. | Geometry reconstruction. |
-| `realised_strips` | struct | Per-strip realised geometry, volumes, masses, and flags. | Detailed fabrication and post-processing use. |
-
-### `final_props.realised_strips`
-
-| Field | Units / convention | Used for |
-| --- | --- | --- |
-| `fill_method` | char | Identifying the realisation method. |
-| `t_offset`, `is_solid`, `is_wall` | m and logical flags | Strip geometry and classification. |
-| `z_lo`, `z_hi` | m, body frame | Strip elevations. |
-| `V_uhpc`, `V_void`, `mass_uhpc`, `mass_void` | m³ and kg | Material quantities by strip. |
-| `uhpc_volume_fraction` | dimensionless | Per-strip UHPC fraction. |
-| `contours_outer`, `contours_inner` | Cell arrays of `[x,y]` polygons [m] | Cross-section visualisation. |
+| `density_profile_source` | char | `'realised_partition'`: densities of the realised body. | Downstream interpretation. |
+| `realised_strip_density` | double, N×1, kg/m³ | Realised effective density (mass/volume) of each module. | Mass-distribution analysis. |
+| `realised_strip_edges` | double, (N+1)×1, m | Body-frame module edges. | Geometry reconstruction. |
+| `stage3_status` | char | `results.stage3.status`. | Acceptance of the realised design. |
+| `stage3_check` | struct | `results.stage3.check`. | Per-metric comparison with Stage 2. |
 
 ## Realisation-type availability
 
-| `realisation_type` | `results.steel_data` | `results.constructability` | `final_props` |
-| --- | --- | --- | --- |
-| `preliminary` | Empty | Typed-empty fields | Theoretical Stage-2 design. |
-| `thin_shell` | Thin-shell record | Typed-empty fields | Thin-shell realised design. |
-| `modular_precast` | Empty | Modular-precast record | Modular-precast realised design. |
+| `realisation_type` | `results.stage3` | `final_props` |
+| --- | --- | --- |
+| `preliminary` | `[]` | Theoretical Stage-2 design. |
+| `thin_shell` | Thin-shell realised design | Thin-shell realised design (accepted or failed). |
+| `modular_precast` | Modular-precast realised design | Modular-precast realised design (accepted or failed). |

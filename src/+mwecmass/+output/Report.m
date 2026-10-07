@@ -204,74 +204,40 @@ classdef Report
             mwecmass.output.emit(fids, '└──────────────────────────────────────────────────────────────────┘\n');
         end
 
-        function constructability(results, ~, fids)
-            if nargin < 3, fids = 1; end
-            cstr = results.constructability;
+        function stage3(results, fids)
+            if nargin < 2, fids = 1; end
+            r = results.stage3;
 
             mwecmass.output.emit(fids, '\n┌──────────────────────────────────────────────────────────────────┐\n');
-            mwecmass.output.emit(fids, '│  CONSTRUCTABILITY: UHPC + VOID REALIZATION                        \n');
+            mwecmass.output.emit(fids, '│  STAGE 3: %s REALISATION (%s)\n', upper(strrep(r.mode, '_', ' ')), upper(r.status));
             mwecmass.output.emit(fids, '├──────────────────────────────────────────────────────────────────┤\n');
-            mwecmass.output.emit(fids, '│  Materials: UHPC = %.0f kg/m^3, void = %.1f kg/m^3\n', ...
-                cstr.rho_hull, cstr.rho_air);
-            mwecmass.output.emit(fids, '│  t_min = %.1f mm,  wall height = %.2f m\n', ...
-                cstr.t_min * 1000, cstr.wall_height);
-
-            mwecmass.output.emit(fids, '│  %s\n', repmat('─', 1, 58));
-            mwecmass.output.emit(fids, '│  Total V_hull  : %.4f m^3\n', cstr.total_V_hull);
-            mwecmass.output.emit(fids, '│  Total V_UHPC  : %.4f m^3 (%.1f%%)\n', ...
-                cstr.total_V_UHPC, 100 * cstr.total_V_UHPC / max(cstr.total_V_hull, eps));
-            mwecmass.output.emit(fids, '│  Total V_void  : %.4f m^3 (%.1f%%)\n', ...
-                cstr.total_V_void, 100 * cstr.total_V_void / max(cstr.total_V_hull, eps));
-            mwecmass.output.emit(fids, '│  Total mass    : %.1f kg\n', cstr.total_mass);
-
-            all_feasible = all(cstr.strip_is_feasible | cstr.strip_is_wall);
-            n_infeasible = sum(~cstr.strip_is_feasible & ~cstr.strip_is_wall);
-
-            mwecmass.output.emit(fids, '│  %s\n', repmat('─', 1, 58));
-            mwecmass.output.emit(fids, '│  All strips feasible (t >= %.1f mm) : %s\n', ...
-                cstr.t_min * 1000, ...
-                mwecmass.internal.ternary(all_feasible, 'YES', sprintf('NO (%d infeasible)', n_infeasible)));
-
-            mwecmass.output.emit(fids, '│  %s\n', repmat('─', 1, 58));
-            mwecmass.output.emit(fids, '│  %-5s %-8s %-8s %-7s %-8s %-7s %s\n', ...
-                'Strip', 'rho_eff', 'scale', 't[mm]', 'V_UHPC', 'V_void', 'Status');
-
-            N = length(cstr.strip_rho_eff);
-            for i = 1:N
-                if cstr.strip_is_wall(i)
-                    status = 'WALL';
-                elseif ~cstr.strip_is_feasible(i)
-                    status = 'FAIL';
-                else
-                    status = 'OK';
-                end
-                mwecmass.output.emit(fids, '│  %-5d %7.0f %7.3f %7.1f %7.4f %7.4f  %s\n', ...
-                    i, cstr.strip_rho_eff(i), cstr.strip_scale_factor(i), ...
-                    cstr.strip_t_min_actual(i) * 1000, ...
-                    cstr.strip_V_UHPC(i), cstr.strip_V_void(i), status);
+            mwecmass.output.emit(fids, '│  Last step: %s    draft = %.4f m    z_ballast = %.4f m (body)\n', ...
+                r.escalation, r.draft, r.design.z_ballast);
+            densities = fieldnames(r.rho);
+            for k = 1:numel(densities)
+                mwecmass.output.emit(fids, '│  rho_%s = %.1f kg/m^3\n', densities{k}, r.rho.(densities{k}));
             end
-
-            if isfield(cstr, 'verification')
-                v = cstr.verification;
-                mwecmass.output.emit(fids, '│  %s\n', repmat('─', 1, 58));
-                mwecmass.output.emit(fids, '│  VERIFICATION (realised vs optimiser):\n');
-                if isfield(v, 'err_mass_pct')
-                    mwecmass.output.emit(fids, '│    Mass error   : %+.2f%%\n', v.err_mass_pct);
-                end
-                if isfield(v, 'err_CG_z_pct')
-                    mwecmass.output.emit(fids, '│    CG_z error   : %+.2f%%\n', v.err_CG_z_pct);
-                end
-                if isfield(v, 'err_Iyy_pct')
-                    mwecmass.output.emit(fids, '│    Iyy error    : %+.2f%%\n', v.err_Iyy_pct);
-                end
-                if isfield(v, 'err_GM_pct')
-                    mwecmass.output.emit(fids, '│    GM error     : %+.2f%%\n', v.err_GM_pct);
-                end
-                if isfield(v, 'all_passed')
-                    mwecmass.output.emit(fids, '│    All checks   : %s\n', mwecmass.internal.ternary(v.all_passed, 'PASSED', 'FAILED'));
-                end
+            mwecmass.output.emit(fids, '│  %s\n', repmat('─', 1, 58));
+            mwecmass.output.emit(fids, '│  %-4s %8s %9s %10s %9s %9s %9s\n', ...
+                'Mod', 't[mm]', 'h_bal[m]', 'V[m^3]', 'rho_eff', 'rho_S2', 'rho_min');
+            for i = 1:numel(r.modules)
+                m = r.modules(i);
+                mwecmass.output.emit(fids, '│  %-4d %8.2f %9.4f %10.5f %9.1f %9.1f %9.1f\n', ...
+                    i, 1000 * m.t, m.h_ballast, m.V, m.rho_eff, m.rho_stage2, m.rho_floor);
             end
-
+            mwecmass.output.emit(fids, '│  %s\n', repmat('─', 1, 58));
+            mwecmass.output.emit(fids, '│  %-8s %12s %12s %9s %8s %s\n', 'Metric', 'Stage 2', 'Stage 3', 'dev[%]', 'lim[%]', 'Pass');
+            for m = r.check.metrics
+                mwecmass.output.emit(fids, '│  %-8s %12.5f %12.5f %9.3f %8.2f %s\n', m.name, m.stage2, m.value, ...
+                    100 * m.rel_dev, 100 * m.limit, mwecmass.internal.ternary(m.pass, 'yes', 'NO'));
+            end
+            for q = r.check.equalities
+                mwecmass.output.emit(fids, '│  Equality %-9s residual %10.3g (tol %.1g) %s\n', q.name, q.residual, q.tol, ...
+                    mwecmass.internal.ternary(q.pass, 'holds', 'NOT MET'));
+            end
+            if ~isempty(r.reason)
+                mwecmass.output.emit(fids, '│  Reason: %s\n', r.reason);
+            end
             mwecmass.output.emit(fids, '└──────────────────────────────────────────────────────────────────┘\n');
         end
 
@@ -316,14 +282,9 @@ classdef Report
                     fp.periods.pitch, config.T_pitch_range(1), config.T_pitch_range(2));
             end
 
-            if config.enable_constructability && ...
-                    isfield(results, 'constructability') && ...
-                    ~isempty(results.constructability)
-                cstr = results.constructability;
-                n_infeasible = sum(~cstr.strip_is_feasible & ~cstr.strip_is_wall);
-                if n_infeasible > 0
-                    issues{end+1} = sprintf('%d platform strip(s) violate t_min', n_infeasible);
-                end
+            if isfield(results, 'stage3') && ~isempty(results.stage3) && ...
+                    strcmp(results.stage3.status, 'failed')
+                issues{end+1} = sprintf('Stage 3 failed: %s', strjoin(results.stage3.check.failed, ', '));
             end
 
             if isempty(issues)
@@ -332,8 +293,8 @@ classdef Report
                 mwecmass.output.emit(fids, '║                                                                  ║\n');
                 mwecmass.output.emit(fids, '║    The solution is converged, stable, mass-balanced, and          ║\n');
                 mwecmass.output.emit(fids, '║    within period targets.                                        ║\n');
-                if config.enable_constructability
-                mwecmass.output.emit(fids, '║    Constructability: all strips feasible.                        ║\n');
+                if isfield(results, 'stage3') && ~isempty(results.stage3)
+                mwecmass.output.emit(fids, '║    Stage 3: realised design accepted against Stage 2.            ║\n');
                 end
             else
                 mwecmass.output.emit(fids, '║                                                                  ║\n');
@@ -438,12 +399,9 @@ classdef Report
             try mwecmass.output.Report.density_profile(results, config, fids);
             catch ME, mwecmass.output.emit(fids, '  [Density profile panel failed: %s]\n', ME.message); end
 
-            if isfield(config, 'enable_constructability') && ...
-                    config.enable_constructability && ...
-                    isfield(results, 'constructability') && ...
-                    ~isempty(results.constructability)
-                try mwecmass.output.Report.constructability(results, config, fids);
-                catch ME, mwecmass.output.emit(fids, '  [Constructability panel failed: %s]\n', ME.message); end
+            if isfield(results, 'stage3') && ~isempty(results.stage3)
+                try mwecmass.output.Report.stage3(results, fids);
+                catch ME, mwecmass.output.emit(fids, '  [Stage 3 panel failed: %s]\n', ME.message); end
             end
 
             try mwecmass.output.Report.verdict(results, final_props, config, fids);

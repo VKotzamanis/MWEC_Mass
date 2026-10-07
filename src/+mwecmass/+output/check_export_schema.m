@@ -14,10 +14,6 @@ function check_export_schema(file, expected_type)
     if isfield(L, 'final_props') && isfield(L.final_props, 'realisation_mode') && ~isfield(L.final_props, 'fill_method')
         L.final_props.fill_method = L.final_props.realisation_mode;
     end
-    if isfield(L, 'results') && isfield(L.results, 'steel_data') && isstruct(L.results.steel_data) ...
-            && isfield(L.results.steel_data, 'realisation_mode') && ~isfield(L.results.steel_data, 'fill_method')
-        L.results.steel_data.fill_method = L.results.steel_data.realisation_mode;
-    end
 
     if ~isfield(L, 'final_props')
         error('mwec:massSchema:missingField', 'Mass export is missing required field %s.', 'final_props');
@@ -73,7 +69,6 @@ function check_export_schema(file, expected_type)
         check_type = expected_type;
     end
     is_preliminary = strcmp(check_type, 'preliminary');
-    constructability_typed_empty = ~strcmp(check_type, 'modular_precast');
 
     for k = 1:numel(schema.final_props_fields)
         f = schema.final_props_fields(k);
@@ -90,22 +85,31 @@ function check_export_schema(file, expected_type)
         end
     end
 
-    if isfield(L.results, 'constructability')
-        ct = L.results.constructability;
-        for k = 1:numel(schema.constructability_fields)
-            f = schema.constructability_fields(k);
-            if ~isfield(ct, f.name)
-                continue;   % already caught by a presence check if constructability itself is required; not re-asserted here
+    st = L.results.stage3;
+    if is_preliminary
+        if ~local_is_typed_empty(st)
+            error('mwec:massSchema:notEmptyOfType', ...
+                'Field %s is not empty-of-type under realisation type ''%s''.', 'results.stage3', check_type);
+        end
+    else
+        if ~isstruct(st) || ~isscalar(st)
+            error('mwec:massSchema:unexpectedlyEmpty', ...
+                'Field %s is empty under realisation type ''%s'', where it should be populated.', 'results.stage3', check_type);
+        end
+        for k = 1:numel(schema.stage3_fields)
+            f = schema.stage3_fields(k);
+            if ~isfield(st, f.name)
+                error('mwec:massSchema:missingField', 'Mass export is missing required field %s.', ['results.stage3.' f.name]);
             end
-            is_empty_val = local_is_typed_empty(ct.(f.name));
-            if constructability_typed_empty && ~is_empty_val
-                error('mwec:massSchema:notEmptyOfType', ...
-                    'Field %s is not empty-of-type under realisation type ''%s''.', ['results.constructability.' f.name], check_type);
-            elseif ~constructability_typed_empty && is_empty_val
-                error('mwec:massSchema:unexpectedlyEmpty', ...
-                    'Field %s is empty under realisation type ''%s'', where it should be populated.', ...
-                    ['results.constructability.' f.name], check_type);
+            if ~isempty(f.class) && ~isa(st.(f.name), f.class)
+                error('mwec:massSchema:badClass', 'Field %s has class %s, expected %s.', ...
+                    ['results.stage3.' f.name], class(st.(f.name)), f.class);
             end
+        end
+        if ~strcmp(st.mode, check_type) || ~any(strcmp(st.status, {'accepted', 'failed'}))
+            error('mwec:massSchema:badStage3', ...
+                'results.stage3 has mode ''%s'' and status ''%s''; expected mode ''%s'' and status accepted or failed.', ...
+                st.mode, st.status, check_type);
         end
     end
 
@@ -116,25 +120,6 @@ function check_export_schema(file, expected_type)
         name = schema.config_required_subfields{k};
         if ~isfield(L.results.config, name)
             error('mwec:massSchema:missingField', 'Mass export is missing required field %s.', ['results.config.' name]);
-        end
-    end
-
-    if strcmp(check_type, 'thin_shell')
-        if ~isfield(L.results, 'steel_data') || ~isstruct(L.results.steel_data)
-            error('mwec:massSchema:unexpectedlyEmpty', ...
-                'Field %s is empty under realisation type ''%s'', where it should be populated.', 'results.steel_data', check_type);
-        end
-        sdv = L.results.steel_data;
-        for k = 1:numel(schema.steel_data_fields)
-            f = schema.steel_data_fields(k);
-            if ~isfield(sdv, f.name)
-                error('mwec:massSchema:missingField', 'Mass export is missing required field %s.', ['results.steel_data.' f.name]);
-            end
-            val = sdv.(f.name);
-            if ~isa(val, f.class)
-                error('mwec:massSchema:badClass', 'Field %s has class %s, expected %s.', ...
-                    ['results.steel_data.' f.name], class(val), f.class);
-            end
         end
     end
 
