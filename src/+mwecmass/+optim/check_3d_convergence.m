@@ -1,5 +1,5 @@
 function [converged, quality_metrics] = check_3d_convergence(x_opt_3d, config, exitflag, output)
-%CHECK_3D_CONVERGENCE Check Stage-2 density, flotation, GM, periods, and solver quality.
+%CHECK_3D_CONVERGENCE Check Stage-2 flotation, GM, periods, and solver quality.
 % x_opt_3d is [vertical_shift, rho_1..rho_N]; config supplies limits and hydrostatics.
 % output must contain fmincon constrviolation, firstorderopt, and iterations.
 % Exitflags 1, 2, and a bounded-residual 0 are accepted. Outputs are a logical and diagnostic struct.
