@@ -1,6 +1,6 @@
 # HANDOFF — MWEC_Mass exact-geometry refactor
 
-Updated 2026-10-07 14:25 UTC on `claude/lucid-cray-7o9442`. Process file for agents: the
+Updated 2026-10-07 14:45 UTC on `claude/lucid-cray-7o9442`. Process file for agents: the
 orchestrator updates it at every milestone and at least every 100k tokens; delete it in T12.
 
 ## 1. Goal
@@ -30,9 +30,9 @@ Main `claude/lucid-cray-7o9442` holds the general-kernel amendment (`e7e9114`) a
 | SK | stand-in kit (box, cylinder, closed forms) | K | merged `8eb4552` | 9 (3) | `a03bc4b` |
 | T0b | renames (`z_ballast`, `rho_air`, `rho_ballast`, `uhpc`) | N | merged `b4523aa` | 9 (4) | `c64a4d0` |
 | spec2 | contract amendment: general kernel (owner) + errata | K | merged `e7e9114` | 9 (round 8; errata 9; merge 10) | `5ce48fc` |
-| T5 | UHPC Stage 3 a: split, build, check, store | U | round 4 grading (last of the lane run) | 7, 8, 8 | task/T5 `eaf4c16` |
-| T6 | UHPC Stage 3 b: optimisation, spill, closest fail | U | queued after T5 | — | — |
-| T7 | thin-shell rebuild | S | round 4 grading (last of the lane run); code correct, bookkeeping findings | 7, 7, 7 | task/T7 `bbee405` |
+| T5 | UHPC Stage 3 a: split, build, check, store | U | resumed (`wf_1b65ba81-885`): fix round 4 findings + F11 folder, rounds 5–6 | 7, 8, 8, 8 | task/T5 `eaf4c16` |
+| T6 | UHPC Stage 3 b: optimisation, spill, closest fail | U | after T5 in `wf_1b65ba81-885` (t_max,i per module from F2b) | — | — |
+| T7 | thin-shell rebuild | S | resumed (`wf_0aa3006e-39b`): two deferred line ranges, rounds 5–6 | 7, 7, 7, 8 | task/T7 `bbee405` |
 | T8 | figures from the realised solid | O | rounds 7–8 (`wf_04b5da50-26a`): role 'wall' → 'shell'; gap where a void's y = 0 interval count changes | r1–r4 8, r5–r6 6 | task/T8 `63810a6` |
 | T10 | Stage-3 STEP exports | O | accepted, waits for J2 | 9 (3) | `07856a2` |
 | T0d | geometry cache of `build_config` | P | round 2 grading | r1 8 | task/T0d `158d77d` |
@@ -54,7 +54,8 @@ Main `claude/lucid-cray-7o9442` holds the general-kernel amendment (`e7e9114`) a
   the metrics printed beside them.
 - The orchestrator delegates; implementers and graders are subagents run by the Workflow tool.
   Scripts: `docs/plans/orchestration/lane.js` (with rule 15 and grader item 7, judge by metrics) and
-  `merge.js`. New lane launches use the session copy `workflows/scripts/mwec-lane-v2.js`; resume a
+  `merge.js`. New lane launches use the session copy `workflows/scripts/mwec-lane-v2.js` (a task with
+  `resume: {last, r0}` starts from its last verdict: fix, then two grading rounds); resume a
   workflow started before 13:50 UTC only with its own script `mwec-lane-wf_d681e461-e66.js`
   (resume reuses cached agent calls only while the prompts are unchanged).
 - **Lane workflow** (`lane.js`, args `{lane, mode: 'chain'|'parallel', tasks: [{id, wt, branch,
@@ -92,6 +93,15 @@ Main `claude/lucid-cray-7o9442` holds the general-kernel amendment (`e7e9114`) a
   row for `tests/standin_kit/*` (J1, J2 owners); thin shell: `z_ballast` equal to the inner `z_lo`
   cuts the inner set (no zero-thickness layer); S4: precast joint faces take precedence over inner
   ends on a module edge; `tests/README.md` folders table → T12.
+- Orchestrator decisions of 14:40 UTC (contract errata to apply at J2 through an author agent and
+  grader): F10 `pass` = the four metrics and flotation; the GM equality residual is reported beside
+  the check (AGENTS item 27 and §5 item 11 clarified on main from the owner's items 4.4 and 32; the
+  SK stand-in F10 still counts the GM row and must be aligned). F11 `out_dir` = the type folder
+  (`export_stage3` adds `step`). Thin-shell floors live in `config.per_strip_density_lb` (T4b).
+  t_max,i per UHPC module = F2b on the module's hollow z-range − ε/2 (contract "Bounds" line).
+  Kernel errors (VoidClosed, JointNotNested, FitNotConverged) are failed evaluations in T6. F6
+  integral caching is internal to T3 (F5/F6 signatures unchanged). A module whose t_min shell
+  exceeds its split is reported in the Stage-3 log (no S8 field).
 - Carry-overs: `build_config` time after T0c (T0d prints it); `METHODS_ENGINE.md` lines 205–208 and
   `_graph/CODE_MAP.md` regeneration → T12; T0b deferrals for T5 (`rho_UHPC`/`t_UHPC` capitals,
   `config.rho_steel` in precast `solve.m`). The old names stay only in `tools/`,

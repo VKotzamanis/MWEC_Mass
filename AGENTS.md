@@ -249,10 +249,11 @@ Figures: `WEC_Constructability_XZ`, `WEC_Constructability_Strips` (precast), `St
     T_heave and T_pitch decides accepted or failed. This replaces the heave and pitch range
     penalties for Stage 3 (items 15 and 16 keep the coupled periods and the Z_CG reference).
     Stage-1 and Stage-2 objectives do not change. At the Stage-2 draft the equalities fix Z_CG and
-    T_heave, so the objective acts through T_pitch only. Closest fail: if the equalities hold but
-    the check fails, the optimum is the closest design (it minimises the deviation); if the
-    equalities cannot be met, the iterate with the smallest equality violation is the closest
-    design.
+    T_heave, so the objective acts through T_pitch only. The design is accepted when flotation
+    holds and the check passes (items 4.4 and 32); the GM equality steers the solve, and its
+    residual is reported beside the check without entering it. Otherwise the design is the closest
+    fail: the optimum if the equalities hold (it minimises the deviation), else the iterate with
+    the smallest equality violation.
 28. UHPC shell above the ballast (agent's decision under rule 4, owner informed; owner on the
     wording: "What do you mean? The wall is supposed to be solid in UHPC. What wall are you
     referring to even? ... make sure we dont double count on the wall section the solid wal +
@@ -429,9 +430,10 @@ their mean (assumes star-shaped sections); CG_x = CG_y = 0 (declared symmetric-b
     After every solve, the `mass_acceptable_pct` check on Z_CG, GM, T_heave and T_pitch decides
     accepted or failed. Escalation: UHPC — ballast within k* → ballast spill → draft; thin shell
     — (t, `z_ballast`) at the Stage-2 draft → draft. The draft is released only when mass balance
-    cannot be met at the Stage-2 draft; a failed check does not release it. Closest fail: if the
-    equalities hold and the check fails, the optimum itself; if the equalities cannot be met, the
-    iterate with the smallest equality violation. Status flag and per-metric report as item 5.
+    cannot be met at the Stage-2 draft; a failed check does not release it. Accepted when
+    flotation holds and the check passes; the GM residual is reported, not part of the check.
+    Otherwise closest fail: the optimum if the equalities hold, else the iterate with the smallest
+    equality violation. Status flag and per-metric report as item 5.
 
 ---
 

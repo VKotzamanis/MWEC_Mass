@@ -82,14 +82,22 @@ ${JSON.stringify({ violations: g.violations, required_fixes: g.required_fixes, s
 >>>`
 
 async function runTask(t) {
-  let impl = await agent(`${RULES(t)}\n\n${t.brief}`, { label: `impl:${t.id}`, phase: 'Implement', model: t.model, effort: t.effort, schema: IMPL_SCHEMA })
+  // t.resume = { last: grader verdict, r0: first grading round } continues a task from its last verdict
+  let impl, r0 = 1, rounds = 4
+  if (t.resume) {
+    r0 = t.resume.r0
+    rounds = 2
+    impl = await agent(fixPrompt(t, t.resume.last, r0 - 1), { label: `fix:${t.id}#${r0 - 1}`, phase: 'Fix', model: t.model, effort: t.effort, schema: IMPL_SCHEMA })
+  } else {
+    impl = await agent(`${RULES(t)}\n\n${t.brief}`, { label: `impl:${t.id}`, phase: 'Implement', model: t.model, effort: t.effort, schema: IMPL_SCHEMA })
+  }
   if (!impl) return { id: t.id, accepted: false, error: 'implementer died' }
-  for (let round = 1; round <= 4; round++) {
+  for (let round = r0; round < r0 + rounds; round++) {
     const g = await agent(gradePrompt(t, impl, round), { label: `grade:${t.id}#${round}`, phase: 'Grade', model: 'opus', effort: 'xhigh', schema: GRADE_SCHEMA })
     if (!g) return { id: t.id, accepted: false, error: 'grader died', rounds: round }
     log(`${t.id} round ${round}: score ${g.score}, accepted ${g.accepted}`)
     if (g.accepted && g.score >= 9) return { id: t.id, branch: t.branch, accepted: true, score: g.score, rounds: round, commit: impl.commit, deferred: impl.deferred || [], spec_issues: g.spec_issues || [], grader: g.summary }
-    if (round === 4) return { id: t.id, branch: t.branch, accepted: false, score: g.score, rounds: round, violations: g.violations || [], required_fixes: g.required_fixes || [], spec_issues: g.spec_issues || [], grader: g.summary }
+    if (round === r0 + rounds - 1) return { id: t.id, branch: t.branch, accepted: false, score: g.score, rounds: round, violations: g.violations || [], required_fixes: g.required_fixes || [], spec_issues: g.spec_issues || [], grader: g.summary }
     const fixed = await agent(fixPrompt(t, g, round), { label: `fix:${t.id}#${round}`, phase: 'Fix', model: t.model, effort: t.effort, schema: IMPL_SCHEMA })
     if (fixed) impl = fixed
   }
