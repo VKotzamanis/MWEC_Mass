@@ -95,7 +95,7 @@ function test_stage2_c1_formulation()
       error('%s: %d inequality entries, expected 1 GM + %d ratio pairs', mode, numel(c), n_pairs);
     end
     props = mwecmass.hydrostatics.properties_3d(x, config);
-    violation = max([0; c(:); abs(ceq)]);
+    violation = max([0; c(:); abs(ceq); lb(:) - x(:); x(:) - ub(:)]);
     if abs(violation - s2.output.constrviolation) > 1e-12
       error('%s: constraint violation %.3g differs from the solver''s %.3g', mode, violation, s2.output.constrviolation);
     end
