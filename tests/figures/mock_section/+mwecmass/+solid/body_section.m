@@ -1,21 +1,25 @@
 function sec = body_section(body, z)
-%BODY_SECTION  Test mock for test_realised_section_gap: a one-module body whose void changes its
-%   number of intervals along y = 0 at z = body.mock.z_split.
+%BODY_SECTION  Test mock for test_realised_section_gap: a one-module body whose section along y = 0
+%   changes type at the heights body.mock.z_from.
 %
-%   Outer loop: the rectangle |x| <= 1, |y| <= 1. Inner loops: for z below z_split one rectangle
-%   |x| <= 0.5, |y| <= 0.3; from z_split up two, 0.4 <= |x| <= 0.8, |y| <= 0.3.
+%   Outer loop: the rectangle |x| <= 1, |y| <= 1. From z_from(k) up to z_from(k+1) the section is of
+%   type body.mock.type(k): 0 solid, 1 hollow with one inner rectangle |x| <= 0.5, |y| <= 0.3,
+%   2 hollow with two, 0.4 <= |x| <= 0.8, |y| <= 0.3.
 if z < body.design.edges(1) || z > body.design.edges(end)
     error('mwecmass:solid:ZOutside', 'body_section mock: z = %g outside the hull', z);
 end
 outer = rectangle_loop(-1, 1, -1, 1);
-if z < body.mock.z_split
-    inner = rectangle_loop(-0.5, 0.5, -0.3, 0.3);
-else
-    a = rectangle_loop(-0.8, -0.4, -0.3, 0.3);
-    b = rectangle_loop(0.4, 0.8, -0.3, 0.3);
-    inner = struct('pieces', [a.pieces, b.pieces]);
+type = body.mock.type(find(z >= body.mock.z_from, 1, 'last'));
+inner = [];
+switch type
+    case 1
+        inner = rectangle_loop(-0.5, 0.5, -0.3, 0.3);
+    case 2
+        a = rectangle_loop(-0.8, -0.4, -0.3, 0.3);
+        b = rectangle_loop(0.4, 0.8, -0.3, 0.3);
+        inner = struct('pieces', [a.pieces, b.pieces]);
 end
-sec = struct('z', z, 'module', 1, 'outer', outer, 'inner', inner, 'solid', false);
+sec = struct('z', z, 'module', 1, 'outer', outer, 'inner', inner, 'solid', type == 0);
 end
 
 function loop = rectangle_loop(x0, x1, y0, y1)

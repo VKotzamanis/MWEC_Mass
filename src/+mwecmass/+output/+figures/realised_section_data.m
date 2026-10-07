@@ -14,21 +14,25 @@ function data = realised_section_data(realised, z_plan, n_z)
 %   Elevation (y = 0 plane). Each module is sampled between its two edges and at the ballast level;
 %   wherever the section changes between two heights from solid to hollow or in the number of
 %   intervals the void has along y = 0, the height of the change is bisected to adjacent
-%   floating-point numbers, so the ballast top, the closing of the void at its poles and the
-%   splitting of the void are exact, no polygon leaves a gap, and the cells next to such a change get
-%   more heights. The x of every
-%   crossing of y = 0 is found on the exact curves (section_y0_crossings).
+%   floating-point numbers, and again from there up to the next sampled height, so every change in
+%   the cell is found. The ballast top, the closing of the void at its poles and the splitting of the
+%   void are exact, no polygon leaves a gap, and the cells next to a change get more heights. The x
+%   of every crossing of y = 0 is found on the exact curves (section_y0_crossings).
 %   data.polygons(k): module, role ('solid_module' | 'ballast' | 'shell' | 'void'), region
 %   (precast 'uhpc' | 'air'; thin shell 'ballast' | 'shell' | 'air'), z_lo, z_hi, xz [n x 2] = [x z]
 %   counter-clockwise, body frame. A role 'shell' is the shell around the air: the material around a
 %   void, its top and bottom layers included.
 %   data.void_outlines(k): modules (the modules the void passes through), xz [n x 2] counter-clockwise,
-%   body frame: the boundary of the air region as the realised solid has it. The void polygons of
-%   consecutive modules are one outline where both hold air at the module edge: the air is one
-%   region there, so no segment crosses the void at that edge. Where t is the same on both sides
-%   nothing lies at the edge; where it differs the outline keeps only the jog between the two inner
-%   sections (the joint_step annulus). Separate outlines remain where one side of the edge is solid
-%   (the joint cap or the disk above a void) or the void ends inside a module. data.outline: z, x_lo, x_hi, profile (closed [x z] polygon). data.omitted: heights where the
+%   body frame: one closed outline per connected air region, drawn only where the realised solid has
+%   a boundary. Void polygons that abut with overlapping x ranges, at a module edge or at the height
+%   inside a module where the number of void intervals changes, are one region: the segment of
+%   their common edge is kept only over the x that is air on one side and material on the other.
+%   Where t is the same on both sides of a module edge nothing lies there; where it differs the
+%   outline keeps only the jog between the two inner sections (the joint_step annulus). Where the
+%   void splits in two at a height inside a module, the horizontal boundary is the part of each
+%   interval that the other side does not cover. Separate outlines remain where one side of the
+%   edge is solid (the joint cap or the disk above a void) or the void closes inside a module.
+%   data.outline: z, x_lo, x_hi, profile (closed [x z] polygon). data.omitted: heights where the
 %   kernel gave no usable section (z, module, reason); a section whose outer loop crosses y = 0 at
 %   more than two points errors mwecmass:figures:SectionTopology.
 %
@@ -70,11 +74,14 @@ margin = 8 * eps(max(abs(e)));
 
 omitted = struct('z', {}, 'module', {}, 'reason', {});
 by_module = cell(N, 1);
+seams = zeros(0, 3);
 polygons = struct('module', {}, 'role', {}, 'region', {}, 'z_lo', {}, 'z_hi', {}, 'xz', {});
 for m = 1:N
     [by_module{m}, om] = module_levels(body, e, m, n_z, z_ballast, margin);
     omitted = [omitted, om]; %#ok<AGROW>
-    polygons = [polygons, module_polygons(by_module{m}, m, solid_modules, z_ballast, realised.mode)]; %#ok<AGROW>
+    [poly_m, seam_m] = module_polygons(by_module{m}, m, solid_modules, z_ballast, realised.mode);
+    polygons = [polygons, poly_m]; %#ok<AGROW>
+    seams = [seams; seam_m]; %#ok<AGROW>
 end
 all_levels = [by_module{:}];
 [~, order] = sort([all_levels.z]);
@@ -87,7 +94,7 @@ outline = struct('z', z_o, 'x_lo', xo(:, 1), 'x_hi', xo(:, 2), ...
 [plan, plan_omitted] = plan_sections(body, e, z_ballast, realised.vs, z_plan, margin, solid_modules);
 omitted = [omitted, plan_omitted];
 panels = strip_panel_list(plan, N, solid_modules);
-void_outlines = merge_voids(polygons, e, margin);
+void_outlines = merge_voids(polygons, e, margin, seams);
 
 failed = {};
 if isfield(realised.check, 'failed')
@@ -138,7 +145,7 @@ while k < numel(recs)
     if ~isequal(level_key(recs(k)), level_key(recs(k + 1)))
         [lo_rec, hi_rec] = locate_change(body, m, recs(k), recs(k + 1));
         recs = [recs(1:k), lo_rec, hi_rec, recs(k + 1:end)];
-        k = k + 3;
+        k = k + 2;
     else
         k = k + 1;
     end
@@ -258,7 +265,10 @@ end
 
 %% Polygons
 
-function polygons = module_polygons(recs, m, solid_modules, z_ballast, mode)
+function [polygons, seams] = module_polygons(recs, m, solid_modules, z_ballast, mode)
+% seams: rows [m, z of the last level of a group, z of the first level of the next group], the heights
+% inside module m where the level key changes.
+seams = zeros(0, 3);
 polygons = struct('module', {}, 'role', {}, 'region', {}, 'z_lo', {}, 'z_hi', {}, 'xz', {});
 n = numel(recs);
 first = 1;
@@ -292,6 +302,9 @@ while first < n
         for c = 1:size(xi, 2) / 2
             polygons(end + 1) = make_polygon(m, 'void', mode, zz, xi(:, 2 * c - 1), xi(:, 2 * c)); %#ok<AGROW>
         end
+    end
+    if last < n
+        seams(end + 1, :) = [m, recs(last).z, recs(last + 1).z]; %#ok<AGROW>
     end
     first = last + 1;
 end
@@ -335,49 +348,158 @@ else
 end
 end
 
-function outlines = merge_voids(polygons, e, margin)
-% One outline per connected air region: the void polygon of module m that reaches the top of the
-% module joins the void polygon of module m + 1 that starts at the bottom of m + 1 when the two
-% x ranges overlap at the edge: the solid has no air/air face there, so the air is one region (at a
-% t step the two inner sections are joined by the jog of the joint_step). A polygon is
-% [right side, bottom to top; left side, top to bottom].
+function outlines = merge_voids(polygons, e, margin, seams)
+% One outline per connected air region. Void polygon q lies above void polygon p when q is in the next
+% module and the two meet at the module edge (p ends at e - margin, q starts at e + margin), or both are
+% in one module and meet at a seam of its level groups; they are one region when their x ranges overlap
+% on the common edge. The outline of a region is the closed chain of the polygon sides and of the parts
+% of the common edges that the other side does not cover. A polygon is [right side, bottom to top; left
+% side, top to bottom].
 outlines = struct('modules', {}, 'xz', {});
 voids = polygons(strcmp({polygons.role}, 'void'));
-used = false(1, numel(voids));
-[~, order] = sort([voids.z_lo]);
-for a = order
-    if used(a)
-        continue
-    end
-    used(a) = true;
-    chain = voids(a);
-    right = chain.xz(1:size(chain.xz, 1) / 2, :);
-    left = chain.xz(size(chain.xz, 1) / 2 + 1:end, :);
-    modules = chain.module;
-    while true
-        m = modules(end);
-        top = max(right(:, 2));
-        nxt = 0;
-        if m < numel(e) - 1 && top == e(m + 1) - margin
-            for b = find(~used)
-                q = voids(b);
-                if q.module == m + 1 && q.z_lo == e(m + 1) + margin && ...
-                        max(left(1, 1), q.xz(end, 1)) < min(right(end, 1), q.xz(1, 1))
-                    nxt = b;
-                    break
-                end
-            end
+nv = numel(voids);
+if nv == 0
+    return
+end
+links = zeros(0, 4);
+for p = 1:nv
+    for q = 1:nv
+        if p == q || voids(q).module < voids(p).module
+            continue
         end
-        if nxt == 0
+        m = voids(p).module;
+        if voids(q).module == m
+            joined = any(seams(:, 1) == m & seams(:, 2) == voids(p).z_hi & seams(:, 3) == voids(q).z_lo);
+        else
+            joined = voids(q).module == m + 1 && m < numel(e) - 1 && ...
+                voids(p).z_hi == e(m + 1) - margin && voids(q).z_lo == e(m + 1) + margin;
+        end
+        if ~joined
+            continue
+        end
+        top = top_edge(voids(p));
+        bottom = bottom_edge(voids(q));
+        lo = max(top(1), bottom(1));
+        hi = min(top(2), bottom(2));
+        if hi > lo
+            links(end + 1, :) = [p, q, lo, hi]; %#ok<AGROW>
+        end
+    end
+end
+region = 1:nv;
+changed = true;
+while changed
+    changed = false;
+    for k = 1:size(links, 1)
+        r = min(region(links(k, 1)), region(links(k, 2)));
+        if region(links(k, 1)) ~= r || region(links(k, 2)) ~= r
+            region(region == region(links(k, 1)) | region == region(links(k, 2))) = r;
+            changed = true;
+        end
+    end
+end
+found = struct('modules', {}, 'xz', {}, 'key', {});
+for r = unique(region)
+    idx = find(region == r);
+    loops = region_loops(voids, idx, links);
+    modules = unique([voids(idx).module]);
+    for k = 1:numel(loops)
+        found(end + 1) = struct('modules', modules, 'xz', loops{k}, ...
+            'key', [min(loops{k}(:, 2)), min(loops{k}(:, 1))]); %#ok<AGROW>
+    end
+end
+[~, order] = sortrows(vertcat(found.key));
+outlines = rmfield(found(order), 'key');
+end
+
+function x = top_edge(v)
+n = size(v.xz, 1) / 2;
+x = [v.xz(n + 1, 1), v.xz(n, 1)];
+end
+
+function x = bottom_edge(v)
+n = size(v.xz, 1) / 2;
+x = [v.xz(2 * n, 1), v.xz(1, 1)];
+end
+
+function loops = region_loops(voids, idx, links)
+% Closed boundary chains of the void polygons voids(idx). Edges are matched by (x, z), where the z of
+% the two sides of a shared edge is taken as the z of the lower one.
+S = zeros(0, 2);    % key of the start of each edge
+T = zeros(0, 2);    % key of the end
+P = zeros(0, 4);    % actual [x z] of the start and of the end
+for i = idx
+    v = voids(i);
+    n = size(v.xz, 1) / 2;
+    kz = v.xz(:, 2);
+    lower = links(links(:, 2) == i, 1);
+    if ~isempty(lower)
+        kz([1, 2 * n]) = voids(lower(1)).z_hi;
+    end
+    for j = [1:n - 1, n + 1:2 * n - 1]
+        S(end + 1, :) = [v.xz(j, 1), kz(j)]; %#ok<AGROW>
+        T(end + 1, :) = [v.xz(j + 1, 1), kz(j + 1)]; %#ok<AGROW>
+        P(end + 1, :) = [v.xz(j, :), v.xz(j + 1, :)]; %#ok<AGROW>
+    end
+    above = links(links(:, 1) == i, :);
+    for q = uncovered(top_edge(v), above(:, 3:4))'
+        S(end + 1, :) = [q(2), kz(n)]; %#ok<AGROW>
+        T(end + 1, :) = [q(1), kz(n)]; %#ok<AGROW>
+        P(end + 1, :) = [q(2), v.xz(n, 2), q(1), v.xz(n, 2)]; %#ok<AGROW>
+    end
+    below = links(links(:, 2) == i, :);
+    for q = uncovered(bottom_edge(v), below(:, 3:4))'
+        S(end + 1, :) = [q(1), kz(1)]; %#ok<AGROW>
+        T(end + 1, :) = [q(2), kz(1)]; %#ok<AGROW>
+        P(end + 1, :) = [q(1), v.xz(1, 2), q(2), v.xz(1, 2)]; %#ok<AGROW>
+    end
+end
+used = false(size(S, 1), 1);
+loops = {};
+while any(~used)
+    first = find(~used, 1);
+    cur = first;
+    pts = zeros(0, 2);
+    while true
+        used(cur) = true;
+        pts(end + 1, :) = P(cur, 1:2); %#ok<AGROW>
+        nxt = find(~used & S(:, 1) == T(cur, 1) & S(:, 2) == T(cur, 2), 1);
+        if isempty(nxt)
+            if ~isequal(T(cur, :), S(first, :))
+                error('mwecmass:figures:OutlineOpen', ...
+                    'realised_section_data: the void outline does not close at (x, z) = (%.17g, %.17g)', T(cur, 1), T(cur, 2));
+            end
+            nxt_start = P(first, 1:2);
+        else
+            nxt_start = P(nxt, 1:2);
+        end
+        if ~isequal(P(cur, 3:4), nxt_start)
+            pts(end + 1, :) = P(cur, 3:4); %#ok<AGROW>
+        end
+        if isempty(nxt)
             break
         end
-        used(nxt) = true;
-        n = size(voids(nxt).xz, 1) / 2;
-        right = [right; voids(nxt).xz(1:n, :)]; %#ok<AGROW>
-        left = [voids(nxt).xz(n + 1:end, :); left]; %#ok<AGROW>
-        modules(end + 1) = voids(nxt).module; %#ok<AGROW>
+        cur = nxt;
     end
-    outlines(end + 1) = struct('modules', modules, 'xz', [right; left]); %#ok<AGROW>
+    loops{end + 1} = pts; %#ok<AGROW>
+end
+end
+
+function free = uncovered(span, covers)
+% Parts [lo hi] of the interval span = [a b] that no row of covers = [lo hi] covers, as rows.
+free = zeros(0, 2);
+pos = span(1);
+if ~isempty(covers)
+    covers = sortrows(covers);
+end
+for k = 1:size(covers, 1)
+    if covers(k, 1) > pos
+        free(end + 1, :) = [pos, covers(k, 1)]; %#ok<AGROW>
+    end
+    pos = max(pos, covers(k, 2));
+end
+if span(2) > pos
+    free(end + 1, :) = [pos, span(2)];
 end
 end
 
