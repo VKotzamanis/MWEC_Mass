@@ -113,8 +113,10 @@ Main `claude/lucid-cray-7o9442` = `e7e9114` (pushed; holds the general-kernel am
 - Reading a workflow's result from the notification text can mislead; read its `journal.jsonl`.
 - Hand edits of the dense contract by the orchestrator were rejected twice: route every contract
   change through an author agent and the grader.
-- Owner: when a figure fails grading, render it and show it to the owner before another iteration
-  (MATLAB-only figure code cannot run in Octave: redraw from the F12 section data).
+- Owner: figures are judged by metrics on the section data (every drawn boundary has a face of the
+  solid behind it, drawn areas equal the body's section areas, ballast level within contract I3), not
+  by pictures of stand-ins. The owner reviews real XZ (y = 0) and YZ (x = 0) cross sections of the C1
+  bodies, from J1 on (real kernel), with the metrics printed beside them.
 
 ## 7. Next steps
 
