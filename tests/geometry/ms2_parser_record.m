@@ -34,6 +34,8 @@ function rec = ms2_parser_record(model, opts)
     end
 
     n_s = numel(opts.sg);
+    rec = add_type_evaluators(rec, model, names, opts);
+
     for i = 1:numel(model.visible_surfs)
         nm = model.visible_surfs{i};
         pts = zeros(n_s * n_s, 3);
@@ -110,6 +112,51 @@ function rec = ms2_parser_record(model, opts)
     end
 end
 
+function rec = add_type_evaluators(rec, model, names, opts)
+% The public evaluators named after an entity type take the entity struct of model.entities.
+    curve_fns = struct( ...
+        'BCurve',     {{'eval_bcurve', 'eval_bcurve_deriv'}}, ...
+        'Conic',      {{'eval_conic', 'eval_conic_deriv'}}, ...
+        'CopyCurve',  {{'eval_copy_curve', 'eval_copy_curve_deriv'}}, ...
+        'Line',       {{'eval_line', 'eval_line_deriv'}}, ...
+        'BSubCurve',  {{'eval_bsub_curve', 'eval_bsub_curve_deriv'}}, ...
+        'Arc',        {{'eval_arc', 'eval_arc_deriv'}}, ...
+        'PolyCurve2', {{'eval_polycurve2', 'eval_polycurve2_deriv'}}, ...
+        'ProjCurve',  {{'eval_proj_curve', 'eval_proj_curve_deriv'}}, ...
+        'EdgeSnake',  {{'eval_edge_snake', 'eval_edge_snake_deriv'}}, ...
+        'BSubSnake',  {{'eval_bsub_snake', 'eval_bsub_snake_deriv'}});
+    surf_fns = struct( ...
+        'RuledSurf', {{'eval_ruled_surf', 'eval_ruled_surf_derivs'}}, ...
+        'RevSurf',   {{'eval_rev_surf', 'eval_rev_surf_derivs'}}, ...
+        'BLoftSurf', {{'eval_bloft_surf', 'eval_bloft_surf_derivs'}}, ...
+        'DevSurf',   {{'eval_dev_surf', 'eval_dev_surf_derivs'}}, ...
+        'MirrSurf',  {{'eval_mirr_surf', 'eval_mirr_surf_derivs'}});
+    t = opts.tg(:);
+    uv = [0.3, 0.6; 1/3, 2/3; 0, 1; 1 - 1e-11, 0.25];
+    for i = 1:numel(names)
+        nm = names{i};
+        e = model.entities(nm);
+        if isfield(curve_fns, e.type)
+            fn = curve_fns.(e.type);
+            rec = add(rec, [fn{1} ' entity ' nm], @() feval(fn{1}, model, e, t), 1);
+            rec = add(rec, [fn{2} ' entity ' nm], @() feval(fn{2}, model, e, t), 2);
+            rec = add(rec, [fn{1} ' entity scalar ' nm], @() feval(fn{1}, model, e, 0.37), 1);
+        elseif isfield(surf_fns, e.type)
+            fn = surf_fns.(e.type);
+            for k = 1:size(uv, 1)
+                u = uv(k, 1);
+                v = uv(k, 2);
+                rec = add(rec, sprintf('%s entity %s uv%d', fn{1}, nm, k), @() feval(fn{1}, model, e, u, v), 1);
+                rec = add(rec, sprintf('%s entity %s uv%d', fn{2}, nm, k), @() feval(fn{2}, model, e, u, v), 3);
+            end
+            if strcmp(e.type, 'BLoftSurf')
+                rec = add(rec, ['eval_bloft_surf_at_u entity ' nm], ...
+                          @() model.eval_bloft_surf_at_u(e, 0.3, linspace(0, 1, 11)), 1);
+            end
+        end
+    end
+end
+
 function [cache, rec] = record_cache(model, n_u, rec)
     cache = [];
     try
@@ -130,8 +177,9 @@ end
 function s = model_summary(model)
     k = model.entities.keys();
     v = model.entities.values();
+    [~, fname, fext] = fileparts(model.filename);
     s = struct('keys', {k}, 'values', {v}, 'visible_surfs', {model.visible_surfs}, ...
-               'units', model.units, 'extents', model.extents, 'filename', model.filename, ...
+               'units', model.units, 'extents', model.extents, 'filename', [fname fext], ...
                'file_symmetry', {model.file_symmetry});
 end
 

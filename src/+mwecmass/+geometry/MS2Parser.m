@@ -17,6 +17,8 @@ classdef MS2Parser
     properties (Access = private)
         names           % cell array: entity names; the position is the entity number
         ent             % cell array: entity records (see resolve_entities)
+        ids             % containers.Map: entity name → entity number
+        id_empty        % number of the placeholder that stands for an empty name in a list; 0 if none
     end
 
 
@@ -771,12 +773,20 @@ classdef MS2Parser
             end
 
             ent = cell(1, n_def);
+            id_empty = 0;
             for i = 1:n_def
                 r = obj.entities(names{i});
                 r.name = names{i};
                 r.k_ok = false;
                 for k = 1:numel(r.parents)
-                    if ~ids.isKey(r.parents{k})
+                    if isempty(r.parents{k})
+                        if id_empty == 0
+                            names{end+1} = ''; %#ok<AGROW>
+                            id_empty = numel(names);
+                            ent{end+1} = struct('type', 'Missing', 'name', '', ...
+                                                'is_surface', false, 'k_ok', true); %#ok<AGROW>
+                        end
+                    elseif ~ids.isKey(r.parents{k})
                         names{end+1} = r.parents{k}; %#ok<AGROW>
                         ids(r.parents{k}) = numel(names);
                         ent{end+1} = struct('type', 'Missing', 'name', r.parents{k}, ...
@@ -788,67 +798,14 @@ classdef MS2Parser
 
             is_point = false(1, n_def);
             for i = 1:n_def
-                r = ent{i};
-                p = r.params;
-                switch r.type
-                    case 'FramePoint'
-                        r.parent1_id = obj.ref_ids(ids, p.parent1);
-                        r.parent2_id = obj.ref_ids(ids, p.parent2);
-                        is_point(i) = true;
-                    case 'MirrPoint'
-                        r.source_id = obj.ref_ids(ids, p.source);
-                        is_point(i) = true;
-                    case 'AbsBead'
-                        r.parent_id = obj.ref_ids(ids, p.parent_curve);
-                        is_point(i) = true;
-                    case 'AbsRing'
-                        r.parent_id = obj.ref_ids(ids, p.parent_snake);
-                        is_point(i) = true;
-                    case 'BCurve'
-                        r.cp_ids = obj.ref_ids(ids, p.ctrl_pt_names);
-                    case 'Conic'
-                        r.center_id = obj.ref_ids(ids, p.center);
-                        r.radius_id = obj.ref_ids(ids, p.radius_pt);
-                        r.apex_id   = obj.ref_ids(ids, p.apex_pt);
-                    case 'CopyCurve'
-                        r.source_id = obj.ref_ids(ids, p.source);
-                        r.src_pt_id = obj.ref_ids(ids, p.src_pt);
-                        r.dst_pt_id = obj.ref_ids(ids, p.dst_pt);
-                    case 'Line'
-                        r.start_id = obj.ref_ids(ids, p.pt_start);
-                        r.end_id   = obj.ref_ids(ids, p.pt_end);
-                    case 'Arc'
-                        r.start_id  = obj.ref_ids(ids, p.pt_start);
-                        r.centre_id = obj.ref_ids(ids, p.pt_center);
-                        r.end_id    = obj.ref_ids(ids, p.pt_end);
-                    case {'BSubCurve', 'BSubSnake'}
-                        % filled below from the first and last bead
-                    case 'PolyCurve2'
-                        r.curve_ids = obj.ref_ids(ids, p.curve_names);
-                    case 'ProjCurve'
-                        r.source_id = obj.ref_ids(ids, p.source);
-                    case 'EdgeSnake'
-                        r.surface_id = obj.ref_ids(ids, p.surface_name);
-                    case 'RuledSurf'
-                        r.curve1_id = obj.ref_ids(ids, p.curve1);
-                        r.curve2_id = obj.ref_ids(ids, p.curve2);
-                    case 'RevSurf'
-                        r.profile_id = obj.ref_ids(ids, p.profile);
-                        r.axis_id    = obj.ref_ids(ids, p.axis);
-                    case 'BLoftSurf'
-                        r.section_ids = obj.ref_ids(ids, p.section_names);
-                        r.surf_key    = strjoin(p.section_names, '|');
-                    case 'DevSurf'
-                        r.snake_id = obj.ref_ids(ids, p.snake);
-                        r.curve_id = obj.ref_ids(ids, p.curve);
-                    case 'MirrSurf'
-                        r.source_id = obj.ref_ids(ids, p.source);
-                end
-                ent{i} = r;
+                ent{i} = obj.resolve_refs(ent{i}, ids, id_empty);
+                is_point(i) = any(strcmp(ent{i}.type, {'FramePoint', 'MirrPoint', 'AbsBead', 'AbsRing'}));
             end
 
             obj.names = names;
             obj.ent = ent;
+            obj.ids = ids;
+            obj.id_empty = id_empty;
 
             % Points first, so that the curves built on them find their coordinates ready. A
             % constant that cannot be evaluated stays unmarked; the evaluator then repeats the
@@ -864,6 +821,75 @@ classdef MS2Parser
                     end
                 end
             end
+        end
+
+
+        function r = resolve_refs(obj, r, ids, id_empty)
+        % RESOLVE_REFS: Replace the name references of entity record r by entity numbers. An
+        % empty name inside a list stands for the 'Missing' placeholder id_empty, so evaluation
+        % raises the error a lookup of that name raised; the optional parents of a FramePoint
+        % keep 0 for an empty name.
+
+            p = r.params;
+            switch r.type
+                case 'FramePoint'
+                    r.parent1_id = obj.ref_ids(ids, p.parent1, 0);
+                    r.parent2_id = obj.ref_ids(ids, p.parent2, 0);
+                case 'MirrPoint'
+                    r.source_id = obj.ref_ids(ids, p.source, id_empty);
+                case 'AbsBead'
+                    r.parent_id = obj.ref_ids(ids, p.parent_curve, id_empty);
+                case 'AbsRing'
+                    r.parent_id = obj.ref_ids(ids, p.parent_snake, id_empty);
+                case 'BCurve'
+                    r.cp_ids = obj.ref_ids(ids, p.ctrl_pt_names, id_empty);
+                case 'Conic'
+                    r.center_id = obj.ref_ids(ids, p.center, id_empty);
+                    r.radius_id = obj.ref_ids(ids, p.radius_pt, id_empty);
+                    r.apex_id   = obj.ref_ids(ids, p.apex_pt, id_empty);
+                case 'CopyCurve'
+                    r.source_id = obj.ref_ids(ids, p.source, id_empty);
+                    r.src_pt_id = obj.ref_ids(ids, p.src_pt, id_empty);
+                    r.dst_pt_id = obj.ref_ids(ids, p.dst_pt, id_empty);
+                case 'Line'
+                    r.start_id = obj.ref_ids(ids, p.pt_start, id_empty);
+                    r.end_id   = obj.ref_ids(ids, p.pt_end, id_empty);
+                case 'Arc'
+                    r.start_id  = obj.ref_ids(ids, p.pt_start, id_empty);
+                    r.centre_id = obj.ref_ids(ids, p.pt_center, id_empty);
+                    r.end_id    = obj.ref_ids(ids, p.pt_end, id_empty);
+                case 'PolyCurve2'
+                    r.curve_ids = obj.ref_ids(ids, p.curve_names, id_empty);
+                case 'ProjCurve'
+                    r.source_id = obj.ref_ids(ids, p.source, id_empty);
+                case 'EdgeSnake'
+                    r.surface_id = obj.ref_ids(ids, p.surface_name, id_empty);
+                case 'RuledSurf'
+                    r.curve1_id = obj.ref_ids(ids, p.curve1, id_empty);
+                    r.curve2_id = obj.ref_ids(ids, p.curve2, id_empty);
+                case 'RevSurf'
+                    r.profile_id = obj.ref_ids(ids, p.profile, id_empty);
+                    r.axis_id    = obj.ref_ids(ids, p.axis, id_empty);
+                case 'BLoftSurf'
+                    r.section_ids = obj.ref_ids(ids, p.section_names, id_empty);
+                    r.surf_key    = strjoin(p.section_names, '|');
+                case 'DevSurf'
+                    r.snake_id = obj.ref_ids(ids, p.snake, id_empty);
+                    r.curve_id = obj.ref_ids(ids, p.curve, id_empty);
+                case 'MirrSurf'
+                    r.source_id = obj.ref_ids(ids, p.source, id_empty);
+            end
+        end
+
+
+        function r = record_of(obj, e)
+        % RECORD_OF: The record of an entity struct as model.entities holds it, resolved on entry
+        % for the public evaluators named after an entity type.
+
+            r = e;
+            r.name = '';
+            r.k_ok = false;
+            r = obj.resolve_refs(r, obj.ids, obj.id_empty);
         end
 
 
@@ -1252,19 +1278,25 @@ classdef MS2Parser
             end
         end
 
-        function v = ref_ids(~, ids, names)
-        % REF_IDS: Entity numbers for references by name; 0 stands for an empty name (no reference).
+        function v = ref_ids(~, ids, names, id_empty)
+        % REF_IDS: Entity numbers for references by name; an empty name gives id_empty.
 
             if ischar(names)
                 names = {names};
             end
             v = zeros(1, numel(names));
             for k = 1:numel(names)
-                if ~isempty(names{k})
+                if isempty(names{k})
+                    v(k) = id_empty;
+                elseif ids.isKey(names{k})
                     v(k) = ids(names{k});
+                else
+                    error('mwecmass:geometry:EntityNotFound', ...
+                           'Entity not found: %s', names{k});
                 end
             end
         end
+
 
     end % methods (Access = private)
 
@@ -1272,7 +1304,8 @@ classdef MS2Parser
 
     methods
         % The eval_* methods that take a name are the entry points. Those named after an entity type
-        % (eval_bcurve, eval_ruled_surf, ...) take the entity record that resolve_entities builds.
+        % (eval_bcurve, eval_ruled_surf, ...) take the entity struct of model.entities; the
+        % internal calls pass the resolved record, which they recognise by its field k_ok.
 
         function pt = eval_point(obj, name)
         % EVAL_POINT: Evaluate the entity at normalized parameter values; points are [Nx3].
@@ -1302,6 +1335,8 @@ classdef MS2Parser
         function pts = eval_bcurve(obj, e, t)
         % EVAL_BCURVE: Evaluate the entity at normalized parameter values; points are [Nx3].
 
+            if ~isfield(e, 'k_ok'), e = obj.record_of(e); end
+
             if ~e.k_ok, e = obj.compute_constants(e); end
             pts = mwecmass.geometry.MS2Parser.bspline_curve_eval( ...
                       e.knots, e.ctrl_pts, e.params.degree, t);
@@ -1309,6 +1344,8 @@ classdef MS2Parser
 
         function pts = eval_conic(obj, e, t)
         % EVAL_CONIC: Evaluate the entity at normalized parameter values; points are [Nx3].
+
+            if ~isfield(e, 'k_ok'), e = obj.record_of(e); end
 
             p = e.params;
             if ~e.k_ok, e = obj.compute_constants(e); end
@@ -1331,6 +1368,8 @@ classdef MS2Parser
         function pts = eval_copy_curve(obj, e, t)
         % EVAL_COPY_CURVE: Evaluate the entity at normalized parameter values; points are [Nx3].
 
+            if ~isfield(e, 'k_ok'), e = obj.record_of(e); end
+
             p = e.params;
             if ~e.k_ok, e = obj.compute_constants(e); end
             src_pos = e.src_pos;
@@ -1349,6 +1388,8 @@ classdef MS2Parser
         function pts = eval_line(obj, e, t)
         % EVAL_LINE: Evaluate the entity at normalized parameter values; points are [Nx3].
 
+            if ~isfield(e, 'k_ok'), e = obj.record_of(e); end
+
             if ~e.k_ok, e = obj.compute_constants(e); end
             p_start = e.p_start;
             p_end   = e.p_end;
@@ -1358,6 +1399,8 @@ classdef MS2Parser
 
         function pts = eval_bsub_curve(obj, e, t)
         % EVAL_BSUB_CURVE: Evaluate the entity at normalized parameter values; points are [Nx3].
+
+            if ~isfield(e, 'k_ok'), e = obj.record_of(e); end
 
             if ~e.k_ok, e = obj.compute_constants(e); end
             t_start = e.t_start;
@@ -1372,6 +1415,8 @@ classdef MS2Parser
         function pts = eval_arc(obj, e, t)
         % EVAL_ARC: Evaluate the entity at normalized parameter values; points are [Nx3].
 
+            if ~isfield(e, 'k_ok'), e = obj.record_of(e); end
+
             if ~e.k_ok, e = obj.compute_constants(e); end
 
             [pts, ~] = mwecmass.geometry.MS2Parser.arc_evaluate(e.p_start, e.p_centre, e.p_end, t);
@@ -1380,6 +1425,8 @@ classdef MS2Parser
 
         function pts = eval_polycurve2(obj, e, t)
         % EVAL_POLYCURVE2: Evaluate the entity at normalized parameter values; points are [Nx3].
+
+            if ~isfield(e, 'k_ok'), e = obj.record_of(e); end
 
             cids = e.curve_ids;
             nc = length(cids);
@@ -1404,6 +1451,8 @@ classdef MS2Parser
         function pts = eval_proj_curve(obj, e, t)
         % EVAL_PROJ_CURVE: Evaluate the entity at normalized parameter values; points are [Nx3].
 
+            if ~isfield(e, 'k_ok'), e = obj.record_of(e); end
+
             p = e.params;
 
             se = obj.ent{e.source_id};
@@ -1424,6 +1473,8 @@ classdef MS2Parser
         function [pts, dpts] = eval_arc_deriv(obj, e, t)
         % EVAL_ARC_DERIV: Evaluate the entity at normalized parameter values; points are [Nx3].
 
+            if ~isfield(e, 'k_ok'), e = obj.record_of(e); end
+
             if ~e.k_ok, e = obj.compute_constants(e); end
 
             [pts, dpts] = mwecmass.geometry.MS2Parser.arc_evaluate(e.p_start, e.p_centre, e.p_end, t);
@@ -1432,6 +1483,8 @@ classdef MS2Parser
 
         function [pts, dpts] = eval_polycurve2_deriv(obj, e, t)
         % EVAL_POLYCURVE2_DERIV: Evaluate the entity at normalized parameter values; points are [Nx3].
+
+            if ~isfield(e, 'k_ok'), e = obj.record_of(e); end
 
             cids = e.curve_ids;
             nc = length(cids);
@@ -1460,6 +1513,8 @@ classdef MS2Parser
         function [pts, dpts] = eval_proj_curve_deriv(obj, e, t)
         % EVAL_PROJ_CURVE_DERIV: Evaluate the entity at normalized parameter values; points are [Nx3].
 
+            if ~isfield(e, 'k_ok'), e = obj.record_of(e); end
+
             p = e.params;
 
             se = obj.ent{e.source_id};
@@ -1486,6 +1541,8 @@ classdef MS2Parser
 
         function pts = eval_edge_snake(obj, e, t)
         % EVAL_EDGE_SNAKE: Evaluate the entity at normalized parameter values; points are [Nx3].
+
+            if ~isfield(e, 'k_ok'), e = obj.record_of(e); end
 
             p = e.params;
             edge_idx = p.edge_index;
@@ -1519,6 +1576,8 @@ classdef MS2Parser
 
         function pts = eval_bsub_snake(obj, e, t)
         % EVAL_BSUB_SNAKE: Evaluate the entity at normalized parameter values; points are [Nx3].
+
+            if ~isfield(e, 'k_ok'), e = obj.record_of(e); end
 
             if ~e.k_ok, e = obj.compute_constants(e); end
             t_start = e.t_start;
@@ -1564,6 +1623,8 @@ classdef MS2Parser
         function [pts, dpts] = eval_bcurve_deriv(obj, e, t)
         % EVAL_BCURVE_DERIV: Evaluate the entity at normalized parameter values; points are [Nx3].
 
+            if ~isfield(e, 'k_ok'), e = obj.record_of(e); end
+
             if ~e.k_ok, e = obj.compute_constants(e); end
             [pts, dpts] = mwecmass.geometry.MS2Parser.bspline_curve_eval_with_deriv( ...
                 e.knots, e.ctrl_pts, e.params.degree, t);
@@ -1572,6 +1633,8 @@ classdef MS2Parser
 
         function [pts, dpts] = eval_conic_deriv(obj, e, t)
         % EVAL_CONIC_DERIV: Evaluate the entity at normalized parameter values; points are [Nx3].
+
+            if ~isfield(e, 'k_ok'), e = obj.record_of(e); end
 
             p = e.params;
             if ~e.k_ok, e = obj.compute_constants(e); end
@@ -1598,6 +1661,8 @@ classdef MS2Parser
         function [pts, dpts] = eval_copy_curve_deriv(obj, e, t)
         % EVAL_COPY_CURVE_DERIV: Evaluate the entity at normalized parameter values; points are [Nx3].
 
+            if ~isfield(e, 'k_ok'), e = obj.record_of(e); end
+
             p = e.params;
             if ~e.k_ok, e = obj.compute_constants(e); end
             src_pos = e.src_pos;
@@ -1619,6 +1684,8 @@ classdef MS2Parser
         function [pts, dpts] = eval_line_deriv(obj, e, t)
         % EVAL_LINE_DERIV: Evaluate the entity at normalized parameter values; points are [Nx3].
 
+            if ~isfield(e, 'k_ok'), e = obj.record_of(e); end
+
             if ~e.k_ok, e = obj.compute_constants(e); end
             p_start = e.p_start;
             p_end   = e.p_end;
@@ -1630,6 +1697,8 @@ classdef MS2Parser
 
         function [pts, dpts] = eval_bsub_curve_deriv(obj, e, t)
         % EVAL_BSUB_CURVE_DERIV: Evaluate the entity at normalized parameter values; points are [Nx3].
+
+            if ~isfield(e, 'k_ok'), e = obj.record_of(e); end
 
             if ~e.k_ok, e = obj.compute_constants(e); end
             t_start = e.t_start;
@@ -1651,6 +1720,8 @@ classdef MS2Parser
 
         function [pts, dpts] = eval_edge_snake_deriv(obj, e, t)
         % EVAL_EDGE_SNAKE_DERIV: Evaluate the entity at normalized parameter values; points are [Nx3].
+
+            if ~isfield(e, 'k_ok'), e = obj.record_of(e); end
 
             p = e.params;
             sid = e.surface_id;
@@ -1680,6 +1751,8 @@ classdef MS2Parser
         function [pts, dpts] = eval_bsub_snake_deriv(obj, e, t)
         % EVAL_BSUB_SNAKE_DERIV: Evaluate the entity at normalized parameter values; points are [Nx3].
 
+            if ~isfield(e, 'k_ok'), e = obj.record_of(e); end
+
             if ~e.k_ok, e = obj.compute_constants(e); end
             t_start = e.t_start;
             t_end   = e.t_end;
@@ -1701,6 +1774,8 @@ classdef MS2Parser
         function [S, Su, Sv] = eval_ruled_surf_derivs(obj, e, u, v)
         % EVAL_RULED_SURF_DERIVS: Evaluate the entity at normalized parameter values; points are [Nx3].
 
+            if ~isfield(e, 'k_ok'), e = obj.record_of(e); end
+
             [c1, dc1] = obj.curve_deriv_at(e.curve1_id, u);
             [c2, dc2] = obj.curve_deriv_at(e.curve2_id, u);
 
@@ -1712,6 +1787,8 @@ classdef MS2Parser
 
         function [S, Su, Sv] = eval_rev_surf_derivs(obj, e, u, v)
         % EVAL_REV_SURF_DERIVS: Evaluate the entity at normalized parameter values; points are [Nx3].
+
+            if ~isfield(e, 'k_ok'), e = obj.record_of(e); end
 
             p = e.params;
 
@@ -1770,6 +1847,8 @@ classdef MS2Parser
         function [S, Su, Sv] = eval_bloft_surf_derivs(obj, e, u, v)
         % EVAL_BLOFT_SURF_DERIVS: Evaluate the entity at normalized parameter values; points are [Nx3].
 
+            if ~isfield(e, 'k_ok'), e = obj.record_of(e); end
+
             p = e.params;
             n_sec = numel(e.section_ids);
             degree = p.degree;
@@ -1827,6 +1906,8 @@ classdef MS2Parser
         function [S, Su, Sv] = eval_dev_surf_derivs(obj, e, u, v)
         % EVAL_DEV_SURF_DERIVS: Evaluate the entity at normalized parameter values; points are [Nx3].
 
+            if ~isfield(e, 'k_ok'), e = obj.record_of(e); end
+
             [s_pt, s_dpt] = obj.snake_deriv_at(e.snake_id, u);
             [c_pt, c_dpt] = obj.curve_deriv_at(e.curve_id, u);
 
@@ -1841,6 +1922,8 @@ classdef MS2Parser
 
         function [S, Su, Sv] = eval_mirr_surf_derivs(obj, e, u, v)
         % EVAL_MIRR_SURF_DERIVS: Evaluate the entity at normalized parameter values; points are [Nx3].
+
+            if ~isfield(e, 'k_ok'), e = obj.record_of(e); end
 
             p = e.params;
             [S, Su, Sv] = obj.surface_deriv_at(e.source_id, u, v);
@@ -1861,6 +1944,8 @@ classdef MS2Parser
         function pt = eval_ruled_surf(obj, e, u, v)
         % EVAL_RULED_SURF: Evaluate the entity at normalized parameter values; points are [Nx3].
 
+            if ~isfield(e, 'k_ok'), e = obj.record_of(e); end
+
             c1 = obj.curve_at(e.curve1_id, u);
             c2 = obj.curve_at(e.curve2_id, u);
             pt = (1 - v) * c1 + v * c2;
@@ -1869,6 +1954,8 @@ classdef MS2Parser
 
         function pt = eval_rev_surf(obj, e, u, v)
         % EVAL_REV_SURF: Evaluate the entity at normalized parameter values; points are [Nx3].
+
+            if ~isfield(e, 'k_ok'), e = obj.record_of(e); end
 
             p = e.params;
 
@@ -1907,6 +1994,8 @@ classdef MS2Parser
         function pt = eval_bloft_surf(obj, e, u, v)
         % EVAL_BLOFT_SURF: Evaluate the entity at normalized parameter values; points are [Nx3].
 
+            if ~isfield(e, 'k_ok'), e = obj.record_of(e); end
+
             p = e.params;
             n_sections = numel(e.section_ids);
             degree = p.degree;
@@ -1924,6 +2013,8 @@ classdef MS2Parser
 
         function pts = eval_bloft_surf_at_u(obj, e, u, v_array)
         % EVAL_BLOFT_SURF_AT_U: Evaluate the entity at normalized parameter values; points are [Nx3].
+
+            if ~isfield(e, 'k_ok'), e = obj.record_of(e); end
 
             p = e.params;
             n_sections = numel(e.section_ids);
@@ -1945,6 +2036,8 @@ classdef MS2Parser
         function pt = eval_dev_surf(obj, e, u, v)
         % EVAL_DEV_SURF: Evaluate the entity at normalized parameter values; points are [Nx3].
 
+            if ~isfield(e, 'k_ok'), e = obj.record_of(e); end
+
             pt_snake = obj.snake_at(e.snake_id, u);
             pt_curve = obj.curve_at(e.curve_id, u);
 
@@ -1954,6 +2047,8 @@ classdef MS2Parser
 
         function pt = eval_mirr_surf(obj, e, u, v)
         % EVAL_MIRR_SURF: Evaluate the entity at normalized parameter values; points are [Nx3].
+
+            if ~isfield(e, 'k_ok'), e = obj.record_of(e); end
 
             p = e.params;
             pt = obj.surface_at(e.source_id, u, v);
