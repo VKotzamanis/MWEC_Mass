@@ -60,6 +60,59 @@ fprintf('loop with an edge on y = 0: crossings %s\n', mat2str(x'));
 loop = polygon_loop([0 -1; 3 -1; 3 1; 2 1; 2 -0.5; 1 -0.5; 1 1; 0 1]);
 x = mwecmass.output.figures.section_y0_crossings(loop);
 check(isequal(x, [0; 1; 2; 3]), 'U shape: %s', mat2str(x'));
+% Two crossings inside a short parameter interval of one piece: x(s) = 2s - 1, y(s) = (s - 0.515)^2 - 1e-4,
+% a quadratic Bezier piece closed by three lines. The exact roots are s = 0.505 and 0.525, so x = 0.01 and
+% 0.05 (closed form, independent oracle). The control values of y are rounded to a few ulp of 0.27 and
+% |dy/ds| = 0.02 at the roots, dx = 2 ds, so 16 * eps(0.27) / 0.02 bounds the error.
+B = -1.03;
+C = 0.515^2 - 1e-4;
+ctrl = [-1, C, 0; 0, C + B / 2, 0; 1, 1 + B + C, 0];
+loop = struct('z', 0, 'pieces', struct('patch', 1, 'u', 0, 'dir', 1, ...
+    'curve', struct('degree', 2, 'ctrl', ctrl, 'knots', [0 0 0 1 1 1], 'weights', [])));
+corners = [ctrl(3, :); 1 2 0; -1 2 0; ctrl(1, :)];
+for q = 1:3
+    loop.pieces(end + 1) = struct('patch', q + 1, 'u', 0, 'dir', 1, 'curve', struct('degree', 1, ...
+        'ctrl', corners(q:q + 1, :), 'knots', [0 0 1 1], 'weights', []));
+end
+x = mwecmass.output.figures.section_y0_crossings(loop);
+err = max(abs(x - [0.01; 0.05]));
+fprintf('two crossings in one sample interval: %.15f %.15f, error %.2e\n', x, err);
+check(numel(x) == 2 && err <= 16 * eps(0.27) / 0.02, 'double crossing: %s', mat2str(x'));
+
+% A cubic piece with three simple roots at s = 0.2, 0.5, 0.8 (x = s), closed by one line from its end: the
+% three roots of the cubic plus one crossing of the closing line make an even count; the closing line
+% runs from (1, y(1)) = (1, 0.08) to (0, y(0)) = (0, -0.08) and crosses y = 0 at x = 0.5.
+f = @(s) (s - 0.2) .* (s - 0.5) .* (s - 0.8);
+s4 = [0 1/3 2/3 1];
+V = f(s4);
+% Bezier ordinates of the cubic through 4 points at s4 (interpolation of equispaced values)
+M = zeros(4);
+for i = 0:3
+    for j = 0:3
+        M(i + 1, j + 1) = nchoosek(3, j) * s4(i + 1)^j * (1 - s4(i + 1))^(3 - j);
+    end
+end
+yb = M \ V';
+ctrl = [(0:3)' / 3, yb, zeros(4, 1)];
+loop = struct('z', 0, 'pieces', struct('patch', 1, 'u', 0, 'dir', 1, ...
+    'curve', struct('degree', 3, 'ctrl', ctrl, 'knots', [0 0 0 0 1 1 1 1], 'weights', [])));
+loop.pieces(2) = struct('patch', 2, 'u', 0, 'dir', 1, 'curve', struct('degree', 1, ...
+    'ctrl', [ctrl(4, :); ctrl(1, :)], 'knots', [0 0 1 1], 'weights', []));
+x = mwecmass.output.figures.section_y0_crossings(loop);
+err = max(abs(x - [0.2; 0.5; 0.5; 0.8]));
+fprintf('cubic with three roots plus closing line: %s, error %.2e\n', mat2str(x', 15), err);
+check(numel(x) == 4 && err <= 64 * eps, 'cubic crossings: %s', mat2str(x'));
+
+% An open chain (one crossing) is not a closed loop and is reported, not returned.
+loop = polygon_loop([1 1; -1 1; -1 -1]);
+loop.pieces(end) = [];
+msg = '';
+try
+    mwecmass.output.figures.section_y0_crossings(loop);
+catch err
+    msg = err.identifier;
+end
+check(strcmp(msg, 'mwecmass:figures:SectionTopology'), 'open chain gave "%s"', msg);
 fprintf('all crossing tests passed\n');
 end
 

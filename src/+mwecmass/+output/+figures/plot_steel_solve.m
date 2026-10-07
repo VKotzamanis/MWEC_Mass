@@ -21,7 +21,7 @@ function fig = plot_steel_solve(realised, config)
 
     fig = mwecmass.output.figures.new_figure(style, 'tall_double_column');
     % This single-panel figure needs vertical room so axis equal can show the full hull beneath
-    % the 2 x 2 legend; the shared size preset stays unchanged for other figures.
+    % the two-column legend above the axes; the shared size preset stays unchanged for other figures.
     set(fig, 'Units', 'centimeters');
     fig.Position(3:4) = [17, 15];
     set(fig, 'Name', 'Stage 3: Thin Shell');

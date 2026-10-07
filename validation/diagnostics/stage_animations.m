@@ -767,9 +767,8 @@ function draw_density_section(ax, prof, vs, cfg, rho, cmap, clim_rho, st, opts)
     % FS_LABEL_PRES, independent of fs_label -- see draw_uhpc_from_fraction's own fs_title.
     fs_title = get_or(opts,'fs_title', st.font_size.title);
 
-    % Centre-of-gravity / centre-of-buoyancy marker colours: out.style names no role for
-    % these two markers (plot_steel_solve's own CG/CB markers are plain 'r'/'b' short-name
-    % colours, unparameterised), so they stay local literals here, unchanged from before.
+    % Marker colours kept as local literals: these darker shades differ from the pure red/blue of
+    % style.color.cg / .cb, and using the style values would change the animation frames.
     CG_RED = [0.85 0.10 0.10];
     CB_BLUE = [0.00 0.20 0.75];
 
