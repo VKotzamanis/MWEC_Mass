@@ -96,7 +96,7 @@ Body section (F6b): `z`, `module`, `outer` (S5), `inner` (S5 or empty), `solid` 
 - `stage2`: `vs`, `rho [N x 1]`, `mass`, `Z_CG` (= `Final3D.CG_total(3)`, world), `GM`
   (`Final3D.GM_L`), `T_heave`, `T_pitch` (`Final3D.periods.heave/.pitch`, coupled).
 - `rho` (densities used, by region), `design` (S3), `k_star` (precast: ballast module), `V_uhpc_target
-  [N x 1]` (precast split, §3 item 4.1).
+  [N x 1]` (precast split, AGENTS §3 item 4.1).
 - `modules(i)`: `z_lo`, `z_hi` [m, body], `t` [m] (NaN: no void), `h_ballast` [m] (ballast height
   measured from the module bottom, OD6 ii), `V`, `V_<region>`, `mass`, `rho_eff`, `rho_stage2`,
   `rho_floor`, `CG_world [1x3]`.
@@ -111,7 +111,7 @@ All take and return the structs of §1; none reads globals or writes files excep
 
 | | Signature | Contract |
 |---|---|---|
-| F1 | `geo = mwecmass.solid.outer_nurbs(model)` | S1b from the `.ms2` entity tree: BCurve and BSubCurve by knot insertion, Arc as rational quadratic, PolyCurve2 joined with C0 knots, ProjCurve by projecting control points, RevSurf as profile × rational arc, RuledSurf as degree 1 in v between its two curves when both get the same reparameterisation (one knot vector, equal weights; C1: `curve7` is the projection of `Edge_For_Dev`), mirrors by flipping control points. Seam rows bitwise equal. Any other entity: error `NotExact` (Open item 1). |
+| F1 | `geo = mwecmass.solid.outer_nurbs(model)` | S1b from the `.ms2` entity tree: BCurve directly, BSubCurve by knot insertion, Arc as rational quadratic, PolyCurve2 joined with C0 knots, ProjCurve by projecting control points, RevSurf as profile × rational arc, RuledSurf as degree 1 in v between its two curves when both get the same reparameterisation (one knot vector, equal weights; C1: `curve7` is the projection of `Edge_For_Dev`), mirrors by flipping control points. Seam rows bitwise equal. Any other entity: error `NotExact` (Open item 1). |
 | F2 | `[inner, rep] = mwecmass.solid.offset_surface(model, cache, geo, t, z_range, opts)` | S2 at thickness t over `z_range` (body). Nodes from `MS2Parser` + T1 `surface_normals`, offset by t + ε/2, folds trimmed (`trim_fold.m`), faces split at creases, cubic fit (`fit_bspline_surface.m`), knot insertion where M1–M3 fail, knot removal while they hold (AGENTS §5 item 9). A `z_of_u` outer patch gives `z_of_u` inner patches with monotonic z (the offset u-curves are fitted and the patch's v-construction is kept). Neighbouring inner patches share boundary curves bitwise. `opts.t_min` (ε), `opts.max_passes`; cap reached → error `FitNotConverged` listing the failing patches and metrics. |
 | F2b | `t_max = mwecmass.solid.void_closing_thickness(model, cache, geo, z_range)` | Smallest t at which offset layers from opposite sides meet inside `z_range` (not a fold of one layer). C1 neck: 0.10 m. |
 | F3 | `[S, Su, Sv] = mwecmass.solid.eval_bspline_surface(surf, u, v)`; `[C, Cs] = …eval_bspline_curve(curve, s)` | Rational or not; u, v column vectors; [n x 3]. |
