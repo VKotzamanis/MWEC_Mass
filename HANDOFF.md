@@ -38,7 +38,7 @@ Main `claude/lucid-cray-7o9442` holds the general-kernel amendment (`e7e9114`) a
 | T0d | geometry cache of `build_config` | P | round 2 grading | r1 8 | task/T0d `158d77d` |
 | T4a | Stage-2 changes (delete `c_mono`, `c_mass_min`; bottom-filled start; bounds) | P | queued after T0d | — | — |
 | T4b | Stage-2 floors from the kernel (merges after J1) | P | queued after T4a | — | — |
-| SK2 | stand-ins updated to spec2 | SK2 | round 2 grading | 7 | task/SK2 `067c0cb` |
+| SK2 | stand-ins updated to spec2 | SK2 | accepted, merge pending (GitHub push returns HTTP 500 since 15:12 UTC) | 9 (3) | `753a11e` |
 | T2a | exact-path offset, fold trim, adaptive fit | K1 | implementing: F3, F3b/F4, F1 committed; F2 (offset, trim, fit) in progress; F2b next | — | task/T2a `59aeb4f` |
 | T2b | general path (refits, flat regions, mirrors) | K | after T2a, ∥ T3 | — | — |
 | T3 | bodies and exact properties | K | after T2a | — | — |
@@ -102,6 +102,12 @@ Main `claude/lucid-cray-7o9442` holds the general-kernel amendment (`e7e9114`) a
   Kernel errors (VoidClosed, JointNotNested, FitNotConverged) are failed evaluations in T6. F6
   integral caching is internal to T3 (F5/F6 signatures unchanged). A module whose t_min shell
   exceeds its split is reported in the Stage-3 log (no S8 field).
+- SK2 spec issues for J1/T3 (contract errata with the batch above): whether a void end (constant-z
+  end piece of an inner set) counts as a flat part for F6b `side` (stand-in: yes); name the error
+  for a bad `side` (stand-in `mwecmass:solid:BadSide`); a row cut at a plane takes that height
+  bitwise (F3b, F5; the stand-in does); J1 adapts `test_sk_outer_nurbs` (asserts that
+  `force_general` is ignored). The SK stand-in F10 still counts the GM row in `pass` (align at J1).
+  T5 edited `tests/standin_kit/test_sk_not_analytic.m` and `test_sk_realised.m` (merge with SK2 clean).
 - Carry-overs: `build_config` time after T0c (T0d prints it); `METHODS_ENGINE.md` lines 205–208 and
   `_graph/CODE_MAP.md` regeneration → T12; T0b deferrals for T5 (`rho_UHPC`/`t_UHPC` capitals,
   `config.rho_steel` in precast `solve.m`). The old names stay only in `tools/`,
