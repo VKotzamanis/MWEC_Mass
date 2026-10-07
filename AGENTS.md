@@ -104,7 +104,7 @@ call a shell a wall.
   `[vs, z_fill, t_2 … t_N_nonwall]`, objective = heave and pitch period penalties (evaluated
   with uncoupled periods, I20), equality = flotation, inequality = GM ≥ `gm_min`. **It reads only the Stage-2 vertical shift** (and the
   mass for a pre-check); the Stage-2 densities are never used.
-- Pre-check (`solve_and_extract.m:63–106`): the Stage-2 mass must lie in [0.95 · M_min, 1.05 · M_max]
+- Pre-check (`solve_and_extract.m:64–106`): the Stage-2 mass must lie in [0.95 · M_min, 1.05 · M_max]
   of a UHPC hull built with t_min shells and the wall module solid (M_min) and of a fully solid hull
   (M_max); otherwise the function
   stops with an error (`MassTooLight`, `MassTooHeavy`).
@@ -301,7 +301,7 @@ Figures: `WEC_Constructability_XZ`, `WEC_Constructability_Strips` (precast), `St
 | I20 | Stage 3 optimises **uncoupled** periods, while Stage 2 and the reported results use coupled periods | `modular_precast/evaluate_design_point.m:119–126`, `thin_shell/evaluate_design_point.m:200–207` vs `properties_3d.m:254–257`, `build_realised_properties.m` | Pitch only (heave identical): precast 4.960 s optimised vs 4.907 s reported; thin shell 3.890 s optimised (the target) vs 3.813 s reported. A15²/(M+A11) = 2.1 % and 3.9 % of the pitch inertia |
 | I21 | C1 floats with ≈95 % of its volume submerged (V_sub 20.16 of 21.16 m³). Mass balance therefore cannot carry a percentage tolerance | hydrostatics of C1 | From the C1 tables: +1 % mass raises the waterline 160 mm; +5 % submerges the hull completely; −10 % lowers the waterline 256 mm |
 | I22 | The monotonic density constraint `c_mono` makes Stage 2 infeasible for thin shell with the true floors, and over-constrains UHPC | `optim/stage2_constraints.m:35,39,51,64`; Stage-1 copy `c_monotonic` in `optim/solve_2d_surrogate.m:224–238,248,261–264,269` | Python estimate on the exact C1 sections. Thin shell (25.4 mm steel shell, air inside): module floors ≈ 722/268/451/2009/2217 kg/m³, so `c_mono` forces every module to ≥ 2217 kg/m³: minimum mass 46 934 kg against 21 702 kg displaced with the hull fully submerged; no feasible point. UHPC (76.2 mm): floors ≈ 608/284/211/610 (wall module 2500); `c_mono` lifts modules 1–3 to ≥ 610 kg/m³, ≈ 3.1 t more in module 3 than its floor requires |
-| I23 | The UHPC Stage-3 pre-check uses invented factors and aborts instead of returning the closest design | `modular_precast/solve_and_extract.m:63–106` (factors 0.95 at line 95, 1.05 at line 101; errors `MassTooLight`, `MassTooHeavy`) | Rule 5 allows no further numeric gate; §3 item 7 requires the closest-fail rule; the check is redundant once the Stage-2 floors from the kernel exist |
+| I23 | The UHPC Stage-3 pre-check uses invented factors and aborts instead of returning the closest design | `modular_precast/solve_and_extract.m:64–106` (factors 0.95 at line 95, 1.05 at line 101; errors `MassTooLight`, `MassTooHeavy`) | Rule 5 allows no further numeric gate; §3 item 7 requires the closest-fail rule; the check is redundant once the Stage-2 floors from the kernel exist |
 
 Known approximations **not** in scope (report, do not change without approval): linear
 interpolation of the hydrostatic tables in Stages 1–2; angular sorting of contour points about
@@ -494,7 +494,7 @@ New folders created by the plan: `src/+mwecmass/+solid/` (exact geometry kernel)
   applies only to the Stage-2 comparison of Z_CG, GM, T_heave and T_pitch (see I21).
 - **OD11** Resolved: GM = GM_Stage2 (equality) in both modes.
 - **OD12** Resolved: delete `c_mono`; Stage 2 also runs from a bottom-filled start and keeps the
-  better start (§3 item 26, §5 item 10; agent's proposal for the safeguard, owner informed).
+  start with the lower objective (§3 item 26, §5 item 10; agent's proposal for the safeguard, owner informed).
 - **OD13** Resolved (agent's decision, owner informed): in the ballast module k*, the shell above
   the ballast has thickness t_k* ≥ t_min, a Stage-3 variable that starts at t_min (§3 item 28).
 - **OD14** Resolved: thin-shell `t_max` = half the neck thickness (§3 item 30).
