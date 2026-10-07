@@ -4,10 +4,9 @@ function files = export_stage3(realised, out_dir)
 %   files = mwecmass.output.step.export_stage3(realised, out_dir)
 %
 %   realised: results.stage3 with its body (S4); the body's B-rep carries the bodies of the mode.
-%   out_dir: the folder the files go into (created when missing); the caller passes
-%   fullfile(mwecmass.output.output_dir(type), 'step'). Files already in out_dir that follow
-%   this mode's naming are removed first, so a design with fewer modules or no ballast leaves no
-%   stale file.
+%   out_dir: the type folder, mwecmass.output.output_dir(type); the files go into its subfolder
+%   'step' (created when missing). Files already there that follow this mode's naming are
+%   removed first, so a design with fewer modules or no ballast leaves no stale file.
 %
 %   Modular precast: <hull>_UHPC_module_<i>.step, one solid per module, and <hull>_UHPC_all.step,
 %   one solid whose outer shell is the hull surface and whose void shells are the cavities
@@ -44,33 +43,34 @@ switch realised.mode
         error('mwecmass:step:BadMode', 'export_stage3: no STEP export for mode %s', realised.mode);
 end
 
-if ~exist(out_dir, 'dir')
-    [ok, msg] = mkdir(out_dir);
+step_dir = fullfile(out_dir, 'step');
+if ~exist(step_dir, 'dir')
+    [ok, msg] = mkdir(step_dir);
     if ~ok
-        error('mwecmass:step:io', 'export_stage3: cannot create %s: %s', out_dir, msg);
+        error('mwecmass:step:io', 'export_stage3: cannot create %s: %s', step_dir, msg);
     end
 end
 for k = 1:numel(stale)
-    old = dir(fullfile(out_dir, stale{k}));
+    old = dir(fullfile(step_dir, stale{k}));
     for q = 1:numel(old)
-        delete(fullfile(out_dir, old(q).name));
+        delete(fullfile(step_dir, old(q).name));
     end
 end
 
 files = struct('name', {}, 'path', {}, 'bodies', {});
 for k = 1:numel(parts)
-    files(end + 1) = write_file(brep, parts(k), parts(k).name, out_dir); %#ok<AGROW>
+    files(end + 1) = write_file(brep, parts(k), parts(k).name, step_dir); %#ok<AGROW>
 end
 if strcmp(realised.mode, 'modular_precast')
-    files(end + 1) = write_file(brep, extra{1}, extra{1}.name, out_dir);
+    files(end + 1) = write_file(brep, extra{1}, extra{1}.name, step_dir);
 elseif ~isempty(extra)
-    files(end + 1) = write_file(brep, extra{1}, [hull '_STEEL_all'], out_dir);
+    files(end + 1) = write_file(brep, extra{1}, [hull '_STEEL_all'], step_dir);
 end
 end
 
-function f = write_file(brep, bodies, stem, out_dir)
+function f = write_file(brep, bodies, stem, step_dir)
 brep.bodies = bodies;
-path = fullfile(out_dir, [stem '.step']);
+path = fullfile(step_dir, [stem '.step']);
 mwecmass.output.step.write_step(brep, path);
 f = struct('name', stem, 'path', path, 'bodies', {{bodies.name}});
 end
@@ -104,8 +104,8 @@ end
 function e = edge_list(brep, signed_faces)
 e = [];
 for i = abs(signed_faces(:)')
-    for L = brep.faces(i).loops
-        e = [e, abs(L{1}(:)')]; %#ok<AGROW>
+    for j = 1:numel(brep.faces(i).loops)
+        e = [e, abs(brep.faces(i).loops{j}(:)')]; %#ok<AGROW>
     end
 end
 end

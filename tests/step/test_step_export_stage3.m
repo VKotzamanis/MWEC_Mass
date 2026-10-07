@@ -4,9 +4,8 @@ function test_step_export_stage3()
 %   solid, a sheet's boundary as the only open edges), imported volumes against the kernel volumes
 %   (S6 of the stand-in F6) and against sti_closed_form, which is the independent oracle. The box is
 %   planar, so its volumes are asserted to the bound of test_step_cube (OCC rounding only); the
-%   cylinder's rational faces are compared and printed. Reads body.analytic through the stand-ins:
-%   J1, which merges the real F5, F6, deletes the stand-ins, leaves this test unchanged except the
-%   closed-form oracle lines that need the stand-in marker.
+%   cylinder's rational faces are compared and printed. The offset distance of the closed form is
+%   d = t + 0.01 t_min / 2 (contract section 0).
 
 root = fileparts(fileparts(fileparts(mfilename('fullpath'))));
 setup(root);
@@ -42,7 +41,7 @@ for c = 1:size(cases, 1)
     r = sti_realised(config, design, rho, stage2, struct('t_min', t_min));
     dir_out = tempname();
     cleanup = onCleanup(@() rmdir_if(dir_out)); %#ok<NASGU>
-    files = mwecmass.output.step.export_stage3(r, fullfile(dir_out, 'step'));
+    files = mwecmass.output.step.export_stage3(r, dir_out);
 
     N = numel(r.modules);
     hull = r.hull_name;
@@ -66,9 +65,12 @@ for c = 1:size(cases, 1)
     end
     listed = dir(fullfile(dir_out, 'step', '*.step'));
     check(numel(listed) == numel(files), '%s: %d files on disk, %d returned', label, numel(listed), numel(files));
+    check(isempty(dir(fullfile(dir_out, '*.step'))), '%s: a file was written outside the step folder', label);
 
     fx = sti_closed_form('fixture', config.hull_solid);
-    reg = sti_closed_form('regions', fx, design, r.body.analytic.d);
+    d = t + 0.01 * t_min / 2;
+    d(solid) = NaN;
+    reg = sti_closed_form('regions', fx, design, d);
     parts = cell(1, numel(files));
     for k = 1:numel(files)
         parts{k} = stp_check(files(k).path);
@@ -145,7 +147,7 @@ for f = {'box_UHPC_module_7.step', 'box_UHPC_all.step', 'box_STEEL_all.step', 'n
     fid = fopen(fullfile(d, 'step', f{1}), 'w');
     fclose(fid);
 end
-mwecmass.output.step.export_stage3(r, fullfile(d, 'step'));
+mwecmass.output.step.export_stage3(r, d);
 check(exist(fullfile(d, 'step', 'box_UHPC_module_7.step'), 'file') == 0 && ...
     exist(fullfile(d, 'step', 'notes.txt'), 'file') == 2 && exist(fullfile(d, 'step', 'box_STEEL_all.step'), 'file') == 2, ...
     'stale files');
@@ -160,13 +162,27 @@ r = sti_realised(config, design, struct('ballast', 7500, 'shell', 7850, 'air', 1
 bad = r;
 sh = bad.body.brep.bodies(2).shells{1};
 bad.body.brep.bodies(2).shells{1} = sh(1:end - 1);
-expect_error(@() mwecmass.output.step.export_stage3(bad, fullfile(d, 'x')), 'mwecmass:step:JunctionNotShared');
+expect_error(@() mwecmass.output.step.export_stage3(bad, d), 'mwecmass:step:JunctionNotShared');
+% loops given as a column cell must give the same junction check and the same files
+col = r;
+for i = 1:numel(col.body.brep.faces)
+    col.body.brep.faces(i).loops = col.body.brep.faces(i).loops(:);
+end
+fr = mwecmass.output.step.export_stage3(r, d);
+text_row = arrayfun(@(f) data_section(f.path), fr, 'UniformOutput', false);
+fc = mwecmass.output.step.export_stage3(col, d);
+check(isequal({fr.name}, {fc.name}), 'column loops: file names');
+for k = 1:numel(fc)
+    check(strcmp(text_row{k}, data_section(fc(k).path)), 'column loops: %s differs', fc(k).name);
+end
+check(isequal(edges_of(r.body.brep, r.body.brep.bodies(1).shells), edges_of(col.body.brep, col.body.brep.bodies(1).shells)), ...
+    'column loops: edges of the ballast solid');
 bad = r;
 bad.mode = 'preliminary';
-expect_error(@() mwecmass.output.step.export_stage3(bad, fullfile(d, 'x')), 'mwecmass:step:BadMode');
+expect_error(@() mwecmass.output.step.export_stage3(bad, d), 'mwecmass:step:BadMode');
 bad = r;
 bad.body = [];
-expect_error(@() mwecmass.output.step.export_stage3(bad, fullfile(d, 'x')), 'mwecmass:step:NoBody');
+expect_error(@() mwecmass.output.step.export_stage3(bad, d), 'mwecmass:step:NoBody');
 fprintf('error paths: JunctionNotShared, BadMode, NoBody\n');
 end
 
@@ -186,6 +202,12 @@ if asserted
 end
 end
 
+function s = data_section(file)
+% the header carries a time stamp; the DATA section is what the loops decide
+s = fileread(file);
+s = s(strfind(s, 'DATA;'):end);
+end
+
 function n = count_edges(file)
 n = numel(regexp(fileread(file), '=EDGE_CURVE\(', 'match'));
 end
@@ -194,8 +216,8 @@ function e = edges_of(brep, shells)
 e = [];
 for q = 1:numel(shells)
     for i = abs(shells{q}(:)')
-        for L = brep.faces(i).loops
-            e = union(e, abs(L{1}(:)'));
+        for j = 1:numel(brep.faces(i).loops)
+            e = union(e, abs(brep.faces(i).loops{j}(:)'));
         end
     end
 end
