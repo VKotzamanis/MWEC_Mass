@@ -266,7 +266,7 @@ function gif2b_stage2_uhpc(r, cfg, prof, st, outdir)
 %   =>  f_i = V_u/V_i = (rho_i - rho_air) / (rho_UHPC - rho_air)
 %
 % The frames draw the fraction as a number per strip; no void shape is drawn, because
-% the volume fraction does not fix a wall geometry.
+% the volume fraction does not fix a shell geometry.
 %
 % CAVEAT, stated on the figure: these frames show the UHPC distribution
 % IMPLIED by each iterate's densities, not a solved realisation.  Only the
@@ -603,7 +603,7 @@ end
 function draw_uhpc_from_fraction(ax, prof, vs, cfg, f, lb, rho_i, wIdx, st, opts)
 % Draw the strips of the hull outline with the UHPC volume fraction f(i) each strip implies.
 %
-% The fraction is written on each strip. No void is drawn: a volume fraction does not fix a wall
+% The fraction is written on each strip. No void is drawn: a volume fraction does not fix a shell
 % geometry, and the geometry that realises it is the Stage-3 body (plot_modular_precast).
 %
 % OPTS (optional; defaults reproduce the original figure, so GIF 2b is

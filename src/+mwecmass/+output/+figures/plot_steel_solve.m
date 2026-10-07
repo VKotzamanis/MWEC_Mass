@@ -71,8 +71,8 @@ function fig = plot_steel_solve(realised, config)
         handles = [h_b, handles];
         labels = [{sprintf('Solid Ballast, $\\rho_{\\mathrm{ballast}} = %.0f$ [kg/m$^3$]', realised.rho.ballast)}, labels];
     end
-    if any(strcmp(present, 'wall'))
-        h_s = patch(ax, NaN, NaN, role_color('wall', style), 'EdgeColor', 'none');
+    if any(strcmp(present, 'shell'))
+        h_s = patch(ax, NaN, NaN, role_color('shell', style), 'EdgeColor', 'none');
         handles = [handles, h_s];
         labels = [labels, {sprintf('Thin Shell, $t$ = %.1f [mm]', 1000 * t(1))}];
     end
@@ -120,7 +120,7 @@ function c = role_color(role, style)
     switch role
         case 'ballast'
             c = style.fill_palette.solid_material;
-        case 'wall'
+        case 'shell'
             c = style.fill_palette.jacket_material;
         otherwise
             error('mwecmass:figures:UnknownRole', 'Unknown section role ''%s'' for a thin-shell figure.', role);

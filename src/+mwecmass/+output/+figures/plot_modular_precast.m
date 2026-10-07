@@ -2,10 +2,10 @@ function plot_modular_precast(realised, config)
 %PLOT_MODULAR_PRECAST Stage-3 UHPC realisation: elevation and per-module plan views of the realised solid.
 % Inputs: realised (results.stage3: the realised or closest-fail design with its body, status and
 % per-module volumes); config (output options). Both figures draw only the exact sections of the
-% realised body (mwecmass.output.figures.realised_section_data): the y = 0 elevation with the walls,
-% the voids, the ballast level and the solid modules as they are built, and the plan section at the
-% bottom and top of every module that is not a solid module. The status of the realisation is
-% written on the elevation.
+% realised body (mwecmass.output.figures.realised_section_data): the y = 0 elevation with the UHPC
+% shells around the voids, the voids, the ballast level and the solid modules as they are built, and
+% the plan section at the bottom and top of every module that is not a solid module. The status of
+% the realisation is written on the elevation.
 
     style = mwecmass.output.figures.presentation_style(config);
     if ~isstruct(realised) || ~isfield(realised, 'mode') || ~strcmp(realised.mode, 'modular_precast')
@@ -165,7 +165,7 @@ function c = role_color(role, style)
             c = style.fill_palette.solid_material;
         case 'ballast'
             c = style.fill_palette.ballast_material;
-        case 'wall'
+        case 'shell'
             c = style.fill_palette.jacket_material;
         case 'void'
             c = style.fill_palette.void;
@@ -177,8 +177,8 @@ end
 function [h, labels] = material_proxies(ax, polygons, style, realised)
 % Legend entries for the roles that occur in the figure, in a fixed order.
     present = unique({polygons.role});
-    order = {'solid_module', 'ballast', 'wall', 'void'};
-    names = {'Solid Module (Wall)', 'Ballast (Solid UHPC)', 'UHPC', ...
+    order = {'solid_module', 'ballast', 'shell', 'void'};
+    names = {'Solid Module (Wall)', 'Ballast (Solid UHPC)', 'UHPC Shell', ...
              sprintf('Void, $\\rho_{\\mathrm{air}} = %.1f$ [kg/m$^3$]', realised.rho.air)};
     h = gobjects(1, 0);
     labels = {};

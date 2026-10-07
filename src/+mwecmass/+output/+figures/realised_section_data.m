@@ -7,18 +7,21 @@ function data = realised_section_data(realised, z_plan, n_z)
 %   mode). z_plan [m, body]: extra heights for plan sections (default none). n_z: heights per module
 %   in the elevation (default 41, at least 2). Every section is the mwecmass.solid.body_section of
 %   the realised body (the solid that is also written to STEP); nothing is offset, scaled or clipped
-%   here. Sections at a module edge are taken 8 ulp of the largest |z| inside the module: the faces
+%   here. Sections at a module edge are taken 8 ulp of the largest |z| of the module edges: the faces
 %   on the two sides of a module edge end at rounding-level offsets from the edge plane, so the
 %   section exactly at the plane is not reliable.
 %
 %   Elevation (y = 0 plane). Each module is sampled between its two edges and at the ballast level;
-%   wherever the section changes between solid and hollow between two heights, the height of the
-%   change is bisected to adjacent floating-point numbers, so the ballast top and the closing of the
-%   void at its poles are exact, and the cell above such a change gets more heights. The x of every
+%   wherever the section changes between two heights from solid to hollow or in the number of
+%   intervals the void has along y = 0, the height of the change is bisected to adjacent
+%   floating-point numbers, so the ballast top, the closing of the void at its poles and the
+%   splitting of the void are exact, no polygon leaves a gap, and the cells next to such a change get
+%   more heights. The x of every
 %   crossing of y = 0 is found on the exact curves (section_y0_crossings).
-%   data.polygons(k): module, role ('solid_module' | 'ballast' | 'wall' | 'void'), region
+%   data.polygons(k): module, role ('solid_module' | 'ballast' | 'shell' | 'void'), region
 %   (precast 'uhpc' | 'air'; thin shell 'ballast' | 'shell' | 'air'), z_lo, z_hi, xz [n x 2] = [x z]
-%   counter-clockwise, body frame. A role 'wall' is the material around a void, or the cap above it.
+%   counter-clockwise, body frame. A role 'shell' is the shell around the air: the material around a
+%   void, its top and bottom layers included.
 %   data.void_outlines(k): modules (the modules the void passes through), xz [n x 2] counter-clockwise,
 %   body frame: the boundary of the air region as the realised solid has it. The void polygons of
 %   consecutive modules are one outline where both hold air at the module edge: the air is one
@@ -33,7 +36,7 @@ function data = realised_section_data(realised, z_plan, n_z)
 %   'plan'), label, module, z (the height evaluated; 'ballast_top' is just above the ballast level),
 %   outer [n x 2] counter-clockwise polyline on the exact curves, inner (same, [] where the section is
 %   solid), solid, role (the material of the section, as the polygon roles: 'solid_module', 'ballast'
-%   or 'wall'). data.strip_panels(k): plan (index into data.plan), module, end, row, col, the
+%   or 'shell'). data.strip_panels(k): plan (index into data.plan), module, end, row, col, the
 %   panels of the precast per-module figure: the modules that are not solid modules by design, top
 %   views in row 1, bottom views in row 2, one column per module; a view the kernel could not
 %   section is absent.
@@ -108,7 +111,8 @@ end
 
 function [recs, omitted] = module_levels(body, e, m, n_z, z_ballast, margin)
 % Ascending level records of module m: uniform heights, the ballast level, the exact heights at which
-% the section changes between solid and hollow, and more heights in the cells those leave short.
+% the section changes between solid and hollow or in its number of void intervals, and more heights in
+% the cells next to those.
 z_lo = e(m) + margin;
 z_hi = e(m + 1) - margin;
 dz = (z_hi - z_lo) / (n_z - 1);
@@ -131,7 +135,7 @@ if isempty(recs)
 end
 k = 1;
 while k < numel(recs)
-    if recs(k).solid ~= recs(k + 1).solid
+    if ~isequal(level_key(recs(k)), level_key(recs(k + 1)))
         [lo_rec, hi_rec] = locate_change(body, m, recs(k), recs(k + 1));
         recs = [recs(1:k), lo_rec, hi_rec, recs(k + 1:end)];
         k = k + 3;
@@ -144,14 +148,14 @@ dense = recs(1);
 for k = 1:numel(recs) - 1
     p = recs(k);
     q = recs(k + 1);
-    if p.solid == q.solid && (p.refined || q.refined)
+    if isequal(level_key(p), level_key(q)) && (p.refined || q.refined)
         n_int = max(3, ceil((q.z - p.z) / dz) - 1);
         zi = linspace(p.z, q.z, n_int + 2);
         for z = zi(2:end - 1)
             [rec, reason] = level_record(body, z, m);
             if isempty(rec)
                 omitted(end + 1) = struct('z', z, 'module', m, 'reason', reason); %#ok<AGROW>
-            elseif rec.solid == p.solid
+            elseif isequal(level_key(rec), level_key(p))
                 dense = [dense, rec]; %#ok<AGROW>
             end
         end
@@ -162,7 +166,7 @@ recs = dense([true, diff([dense.z]) > 0]);
 end
 
 function [lo_rec, hi_rec] = locate_change(body, m, a, b)
-% Bisect the height at which the solid flag changes between levels a and b of module m, to adjacent
+% Bisect the height at which the level key changes between levels a and b of module m, to adjacent
 % floating-point heights, and return the level records on both sides.
 lo = a.z;
 hi = b.z;
@@ -171,8 +175,8 @@ for it = 1:2000
     if mid == lo || mid == hi
         break
     end
-    flag = section_is_solid(body, mid, m);
-    if isempty(flag) || flag == a.solid
+    key = section_key(body, mid, m);
+    if isempty(key) || isequal(key, level_key(a))
         lo = mid;
     else
         hi = mid;
@@ -194,15 +198,20 @@ if hi ~= b.z
 end
 if isempty(lo_rec) || isempty(hi_rec)
     error('mwecmass:figures:NoSection', ...
-        'realised_section_data: no section at the change of the solid flag near z = %.17g (module %d)', lo, m);
+        'realised_section_data: no section at the change of the section type near z = %.17g (module %d)', lo, m);
 end
 end
 
-function flag = section_is_solid(body, z, m)
-flag = [];
-sec = try_section(body, z);
-if ~isempty(sec) && sec.module == m
-    flag = logical(sec.solid) || isempty(sec.inner);
+function key = level_key(rec)
+% What the polygons of a run share: the solid flag and the number of crossings of the void at y = 0.
+key = [rec.solid, numel(rec.x_inner)];
+end
+
+function key = section_key(body, z, m)
+key = [];
+rec = level_record(body, z, m);
+if ~isempty(rec)
+    key = level_key(rec);
 end
 end
 
@@ -255,8 +264,8 @@ n = numel(recs);
 first = 1;
 while first < n
     last = first;
-    key = [recs(first).solid, numel(recs(first).x_inner)];
-    while last < n && isequal([recs(last + 1).solid, numel(recs(last + 1).x_inner)], key)
+    key = level_key(recs(first));
+    while last < n && isequal(level_key(recs(last + 1)), key)
         last = last + 1;
     end
     group = recs(first:last);
@@ -278,7 +287,7 @@ while first < n
         lefts = [xo(:, 1), xi(:, 2:2:end)];
         rights = [xi(:, 1:2:end), xo(:, 2)];
         for c = 1:size(lefts, 2)
-            polygons(end + 1) = make_polygon(m, 'wall', mode, zz, lefts(:, c), rights(:, c)); %#ok<AGROW>
+            polygons(end + 1) = make_polygon(m, 'shell', mode, zz, lefts(:, c), rights(:, c)); %#ok<AGROW>
         end
         for c = 1:size(xi, 2) / 2
             polygons(end + 1) = make_polygon(m, 'void', mode, zz, xi(:, 2 * c - 1), xi(:, 2 * c)); %#ok<AGROW>
@@ -295,7 +304,7 @@ if any(m == solid_modules)
 elseif z_top <= z_ballast
     role = 'ballast';
 else
-    role = 'wall';
+    role = 'shell';
 end
 end
 
@@ -319,7 +328,7 @@ if strcmp(role, 'void')
     region = 'air';
 elseif strcmp(mode, 'modular_precast')
     region = 'uhpc';
-elseif strcmp(role, 'wall')
+elseif strcmp(role, 'shell')
     region = 'shell';
 else
     region = 'ballast';

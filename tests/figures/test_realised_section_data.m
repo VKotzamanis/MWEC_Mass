@@ -80,7 +80,7 @@ if ~isempty(solid)
     expected_roles{end + 1} = 'solid_module';
 end
 if any([lay.air])
-    expected_roles = [expected_roles, {'void', 'wall'}];
+    expected_roles = [expected_roles, {'void', 'shell'}];
 end
 check(isequal(sort(unique(roles)), sort(expected_roles)), '%s: roles drawn are %s, expected %s', tag, ...
     strjoin(unique(roles), ','), strjoin(expected_roles, ','));
@@ -122,8 +122,8 @@ for i = 1:N
     xs = v.xz(:, 1);
     inner_check(exact_inner, max(abs([max(xs) - hw_in(i), min(xs) + hw_in(i)])) <= 8 * eps(hw_out), ...
         '%s: module %d void half-width [%.17g %.17g], closed form %.17g', tag, i, min(xs), max(xs), hw_in(i));
-    wa = data.polygons(strcmp(roles, 'wall') & [data.polygons.module] == i);
-    check(numel(wa) >= 2, '%s: module %d has %d wall polygons', tag, i, numel(wa));
+    wa = data.polygons(strcmp(roles, 'shell') & [data.polygons.module] == i);
+    check(numel(wa) >= 2, '%s: module %d has %d shell polygons', tag, i, numel(wa));
 end
 
 % void outlines: one per connected air region. The realised solid has no air/air face, so consecutive
@@ -181,19 +181,19 @@ check(abs(A_out - A_poly) <= 64 * eps * max(A_poly, 1) + 4 * N * margin * 2 * hw
     '%s: void outline areas %.15f, polygons %.15f', tag, A_out, A_poly);
 fprintf('  %d void outlines, %d joined module edges\n', numel(vo), sum(joined));
 
-% a void that closes below the top of its module leaves a cap of wall material up to the top of the
-% hull; a ballast level below the inner keel leaves a wall body between z_ballast and the void
+% a void that closes below the top of its module leaves a shell layer above the void up to the top of the
+% hull; a ballast level below the inner keel leaves shell between z_ballast and the void
 cap_module = N;
 if lay(cap_module).air && strcmp(lay(cap_module).top, 'inner')
-    cap = data.polygons(strcmp(roles, 'wall') & [data.polygons.module] == cap_module & [data.polygons.z_lo] > lay(cap_module).b - z_tol & ...
+    cap = data.polygons(strcmp(roles, 'shell') & [data.polygons.module] == cap_module & [data.polygons.z_lo] > lay(cap_module).b - z_tol & ...
         [data.polygons.z_lo] < lay(cap_module).b + z_tol);
     inner_check(exact_inner, numel(cap) == 1 && cap.z_hi == e(end) - margin, '%s: cap above the void of module %d', tag, cap_module);
 end
 if zb > e(1) && zb < fx.z(1) + d(1)
-    below = data.polygons(strcmp(roles, 'wall') & [data.polygons.module] == 1 & [data.polygons.z_lo] == zb);
-    check(numel(below) == 1, '%s: wall body between z_ballast and the inner keel', tag);
+    below = data.polygons(strcmp(roles, 'shell') & [data.polygons.module] == 1 & [data.polygons.z_lo] == zb);
+    check(numel(below) == 1, '%s: shell between z_ballast and the inner keel', tag);
     inner_check(exact_inner, abs(below.z_hi - (fx.z(1) + d(1))) <= z_tol, ...
-        '%s: wall body top %.17g, closed-form inner keel %.17g', tag, below.z_hi, fx.z(1) + d(1));
+        '%s: shell top %.17g, closed-form inner keel %.17g', tag, below.z_hi, fx.z(1) + d(1));
 end
 
 % ballast level honoured: ballast polygons end at z_ballast to adjacent floats, voids start there
@@ -363,7 +363,7 @@ end
 end
 
 function inner_check(exact, cond, varargin)
-% The box inner wall is a closed form on any producer. The cylinder inner wall is a fitted
+% The inner surface of the box is a closed form on any producer. The inner surface of the cylinder is a fitted
 % surface once the real offset replaces the stand-in, so its deviation is printed, not gated.
 if exact
     check(cond, varargin{:});
