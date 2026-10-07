@@ -367,7 +367,12 @@ their mean (assumes star-shaped sections); CG_x = CG_y = 0 (declared symmetric-b
       along any crease** the trimming leaves, and along every C0 seam of the outer surface,
       instead of forcing one smooth spline across it — a smooth spline across a crease overshoots.
       A concave crease gets a face of its own: the crease curve offset by t + ε/2 along the fan of
-      normals of its two sides.
+      normals of its two sides. Where concave creases meet at a vertex whose cone of normals spans
+      a solid angle (e.g. the foot of a re-entrant edge of an L-, T- or cross-shaped column on a
+      wider pontoon, where three concave creases meet), the gap between their fan faces is closed by
+      a face of its own: the vertex offset by t + ε/2 along every normal of its cone (part of a
+      sphere about the vertex), fitted with z as one parameter, its boundaries shared bitwise with
+      the adjacent fan faces.
    3. Fit cubic B-splines through the nodes; check them on dense points *between* the nodes.
    4. Metrics the algorithm judges at every check point, between the faces as written (outer as
       written, inner as fitted):
