@@ -31,7 +31,7 @@ Main `claude/lucid-cray-7o9442` = `f52e232`: general-kernel amendment, AGENTS ru
 | T0b | renames (`z_ballast`, `rho_air`, `rho_ballast`, `uhpc`) | N | merged `b4523aa` | 9 (4) | `c64a4d0` |
 | spec2 | contract amendment: general kernel (owner) + errata | K | merged `e7e9114` | 9 (round 8; errata 9; merge 10) | `5ce48fc` |
 | T5 | UHPC Stage 3 a: split, build, check, store | U | accepted (round 5); waits for J2 | 7, 8, 8, 8, 9 | `31f470f` |
-| T6 | UHPC Stage 3 b: optimisation, spill, closest fail | U | implemented, not yet graded (paused) | — | task/T6 `3e1d450` |
+| T6 | UHPC Stage 3 b: optimisation, spill, closest fail | U | round 1 rejected at 5 (optimum not reached: phase-2 skipped near tol, no feasibility step, draft released on one failed rebuild); fixing (`wf_f16b85f9-6d8`) | 5 | task/T6 `3e1d450` |
 | T7 | thin-shell rebuild | S | round 7: 8, minor findings only → fix + quick check (`wf_e28ebbef-e94`) | 7, 7, 7, 8, 8, 8, 8 | task/T7 `2753871` |
 | T8 | figures from the realised solid | O | accepted (round 10); waits for J2 | 8, 8, 8, 8, 6, 6, 6, 6, 7, 9 | `3b0a0be` |
 | T10 | Stage-3 STEP exports | O | accepted, waits for J2 | 9 (3) | `07856a2` |
@@ -118,6 +118,10 @@ Main `claude/lucid-cray-7o9442` = `f52e232`: general-kernel amendment, AGENTS ru
   tests VoidClosed at d ≥ 0.1; patch end rows take the parser's exact heights (C1 keel −3.25); F2
   offsets the F1 NURBS as written; F1 owns rules 1a/1b, fit_z_faces makes mirrors; rounding: bitwise
   where construction allows, else a bound derived from magnitudes and operation count.
+- T6 round-1 decisions (21:50 UTC): inner sets keyed by t and z-range; t_max,i over the module's
+  whole range (fixed, conservative); closest fail ranks flotation-holding points first (item 32);
+  solver must establish the equalities before optimising and keep feasible phase-2 progress; draft
+  released only when flotation cannot hold at the Stage-2 draft; fmincon shim edit accepted (test-only).
 - SK2 spec issues for J1/T3 (contract errata with the batch above): whether a void end (constant-z
   end piece of an inner set) counts as a flat part for F6b `side` (stand-in: yes); name the error
   for a bad `side` (stand-in `mwecmass:solid:BadSide`); a row cut at a plane takes that height
