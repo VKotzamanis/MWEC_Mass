@@ -36,12 +36,15 @@ both Stage-3 realisations, the stored contours, the figures and the STEP writer
 - **Lanes.** Wave A (T0, T1, T9) is done; from there tasks run in lanes and meet at joins
   (contract §6). Tasks in different lanes run in parallel; inside a lane they run in order.
   - J0: merge T0, T1, T9 and the contract.
-  - Lane K: SK stand-in kit, then T2, then T3; join J1 merges T2 and T3. **Owner checkpoint
-    after T3.**
+  - Lane K: SK stand-in kit, then T2a (exact path), then T3; T2b (general path) runs in parallel
+    with T3, both starting from T2a's branch with disjoint files; join J1 merges T2a, T2b and T3.
+    SK2 (stand-ins follow the general-hulls amendment) runs right after that amendment merges,
+    before J1. **Owner checkpoint after T3.**
   - Lane N: T0b, merged as soon as accepted (every later lane starts from the new names); T0c in
     parallel (it edits only `MS2Parser.m`).
   - Lane P: after T0b, SK and T0c: T0d, then T4a, then T4b (all edit `build_config.m`); T4b
-    merges after J1.
+    starts after SK2 (it calls F1 with three inputs) and merges after J1. Lanes U, S and O need not
+    wait for SK2 (contract §6: its changes are additive for them).
   - Lane U: after T0b and SK: T5, then T6. Lane S: after T0b and SK: T7. Lane O: after T0b and
     SK: T8 and T10.
   - J2: after J1 and lane P, the group T5, T6, T7, T8, T10 merges as one chain in that order; the
@@ -202,16 +205,82 @@ Files: `src/+mwecmass/+solid/outer_rows.m`, `surface_normals.m`, tests.
 Acceptance: sections equal `extract_isocurve_at_z` and the Python reference; normals are unit,
 outward, continuous across patch seams; exact symmetry under the deck's mirror planes.
 
-### T2 — Kernel B: normal offset, fold trimming, spline surfaces (Sonnet high)
+### SK2 — Stand-ins follow the general-hulls amendment (Sonnet high)
 
-Contract: implements S1, S1b, S2, S2r, F1, F2, F2b, F3, F3b, F4 and invariants I3, I4, I9; consumes T1
-(`surface_normals`, `outer_rows`) and the SK fixtures. Starts after SK in lane K. Scope per contract F1,
-F2: offset at d = t + eps_fit/2; `offset_kind` checked; creases split along u; tangent v-seams only (a
-C0 v-seam is Open item 1); `c0_u`/`c0_v` knot rows in S1 and S2; F2 `opts.knots_from` (refit at a
-new t on fixed knots); the cylinder fixture is its join test, the box is not.
+Contract: §3 SK2 and §6. Edits `tests/standins/*` (among them `fixtures/sti_closed_form.m`, its
+`layout`, and `+mwecmass/+solid/build_body.m`) and the SK tests that mirror the changed items
+(`tests/standin_kit/test_sk_outer_nurbs.m`, `test_sk_offset_slice.m`, `test_sk_body.m`); nothing in
+`src/`. Runs right
+after the general-hulls amendment (owner, 2026-10-07: "No it needs to be generalized.") merges,
+before J1.
 
-Files: `src/+mwecmass/+solid/offset_surface.m`, `trim_fold.m`, `fit_bspline_surface.m`,
-`eval_bspline_surface.m`, `slice_bspline_surface.m`, tests.
+- F1 stand-in: `outer_nurbs(model)` and `outer_nurbs(model, cache, opts)`, `cache` and `opts`
+  ignored. F6b stand-in: `body_section(body, z)` and `body_section(body, z, side)`; `'above'` (the
+  default) is its present half-open rule, `'below'` takes the faces and the module below a module
+  edge or `z_ballast` (contract F6b). S1 entries carry `visible`, `fit` (`[]`) and `swap_uv`
+  (false): in `geo.outer`, `visible` = k (one entry per visible surface on both fixtures); in the
+  F2 stand-in's S2 set, each piece's
+  `visible` is that of the outer entry it is offset from (the cylinder: the three crease pieces of a
+  quarter take that quarter's index, so the 12 pieces take 1 to 4). S1b and the F2 stand-in's S2 set
+  carry `flat` (empty).
+- F2 stand-in: the box returns `sti_inner_box(geo, t, opts.t_min)` (the set the real F2 must equal,
+  T2a) instead of `FitNotConverged`; that branch and the assertion on it are retired.
+- Ballast at the inner `z_lo` (contract S3, S4: one rule at equality, both modes). In
+  `sti_closed_form`'s `layout`, a module whose air interval starts at a = `z_ballast` = inner `z_lo`
+  gets the bottom `'ballast_top'`, not `'inner'`: outside the precast module-edge branch (which
+  already gives `'ballast_top'` when a = `z_ballast`), the test a == `z_ballast` comes before
+  a == `z_lo`. The `build_body` stand-in then writes no inner bottom disk at that height; in thin
+  shell it splits `ballast_top` into an annulus (ballast/shell) and a disk (ballast/air), in precast
+  it writes the void-bottom disk (uhpc/air) as `ballast_top`. `build_body.m` changes only where it
+  does not already follow from the layout (today it does: it writes the inner disk only for the
+  bottom `'inner'`). `test_sk_body` adds one case per fixture and mode (cylinder and box, thin shell
+  and precast: four cases) with `z_ballast` = inner `z_lo` of module 1 (above its bottom edge).
+
+Acceptance: every SK test passes with the field-set assertions extended by the new fields and the
+box assertion replaced by a comparison with `sti_inner_box`; F6b at a module edge of a stand-in
+body gives the module above by default and the module below with `'below'`, the same outer loop;
+`outer_nurbs(model, [], struct())` equals `outer_nurbs(model)` for both fixtures; in the new
+`test_sk_body` cases (one per fixture and mode: cylinder and box, thin shell and precast: four
+cases, `z_ballast` = inner `z_lo` of module 1) no face with role `inner` lies at the height
+`z_ballast` (no constant-z inner face there), the faces at that height are, in thin shell, one
+`ballast_top` annulus (ballast/shell) and one `ballast_top` disk (ballast/air) and, in precast, one
+`ballast_top` disk (uhpc/air), every closed shell passes `validate_brep`, and the region volumes
+equal `sti_closed_form` and sum to V_module (I1); the SK acceptance items of contract §3 still hold.
+
+### T2a — Kernel B, exact path: normal offset, fold trimming, spline surfaces (Sonnet high)
+
+Contract: implements S1, S1b, S2, S2r, F1, F2, F2b, F3, F3b, F4 and invariants I3, I4, I9 on the exact
+path; consumes T1 (`surface_normals`, `outer_rows`) and the SK fixtures. Starts after SK in lane K; the
+critical path to T3. Scope per contract F1, F2 and §8 (general hulls; owner, 2026-10-07: "No it needs
+to be generalized."): offset at d = t + eps_fit/2; the exact path of F1 (deck check with
+`UnsupportedEntity` only for an unparsed entity the hull references, `UnsupportedMirror`,
+`HullNotClosed`; u and v exchanged where z depends on v alone, `swap_uv`; split at constant-z
+intervals inside the z range; `FitInputMissing`; the options `max_passes`, `force_general`);
+structured inner pieces (`rev_z`, `ruled_parallel`); creases split along u and v (convex: trimmed;
+concave: a face of the crease curve offset along its fan of normals); at a vertex whose cone of
+normals spans a solid angle, the sphere face that closes the gap between the fan faces (contract
+F2; found by T2a's F2, fitted by T2b's `fit_z_faces`); seams shared as one curve (contract S1, same curve);
+`c0_u`/`c0_v` knot rows in S1 and S2; F2 `opts.knots_from` (refit at a new t on fixed knots); the
+cylinder fixture is its join test, the box is not (T2a still runs the real F2 on it, below).
+
+Interface to T2b: F1 and F2 hand every patch or piece of the general path to
+`[faces, flat, rep] = mwecmass.solid.fit_z_faces(model, cache, faces, general, opts)` (T2b's file):
+`faces` is the S1 array of the exact path (F1) or of the inner pieces (F2; it also holds one entry
+per fan face that keeps no structure and per vertex sphere face, with `surf` empty and a field
+`offset_of` naming what it offsets: `crease`, the crease curve and the outer entries on its two
+sides, or `vertex`, the point and the outer entries around it, from which `fit_z_faces` computes the
+exact offset points), `general` the logical mask of the entries that take the general path, `opts` `t_min`, `max_passes`, `kind` (`outer` |
+`inner`) and, for `inner`, `d` and the outer `geo`. It returns the final S1 array (exact entries split
+at the band ends, general entries replaced by fitted faces, further entries moved to the general path
+by the Cuts and flat-region, tie-break and seam rules, in F1's order), the S1b/S2 `flat` regions
+and the fit report of its faces.
+F1 and F2 call it only when an entry takes the general path; T2a tests only decks with none (on T2a's
+branch alone such a deck stops with the undefined-function error until J1).
+
+Files: `src/+mwecmass/+solid/outer_nurbs.m`, `offset_surface.m`, `trim_fold.m`,
+`fit_bspline_surface.m`, `eval_bspline_surface.m`, `eval_bspline_curve.m`,
+`split_bspline_surface.m`, `slice_bspline_surface.m`, `void_closing_distance.m`, tests,
+`tests/solid/fixtures/stepped_spar.ms2`, `box_swapped.ms2` and `split_wall_box.ms2`.
 
 - Adaptive, error-bounded fitting as specified in AGENTS.md §5 item 9: initial nodes dense where
   curvature is high or the void is narrow; offset by t + ε/2 along the exact normal; trim the
@@ -225,18 +294,200 @@ number of refinement passes and knots per face); fold trimming and crease splitt
 folds occur (C1 at t ≥ 0.100 m, and a stand-in fixture with a convex radius below t); C1 at
 t = 0.0762 m compared with the Python reference half-widths per height and with the independent
 erosion result for module 4 (void 3.548 m³ with the v1.0 module edges and `z_ballast`); a
-slender-section case (thin-shell neck, t = 0.025 m) passes M3.
+slender-section case (thin-shell neck, t = 0.025 m) passes M3. C1 keeps its exact-path oracles (all 8
+patches exact, contract §3; `outer_nurbs(model)` and `outer_nurbs(model, cache, opts)` give the same
+`geo`). The box: the real F2 set equals `sti_inner_box` (convex C0 v-seams, trimmed along parameter
+lines, structure kept), compared and printed.
+
+Column corners (contract F1). `tests/solid/fixtures/split_wall_box.ms2`: SK's `box.ms2` with the wall
+y = 0.75 drawn as two RuledSurfs `box_side2lo` and `box_side2hi` between Lines split at z = −1 (new
+FramePoints M2 (1, 0.75, −1) and M3 (−1, 0.75, −1); one loop per section). T2a asserts only what F1
+decides: `box_side1`, `box_side3` and `box_side4` (the walls x = 1, x = −1 and y = −0.75; −1 is a
+patch-corner height strictly inside their z range) are each split at z = −1 into two exact pieces
+whose cut rows are shared bitwise, every control point of a cut row at z = −1 bitwise and its end
+points equal to the corners there (M2, M3 on the walls x = ±1); `box_side2lo`, `box_side2hi`,
+`box_bottom` and `box_top` are not split; every patch takes the exact path (`exact` true, so
+`fit_z_faces` is never called); and every boundary that two entries share is the same curve
+(contract S1), e.g. the lower piece of `box_side1` (column knots [0 0 u* u*]) and `box_side2lo`
+(Line, knots [0 0 1 1]), and `box_side2lo` and `box_bottom` (the same Line run the other way). The
+full-body assertions (seam fields pair up, I2, `validate_brep`, `step_check.py`, volume 9 m³) run at
+J1 in `tests/solid/test_join_general.m`.
+
+Exact-path additions (contract F1). `stepped_spar.ms2` (format of SK's `cylinder.ms2`): FramePoints
+K (0, 0, −3), P1 (1.5, 0, −3), P2 (1.5, 0, −1), P3 (0.75, 0, −1), P4 (0.75, 0, 1), T (0, 0, 1); a
+PolyCurve2 of the Lines K–P1, P1–P2, P2–P3, P3–P4, P4–T revolved 0° to 90° about the Line K–T;
+`Symmetry: x y`. Verified 2026-10-07: `MS2Parser` parses it (4 patches) and T1 `outer_rows` (grid 60)
+returns one closed loop at eight heights off the step in [−2.95, 0.95] m (shoelace areas 2.25π and 0.5625π m² less the inscribed-polygon error, 1.2e-4 relative).
+Asserted: each quarter is `rev_z` and exact, split by F1 at the two PolyCurve2 joints
+that bound the step (existing C0 knots: no control point changes) into three consecutive S1 entries
+with `z_range` [−3 −1], [−1 −1] and [−1 1], the cut rows shared bitwise; F3b cuts the outer pieces
+at z = −2 and z = 0, and on the unsplit converted patch at z = −1 raises `ZNotMonotonic`; F4 at
+z = −1 gives the circle of radius 1.5 from the faces below and of radius 0.75 from the faces above;
+F2 at t = t_min trims the convex rim P2, gives the concave corner P3 a face of its own, splits the
+inner shelf as F1 does, and passes M1–M3; inner volume printed next to the closed form of the
+offset profile. `box_swapped.ms2`: SK's `box.ms2` with each side face a RuledSurf between its bottom
+and top edge Lines (new Lines B1–B2, T1–T2, …) instead of its vertical Lines. Verified 2026-10-07:
+the parser's z of `box_side1` depends on v alone, and T1 `outer_rows` gives the area 3 m² of
+`box.ms2` at z = −2, −1, 0. Asserted: z of the
+side faces depends on v alone, F1 exchanges u and v (`swap_uv` true; control points and weights
+transposed bitwise), they take the exact path, the parser's edge e is S1 boundary 5 − e, the seams
+pair up (I2: each shared boundary the same curve, contract S1), and F4 sections at z = −1 equal those of `box.ms2` bitwise. Deck check, on
+copies written by the test: `box.ms2` plus a `Variable` line and a line of an unknown type that
+nothing references gives the same `geo`; `FramePoint T1` given an unknown type (referenced by `V1`)
+raises `UnsupportedEntity`; `box_top` given an unknown type raises `HullNotClosed`; `cylinder.ms2`
+with `Symmetry: z` raises `UnsupportedMirror`.
+
+### T2b — Kernel B, general path: faces fitted with z as a parameter (Sonnet high)
+
+Contract: implements §8 (general hulls) through `fit_z_faces.m` (interface in T2a): band ends for
+the whole hull, faces fitted through exact points (T1 sections and normals) with z as one parameter,
+split where z turns back and at creases, closed-loop cuts and vertex cuts (no T-junctions), merged
+flat regions, mirrors (flipped faces, vertex union), seams with exact neighbours, outer faces within
+ε/4 of the exact surface, M1–M3 between the written faces; the same path for inner pieces whose
+structure is not kept; F1 `opts.force_general`. Starts from T2a's branch, in parallel with T3; its
+files are disjoint from T2a's and T3's; J1 merges T2a, T2b and T3.
+
+Files: `src/+mwecmass/+solid/fit_z_faces.m` (and helpers named `fit_z_*.m`), tests,
+`tests/solid/fixtures/tilted_revolution.ms2`, `tilted_revolution_two_loops.ms2`,
+`lying_revolution.ms2`, `split_side_cylinder.ms2` and `cross_column.ms2`.
+
+- General path (contract §8): outer patches that do not take the exact path, and inner pieces whose
+  structure is not kept, become untrimmed faces fitted through T1 sections and normals, with z as
+  one parameter; outer fitted faces within ε/4 of the exact surface (contract §8 derivation); M1–M3
+  judged between the faces as written. Where a face's part of a section is a closed loop with no
+  seam or crease point, the face is cut along one z-monotone curve on the exact surface
+  (steepest-ascent line of z), used bitwise as both v-boundaries (self-seam), one curve through
+  consecutive closed-loop bands; a band that ends at a single highest or lowest point inside a patch
+  ends in a pole row there. Band ends are one set of heights for the whole hull (exact patches split
+  there by F3b, or at their existing knots where the band end is the height of a constant-z interval),
+  and every vertex that would lie inside a face row (the end or z-extreme of a seam or crease, the end
+  of a closed-loop cut, a vertex of a mirror face's rows flipped back) is joined by a cut to a vertex
+  of the face's opposite row, so every face boundary has one neighbour and is shared as the same curve (contract S1; bitwise
+  between fitted faces; contract
+  §8 Cuts, Mirrors). A flat region is one connected constant-z area at one height, merged across seams
+  and mirror planes, bounded only by lateral-face rows, and written by F5 as one plane face. The mirror
+  of a fitted face is its source's face with the control points flipped, exactly 0 in the flipped
+  coordinate on a boundary in the mirror plane (contract §8). The fan faces of concave creases that
+  keep no structure and the sphere faces of vertices whose cone of normals spans a solid angle (F2)
+  are fitted through their exact offset points in the same way.
+
+Acceptance:
+
+Non-C1 hull (general path). `tests/solid/fixtures/tilted_revolution.ms2`: the profile of BCurves
+through, in the axis frame (r, h) [m], T (0, 1), D (0.5, 1), N (0.5, 0.8), S (1.0, 0.4), Q (1.0, −1),
+K (0, −1), one RevSurf of 360° per segment about the Line K–T, every point rotated by 15° about the
+y axis (x' = x cos 15° + z sin 15°, z' = −x sin 15° + z cos 15°), written in the format of
+`capped_cylinder.ms2`. z depends on both surface parameters, the rims at D, S and Q are convex C0
+creases, N is a concave one, and the creases are tilted circles, so bands end at their z-extremes.
+Verified 2026-10-07: T1 `outer_rows` (grid 60) returns one closed loop at each of 38 heights through
+its z range [−1.2247, 1.0952] m. Oracles: the solid is a rigid rotation of a solid of revolution, so
+the distance of any point from the exact outer surface, and t_local, are 2D distances to the profile
+in the meridian plane of the axis frame (lines; the inner profile is the 2D offset by d, trimmed at the
+convex corners, with an arc of radius d about N). Asserted: F1 marks every patch fitted; each fitted
+outer face has `fit.dev_max` ≤ ε/4 and the oracle distance at the check points is ≤ ε/4; M1–M3 pass
+for a shell at t = t_min (the offset folds at every convex corner) as the kernel reports them between
+the written faces (S2r); at the same check points the oracle t_local (to the exact profile) lies in
+[t − e, t + ε + e], e the largest oracle distance of the written outer faces from the exact surface
+(≤ ε/4, asserted above), and its difference from the kernel's t_local is printed per face; every
+face is `z_of_u` with monotone z and F3b cuts it at a module-edge height; seams pass the I2 same-curve
+test and the seam fields pair up (contract I2). No T-junction (contract §8 Cuts): at each of the
+highest points of the N, S and Q rims (φ = 180°, where each rim's crease branches end and no seam
+runs) and at the disk centres T and K (where the self-seams of the top and bottom disks end), every
+face whose closure contains the point has it as a corner, never inside a row, and the boundaries
+that meet there pair one to one and bitwise. The closed outer body: a test helper assembles the
+S1 faces into a T9 brep (one edge per paired boundary, its curve the shared row), which passes
+`validate_brep`, is written with `write_step` and passes `tests/step_check.py` (one closed solid,
+METRE); its volume is printed next to the closed-form volume of the solid of revolution,
+π∫r² dh = 1.68333·π = 5.2884 m³. Printed: deviations, t_local range, passes and knots per face. The same deck with
+N (0.5, 0.6) and S (1.0, 0.5) (`tilted_revolution_two_loops.ms2`) raises `SectionNotClosed`
+(verified: two loops at z = 0.738 m).
+
+Closed loops and poles inside a patch. `tests/solid/fixtures/lying_revolution.ms2`: FramePoints
+A (0, −1, 0), B (0.6, −1, 0), C (0.6, 1, 0), E (0, 1, 0); `BCurve prof` of degree 3 on { A B C E };
+`Line AX` from A to E; `RevSurf hull` of `prof` about AX, 0° to 360° (one patch, format of
+`capped_cylinder.ms2`). A smooth body of revolution about the horizontal y axis: radius
+1.8 s(1 − s) at profile parameter s, poles on the axis at y = ±1 (z = 0); its self-seam (φ = 0) and
+both poles lie at z = 0; its top and bottom, z = ±0.45 (s = 1/2, v = 3/4 and 1/4), are single
+points inside the patch; smallest principal radius 0.253 m, so no fold at t_min. Verified
+2026-10-07: T1 `outer_rows` (grid 60) returns one closed loop on the one patch with no seam point at
+each of 37 heights in [−0.449, 0.449] m. Asserted: two bands, [−0.45, 0] and [0, 0.45]; each face's
+part of a section is the whole loop, so each face has one self-seam (v0 and v1 the same curve
+bitwise, z-monotone, its edge once in each direction in the face's loop, `validate_brep` passes),
+the two self-seams are one chain cut (contract §8 Cuts: they meet at z = 0 in one point, the
+bottom face's top row and the top face's bottom row starting there, bitwise equal) and each face
+has a pole row at z = ±0.45 (all control points bitwise equal); every face `z_of_u` with monotone z,
+cut by F3b at z = ±0.2; oracle as above (2D distances to the profile in the meridian plane, closest
+point by Newton on the exact cubic; inner profile the 2D offset by d), `fit.dev_max` ≤ ε/4, M1–M3 at
+t = t_min with the oracle check of the previous paragraph. Printed as above.
+
+Horizontal-tangent rows, against the exact path. C1 with `opts.force_general` true (contract F1):
+every patch fitted; band ends at C1's horizontal rows, the shoulder z = −1 (verified 2026-10-07:
+dz/du of `surface1` vanishes there while dr/du does not) and z_max = 1.1 (ridge row of `surface2`,
+top pole of `surface1`), and at the keel z_min = −3.25; the oracle is the exact path's `geo` (exact
+NURBS of the same entities, I9): distance of every fitted face from it ≤ ε/4 at the check points,
+F4 sections, hull volume and CG of both printed side by side; mirrors bitwise in the symmetry
+planes (I2); M1–M3 at t = 0.0762 m between the written faces.
+
+Flat regions (contract §8). `split_side_cylinder.ms2`: the points and Lines of SK's `cylinder.ms2`;
+RevSurfs `side_a` (side Line, 0° to 90°), `side_b` (90° to 180°), `bottom` and `top` (the disk Lines,
+0° to 180°) about the Line K–T; `Symmetry: y`. Every patch converts exactly, but the end of the seam
+`side_a`–`side_b` (90°) lies inside the rim rows of `bottom` and `top`, so these and their mirrors go
+general and become flat regions (contract F1 order of the rules, step 1a); the side faces have no
+vertex inside a row and share their vertical seams end to end, so they stay exact whatever the
+patch names (the tie-break of step 2 never applies). Verified 2026-10-07: `MS2Parser` parses it (8
+patches with the
+mirrors) and T1 `outer_rows` (grid 60) returns one closed loop (shoelace area 2.25π m² less 1.2e-4 relative) at nine heights in
+[−2.95, 0.95] m. Asserted: `geo.outer` holds the four exact side faces; `geo.flat`
+holds two regions, z = −3 with `normal_z` −1 and z = 1 with +1, each covering a disk and its mirror
+(`visible`), merged across the mirror plane y = 0; every top and bottom row of a side face names its
+region (`[0 j]`) and no other boundary does; the test helper's brep (one plane face per region, its
+loop the chain of those rows) passes `validate_brep`, is written with `write_step` and passes
+`tests/step_check.py` (one closed solid, METRE); its volume is printed next to 9π m³.
+
+Concave vertices (contract F2). `cross_column.ms2` (`Symmetry: x y`; RuledSurfs between Lines, the
+quarter x, y ≥ 0): a square pontoon of half-width 1.5 m from z = −3 to −1 (bottom, walls x = 1.5 and
+y = 1.5, its top as the rectangles [1, 1.5] × [0, 0.3], [0.3, 1.5] × [0.3, 1] and [0, 1.5] × [1, 1.5])
+carrying a cross-shaped column of arm half-width 0.3 m and arm half-length 1.0 m from z = −1 to 1
+(walls x = 1 and y = 0.3 of one arm, x = 0.3 and y = 1 of the other, each a RuledSurf between two
+vertical Lines; its deck as the rectangles [0, 1] × [0, 0.3] and [0, 0.3] × [0.3, 1]). Verified
+2026-10-07: `MS2Parser` parses it (48 patches with the mirrors) and T1 `outer_rows` (grid 60) returns
+one closed loop at ten heights off z = −1 in [−2.95, 0.95] m, area 9 m² below z = −1 and 2.04 m²
+above. At the foot of each of the four re-entrant column edges, e.g. (0.3, 0.3, −1), three concave
+creases meet (the re-entrant edge and the two foot lines), so the cone of normals there is the octant
+n_x, n_y, n_z ≤ 0. Asserted: the walls and the bottom stay exact, whatever the patch names (the
+pontoon-top rectangles have corners inside the wall x = 1.5's top row and inside each other's rows,
+e.g. (1, 0.3, −1) inside a row of [0.3, 1.5] × [0.3, 1], so they merge into one flat region (contract
+F1 order of the rules, step 1a) before the vertices are counted, and their corners then put no vertex
+on the walls' rows (step 1b); likewise the deck); the pontoon top and the deck are
+flat regions (`geo.flat`: z = −1, `normal_z` +1, whose loops are the pontoon walls' top rows and,
+as a hole loop, the column walls' bottom rows; z = 1, +1); F2 at t = t_min gives a fan face at every
+concave crease and one sphere face at each of the four vertices, its points at distance d from the
+vertex, its boundaries the end arcs of the three adjacent fan faces (bitwise, I2) and a pole row at
+its lowest point (0.3, 0.3, −1 − d); no such face at the convex column corners, e.g. the foot
+(1.0, 0.3, −1), where the fans overlap and are trimmed; M1–M3 pass between the written faces; the
+oracle t_local (distance from a check point to the outer polyhedron, exact: to its planar faces) lies
+in [t, t + ε], since the outer faces are exact (e = 0), and its difference from the kernel's
+t_local is printed per face. The test helper's breps of the outer faces and of the inner faces each
+pass `validate_brep`, are written with `write_step` and pass `tests/step_check.py` (one closed
+solid, METRE); the outer volume is printed next to 22.08 m³, the inner volume printed.
+
+Heights (contract F1: heights are compared bitwise, nearby heights are never merged). For C1, both
+SK fixtures and every fixture of this task, with and without `opts.force_general`, the tests print
+the distinct patch-corner and band-end heights of the returned `geo` and every pair of them that
+differ bitwise but lie closer than T1's 16-ulp bound, |h1 − h2| ≤ 16·eps(max(1, |h1|, |h2|)), with
+the source of each height (a corner of entry k, or the band-end rule that set it); printed, not
+asserted (rule 5), so the owner sees any near-coincident heights that would cut a sliver piece.
 
 ### T3 — Kernel C: bodies and exact properties (Sonnet high)
 
 Contract: implements S3–S7, F5, F6, F6b, F7 (lateral faces split at planes and `c0_u`/`c0_v` rows,
 S4) and invariants I1, I2, I6–I8 (including collapsed-row loops and
-a `write_step` + `step_check` import of C1 bodies); consumes F1–F4 (T2), T9 `write_step`/`validate_brep`.
+a `write_step` + `step_check` import of C1 bodies); consumes F1–F4 (T2a; the general path of T2b joins at J1), T9 `write_step`/`validate_brep`.
 Methods per contract §3: divergence-theorem surface integrals (F6) and hydrostatics on the cut outer
 patches (F7, including `full`/`none` submersion and `S_wet`) replace the section integration below.
 
 Files: `src/+mwecmass/+solid/build_body.m`, `body_properties.m`, `hydrostatics_at_draft.m`,
-tests.
+tests, `tests/solid/fixtures/stepped_box.ms2`.
 
 - Body = outer surface between two heights, minus cavities bounded by per-module inner surfaces
   (t_i), the ballast level and module planes. Mass properties per region (UHPC / fill / air):
@@ -251,7 +502,63 @@ for the whole hull, with the ballast level placed inside a module, exactly at a 
 spilled into the next module; identity checks (outer volume equals `compute_hull`/divergence
 result; symmetric CG x = y = 0 to machine precision for C1); convergence of every quantity with quadrature order,
 reported; agreement with an independent `gmsh` mesh integration of the same body, reported.
+
+Planes at the height of a flat part (contract F5; exact path, so T3 tests them before J1).
+`stepped_spar.ms2` (T2a), a module edge at the shelf height z = −1: F4 gives the circle of radius 1.5
+from the faces below and of radius 0.75 from the faces above; the cap there is the disk of radius
+0.75 (the intersection of the two loops' areas), and the shelf piece (`z_range` [−1 −1], the ring
+between the circles) is written once, as an outer face of the module below; with both modules solid
+and with both hollow at t = t_min (the cap then the annulus between the radius 0.75 and the inner
+loop), each module and the fused hull pass `validate_brep` and `step_check.py`, I1 holds, and the
+solid module volumes are printed next to 4.5π and 1.125π m³ (rational faces). F6b at z = −1 (the
+module edge on the shelf) raises no error: the default side `'above'` gives the module above and the
+outer loop of radius 0.75, `'below'` the module below and the loop of radius 1.5 (contract F6b),
+each equal to the F4 loop of that side.
+`tests/solid/fixtures/stepped_box.ms2` (`Symmetry: y`; RuledSurfs between Lines; the half y ≥ 0): a
+box x ∈ [−1, 1], y ∈ [−0.75, 0.75] from z = −2.5 whose deck lies at z = 0.5 for x < 0 and at z = 1.5
+for x > 0, with a riser at x = 0; eleven patches: the bottom in two pieces split at x = 0 (so that
+the common corner (0, 0.75, −2.5) of the two lower pieces of the wall y = 0.75 is a corner of every
+patch through it, not a point inside a bottom row), the wall x = −1, the wall y = 0.75 in three
+pieces (below z = 0.5 for x < 0 and for x > 0, above it for x > 0), the wall x = 1 below and above
+z = 0.5, the riser, the low and the high deck; every patch exact, every seam one curve shared end to
+end (the same curve, contract S1), no corner of any patch inside another patch's boundary (contract §8 Cuts). Verified
+2026-10-07: `MS2Parser` parses it (22 patches with the mirrors; no patch corner lies strictly inside
+an edge of another patch, checked on the parser's corner points) and T1 `outer_rows` (grid 60)
+returns one closed loop at eight heights off z = 0.5 in [−2.45, 1.45] m, area 3 m² below z = 0.5
+and 1.5 m² above. With a module edge at the step z = 0.5, where the loops from below and from
+above share the
+rows along x = 1 and along y = ±0.75 for x > 0: no error; the cap is the area of the loop from above,
+bounded by the shared rows (each one edge, taken once) and the riser's bottom rows; the low deck is
+written once, as an outer face of the module below; with both modules solid, `validate_brep`,
+`step_check.py` and I1 pass, and the module volumes equal 9 and 1.5 m³ (polynomial faces, asserted
+exact). (Its inner sets have a fan face at the concave riser foot, which may take the general path,
+so the hollow and thin-shell cases run at J1.)
+
 **Owner checkpoint after T3.**
+
+### J1 — Join of lane K (orchestrator)
+
+Merges T2a, T2b and T3 in that order, deletes the stand-ins of F1–F7 and F6b, and reruns every
+consumer test on the real code (the join test, contract §3). Adds `tests/solid/test_join_general.m`
+(J1's file), which runs the general-path fixtures of T2b through the real F1, F2, F5, F6 and F7, and
+T2a's `split_wall_box.ms2` (all exact, with the column-corner splits at z = −1) through the real F1,
+F5 and F6: the seam fields pair up (face k boundary b names [j c] exactly when face j boundary c
+names [k b]), I2 holds (each shared boundary one edge, the same curve, contract S1), the hull passes
+`validate_brep` and `step_check.py` (one closed solid, METRE), and its volume equals 9 m³ (bilinear
+faces, asserted exact);
+`split_side_cylinder.ms2` with module edges at z = −2 and z = 0: the two flat regions of `geo.flat`
+are F5 plane faces whose loops are the chains of the rows that name them; each module and the fused
+hull pass `validate_brep` and `step_check.py` (closed solids, solid count); I1 holds; the hull volume
+is printed next to 9π m³. `cross_column.ms2` with a module edge at the pontoon top z = −1 (the loops
+from below and from above, square and cross, strictly nested): the cap there is the cross's area and
+the pontoon-top flat region is written once; hollow modules at t = t_min carry the inner sphere faces
+at the four concave vertices; `validate_brep`, `step_check.py` and I1 pass; the hull volume is
+printed next to 22.08 m³. `stepped_box.ms2` (T3) with the module edge at the step z = 0.5 and both
+modules hollow at t = t_min: the cap is the area of the loop from above less the void, the shared
+rows are one edge each, and `validate_brep`, `step_check.py` and I1 pass; thin shell with
+`z_ballast` = 0.5: the ballast body is closed by the low deck and a `ballast_top` over the area of
+the loop from above, the shell sheet starts at that loop, `V_ballast` = 9 m³ (asserted: polynomial
+faces), and I1 holds.
 
 ### T4a — Stage-2 changes that do not need the kernel (Sonnet high)
 
@@ -428,7 +735,7 @@ Contract: done; its B-rep struct is the `brep` of S4, consumed by F11 and the T3
 Files: `src/+mwecmass/+output/+step/write_step.m` and helpers, tests.
 
 - Outer faces: exact NURBS conversions of the `.ms2` entities where the type allows (C1: B-spline
-  curves, arcs, revolution, ruled surface); inner faces: the adaptive fits from T2.
+  curves, arcs, revolution, ruled surface); inner faces: the adaptive fits from T2a and T2b.
 - AP214 text writer: `B_SPLINE_SURFACE_WITH_KNOTS` (and the rational form for exact
   revolutions) lateral faces whose boundary rows lie in the bounding planes (no trimming curves), `PLANE` caps, shared `EDGE_CURVE`s, `CLOSED_SHELL`,
   `MANIFOLD_SOLID_BREP` and `BREP_WITH_VOIDS`, `OPEN_SHELL` / `SHELL_BASED_SURFACE_MODEL` for
@@ -451,7 +758,8 @@ switches), `src/+mwecmass/+output/+step/` builders.
 - UHPC: one STEP per module; one STEP with all modules as one connected solid (built directly as
   one B-rep with the cavity as a void shell).
 - Steel: ballast solid = full outer section below `z_ballast`; shell = the exterior parametric
-  surface (exact NURBS) from `z_ballast` to the deck only (no double counting of the plate);
+  surface (exact NURBS where the patch takes the exact path, fitted faces otherwise, contract §8)
+  from `z_ballast` to the deck only (no double counting of the plate);
   combined file with both bodies sharing the identical junction curve at `z_ballast`. For C1 the
   split at `z_ballast` is exact (z depends only on the profile parameter of the RevSurf and the
   RuledSurf, so the cut is an iso-parameter line found by knot insertion).
@@ -473,7 +781,11 @@ check that no shape-assumption pattern remains (`grep` for `sqrt(.*/pi)`, `pi\s*
 Contract: documents S1–S8 and F1–F14 as implemented; last in the contract §4 order of every doc file.
 
 Rewrite the methods, runtime and schema sections listed under D12; document the kernel, the new
-Stage 3, the status/report fields and the STEP outputs; update `CHANGELOG.md` and `AGENTS.md`.
+Stage 3, the status/report fields and the STEP outputs; update `CHANGELOG.md`, `AGENTS.md` and the
+folders table of `tests/README.md`: a row for every folder under `tests/` that the table does not
+list yet (at least `solid/`, `standins/`, `standin_kit/` and `realise/`, which T5 and T7 add), and
+the rows of folders whose contents changed since their row was written; last in the contract §4
+order of `tests/README.md`.
 
 ### T13 — Final review (Opus high)
 
