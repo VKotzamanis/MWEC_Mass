@@ -45,7 +45,7 @@ function fig = plot_steel_solve(realised, config)
                 'Color', style.fill_palette.inner_boundary, 'HandleVisibility', 'off');
             mwecmass.output.figures.style_line(h_in, style, 'boundary');
             mwecmass.output.figures.draw_hatch_strips(ax, p.xz(:, 1), p.xz(:, 2) + vs, ...
-                style.hatch_spacing, style.fill_palette.hatch);
+                style.hatch_spacing, style.fill_palette.hatch, style.line_width.hatch);
         end
     end
     h_hull = plot(ax, profile([1:end, 1], 1), profile([1:end, 1], 2) + vs, '-', ...

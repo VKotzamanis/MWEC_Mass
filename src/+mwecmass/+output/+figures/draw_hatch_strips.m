@@ -1,9 +1,9 @@
-function draw_hatch_strips(ax, xp, yp, spacing, color)
+function draw_hatch_strips(ax, xp, yp, spacing, color, line_width)
 %DRAW_HATCH_STRIPS Fills a polygon with 45-degree hatch lines for the modular-precast strip plots.
-    draw_hatch_local(ax, xp, yp, spacing, color);
+    draw_hatch_local(ax, xp, yp, spacing, color, line_width);
 end
 
-function draw_hatch_local(ax, xp, yp, spacing, color)
+function draw_hatch_local(ax, xp, yp, spacing, color, line_width)
 %DRAW_HATCH_LOCAL Fill polygon (xp,yp) with 45-degree hatching.
     if length(xp) < 3, return; end
     x_lo = min(xp);  x_hi = max(xp);
@@ -25,7 +25,7 @@ function draw_hatch_local(ax, xp, yp, spacing, color)
         for s = 1:n_seg
             plot(ax, x_line(starts(s):stops(s)), ...
                      y_line(starts(s):stops(s)), '-', ...
-                 'Color', color, 'LineWidth', 0.4, ...
+                 'Color', color, 'LineWidth', line_width, ...
                  'HandleVisibility', 'off');
         end
     end

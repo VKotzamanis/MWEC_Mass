@@ -1,8 +1,8 @@
 function test_section_y0_crossings()
 %TEST_SECTION_Y0_CROSSINGS  y = 0 crossings of closed section loops, on the exact curves.
 %   The loops are built here from known closed forms (circle of rational quadratic arcs, polygons of
-%   degree-1 pieces) as an independent oracle. The only kernel function used is the F3 curve
-%   evaluator (stand-in until T2 merges).
+%   degree-1 pieces) as an independent oracle. No kernel function is used: section_y0_crossings
+%   works on the control points of the curves.
 
 root = fileparts(fileparts(fileparts(mfilename('fullpath'))));
 setup(root);

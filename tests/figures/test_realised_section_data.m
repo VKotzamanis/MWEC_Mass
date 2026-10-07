@@ -22,7 +22,7 @@ cases = {
 for c = 1:size(cases, 1)
     run_case(cases{c, :});
 end
-test_errors_and_status(root);
+test_errors_and_status();
 fprintf('all F12 tests passed\n');
 end
 
@@ -161,7 +161,7 @@ fprintf('  polygon areas %.15f, closed-form section %.15f, difference %.2e\n', A
 % plan sections
 check_plan(data, fx, hw_out, hw_in, lay, e, margin, tag, solid);
 
-% the polygons are the sections of the same body that gives the mass: area of the waterline section
+% one waterline section when the waterline is inside the hull
 wl = data.plan(strcmp({data.plan.kind}, 'waterline'));
 check(numel(wl) == data.waterline_in_hull, '%s: waterline section', tag);
 end
@@ -225,7 +225,7 @@ if zb > e(1) && zb < e(end)
 end
 end
 
-function test_errors_and_status(root)
+function test_errors_and_status()
 config = sti_config('cylinder');
 config.hull_solid = mwecmass.solid.outer_nurbs(config.ms2_model);
 [~, stage2] = sti_stage2(config, 0.5, [NaN; 250; 200; 150]);
