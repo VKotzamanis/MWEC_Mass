@@ -11,6 +11,8 @@ production path; MATLAB runs must not see these files.
 | `discretize.m` | Missing (`properties_2d`). Numeric edge vector form: bin index, NaN outside. |
 | `datetime.m` | Missing. Only `datetime('now', 'Format', fmt)`, returned as char (`optim/run.m`, `export_figure.m`). |
 | `issorted.m` | Octave lacks the `'strictascend'` mode (`load_hydro_cache.m`); other forms go to the built-in. |
+| `java.m` | Octave here has no Java; `export_results.m` hashes the deck with `java.security.MessageDigest`. Only `getInstance('SHA-256')`, `update`, `digest` exist, built on `hash()`. |
+| `double.m`, `logical.m` | `export_results.m` builds typed empties with `double.empty(0, 0)` and `logical.empty(0, 0)`, which Octave 8.4 cannot parse (it calls `double()`). With no arguments the shim returns a struct with the field `empty`; with arguments it calls the built-in. They shadow built-ins, so keep them off the production path. |
 | `optimoptions.m` | Missing. Returns a struct of the name/value pairs; the solver name goes in `SolverName`. |
 | `fmincon.m` | Missing (Octave's optim-package version rejects infeasible starts). Built on core `sqp`; the help text states the problem mapping, the `exitflag` mapping, and what is not available. |
 

@@ -2,43 +2,8 @@
 %   octave --no-gui --quiet tests/run_tests.m
 % Environment variable TESTS_FILTER (optional): run only files whose path contains that text.
 % Each test is a function file with no inputs or outputs that calls error() on failure.
-1;
-
-function files = find_tests(folder, root)
-  files = {};
-  entries = dir(folder);
-  for k = 1:numel(entries)
-    name = entries(k).name;
-    full = fullfile(folder, name);
-    if entries(k).isdir
-      if any(strcmp(name, {'.', '..', 'octave_shims'}))
-        continue;
-      end
-      files = [files, find_tests(full, root)]; %#ok<AGROW>
-    elseif ~isempty(regexp(name, '^test_.*\.m$', 'once'))
-      files{end+1} = full; %#ok<AGROW>
-    end
-  end
-end
-
-function [ok, message] = run_one(file)
-  [folder, name] = fileparts(file);
-  start_dir = pwd;
-  addpath(folder);
-  ok = true;
-  message = '';
-  try
-    feval(name);
-  catch err
-    ok = false;
-    message = err.message;
-  end
-  rmpath(folder);
-  cd(start_dir);
-  close all;
-  clear functions;
-end
-
+% No local functions here: tests such as test_pipeline_baseline end with "clear functions", which
+% would remove functions defined in this script file.
 tests_dir = fileparts(mfilename('fullpath'));
 repo_root = fileparts(tests_dir);
 warning('off', 'Octave:shadowed-function');
@@ -46,7 +11,25 @@ addpath(fullfile(tests_dir, 'octave_shims'));
 addpath(fullfile(repo_root, 'src'));
 addpath(repo_root);
 
-files = sort(find_tests(tests_dir, repo_root));
+files = {};
+pending = {tests_dir};
+while ~isempty(pending)
+  folder = pending{end};
+  pending(end) = [];
+  entries = dir(folder);
+  for k = 1:numel(entries)
+    name = entries(k).name;
+    full = fullfile(folder, name);
+    if entries(k).isdir
+      if ~any(strcmp(name, {'.', '..', 'octave_shims'}))
+        pending{end+1} = full;
+      end
+    elseif ~isempty(regexp(name, '^test_.*\.m$', 'once'))
+      files{end+1} = full;
+    end
+  end
+end
+files = sort(files);
 filter = getenv('TESTS_FILTER');
 if ~isempty(filter)
   files = files(~cellfun(@isempty, strfind(files, filter)));
@@ -68,13 +51,25 @@ for k = 1:numel(files)
   rel = files{k}(numel(repo_root) + 2:end);
   fprintf('---- %s\n', rel);
   t0 = tic;
-  [ok, message] = run_one(files{k});
+  start_dir = pwd;
+  addpath(fileparts(files{k}));
+  ok = true;
+  message = '';
+  try
+    feval(names{k});
+  catch err
+    ok = false;
+    message = err.message;
+  end
+  rmpath(fileparts(files{k}));
+  cd(start_dir);
+  close all;
   dt = toc(t0);
   if ok
     fprintf('PASS  %s  (%.1f s)\n\n', rel, dt);
   else
     n_fail = n_fail + 1;
-    failed{end+1} = rel; %#ok<SAGROW>
+    failed{end+1} = rel;
     fprintf('FAIL  %s  (%.1f s)\n      %s\n\n', rel, dt, strrep(message, sprintf('\n'), sprintf('\n      ')));
   end
 end

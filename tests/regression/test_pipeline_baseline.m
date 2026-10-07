@@ -6,12 +6,19 @@ function test_pipeline_baseline()
 %   the same double, against the text stored in tests/baseline/octave_v1_baseline.json. There is
 %   no tolerance. The MATLAB v1.0 values are printed alongside as information only: Octave's sqp
 %   is not MATLAB's, so those differ by construction.
-%   Runtime is long (see the seconds_<mode> members of the baseline file; most of it is the
-%   per-module geometry tables in build_config). TESTS_BASELINE_MODES (comma separated, default
-%   both) limits the run, for example TESTS_BASELINE_MODES=thin_shell.
+%   The Octave run is long (see the seconds_<mode> members of the baseline files; most of it is
+%   the hull-section tables in build_config, where Octave's containers.Map lookups dominate).
+%   TESTS_BASELINE_PRESET selects the case: 'fast' (default) is the baseline_run preset with
+%   coarser z-grids and the file octave_v1_baseline_fast.json; 'full' is the author input and
+%   octave_v1_baseline.json. TESTS_BASELINE_MODES (comma separated, default both) limits the
+%   run, for example TESTS_BASELINE_MODES=thin_shell.
     root = fileparts(fileparts(fileparts(mfilename('fullpath'))));
     addpath(fullfile(root, 'tests', 'octave_shims'), fullfile(root, 'tools'));
-    members = read_members(fullfile(root, 'tests', 'baseline', 'octave_v1_baseline.json'));
+    preset = getenv('TESTS_BASELINE_PRESET');
+    if isempty(preset), preset = 'fast'; end
+    suffix = '';
+    if ~strcmp(preset, 'full'), suffix = ['_' preset]; end
+    members = read_members(fullfile(root, 'tests', 'baseline', ['octave_v1_baseline' suffix '.json']));
     matlab_ref = jsondecode(fileread(fullfile(root, 'tests', 'baseline', 'matlab_v1_reference.json')));
 
     modes = {'modular_precast', 'thin_shell'};
@@ -26,8 +33,8 @@ function test_pipeline_baseline()
             error('test_pipeline_baseline:noBaseline', 'no baseline entry for %s', mode);
         end
         t0 = tic;
-        summary = baseline_run(mode);
-        fprintf('%s: pipeline run %.0f s (baseline run %s s)\n', mode, toc(t0), members(['seconds_' mode]));
+        summary = baseline_run(mode, false, preset);
+        fprintf('%s (%s): pipeline run %.0f s (baseline run %s s)\n', mode, preset, toc(t0), members(['seconds_' mode]));
         fresh_text = jsonencode(summary);
         if ~strcmp(fresh_text, members(mode))
             found = compare(mode, jsondecode(members(mode)), jsondecode(fresh_text));

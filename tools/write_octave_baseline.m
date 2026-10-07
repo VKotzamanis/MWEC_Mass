@@ -1,9 +1,11 @@
-function write_octave_baseline(modes)
+function write_octave_baseline(modes, preset)
 %WRITE_OCTAVE_BASELINE Run the pipeline and write tests/baseline/octave_v1_baseline.json.
 %   write_octave_baseline() runs both realisation types; write_octave_baseline({'thin_shell'})
 %   runs the listed types only and keeps the other entries of an existing file, so the two
-%   types can be produced by two Octave processes started side by side. From the repository root:
-%     octave --no-gui --quiet --eval "addpath('tools'); write_octave_baseline({'thin_shell'})"
+%   types can be produced by two Octave processes started side by side. The second argument is the
+%   baseline_run preset: 'full' writes octave_v1_baseline.json, 'fast' octave_v1_baseline_fast.json.
+%   From the repository root:
+%     octave --no-gui --quiet --eval "addpath('tools'); write_octave_baseline({'thin_shell'}, 'fast')"
 %   File layout: one JSON member per line, "info", the modes, then "seconds_<mode>". The text of a
 %   mode line is jsonencode(summary), the shortest text that reads back to the same double, and
 %   tests/regression/test_pipeline_baseline.m compares that text exactly.
@@ -12,11 +14,14 @@ function write_octave_baseline(modes)
   warning('off', 'Octave:shadowed-function');
   all_modes = {'modular_precast', 'thin_shell'};
   if nargin < 1, modes = all_modes; end
-  path = fullfile(repo, 'tests', 'baseline', 'octave_v1_baseline.json');
+  if nargin < 2, preset = 'full'; end
+  suffix = '';
+  if ~strcmp(preset, 'full'), suffix = ['_' preset]; end
+  path = fullfile(repo, 'tests', 'baseline', ['octave_v1_baseline' suffix '.json']);
 
   for k = 1:numel(modes)
     t0 = tic;
-    summary = baseline_run(modes{k});
+    summary = baseline_run(modes{k}, false, preset);
     seconds = toc(t0);
     fprintf('%s: %.0f s\n', modes{k}, seconds);
     members = read_members(path);

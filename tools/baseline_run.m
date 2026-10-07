@@ -9,8 +9,10 @@ function summary = baseline_run(mode, keep_log, overrides)
 %   never touched. Every figure, log and diagnostic switch in out.save is false; only the results
 %   MAT-file is written, into the temporary folder, and read back for the numbers. The temporary
 %   folder is removed afterwards. keep_log (default false) prints the pipeline console text.
-%   overrides is a cell array of {'dotted.path.in.in', value; ...} applied to the input struct;
-%   the default is default_overrides(mode). The applied overrides are returned in the summary.
+%   overrides is a cell array of {'dotted.path.in.in', value; ...} applied to the input struct, or
+%   the name of a preset: 'full' (the default) keeps the author inputs, 'fast' also coarsens the
+%   z-grids (n_z_levels 40, n_z_grid 60) so that a rerun takes less time. The applied overrides
+%   are returned in the summary.
 %
 %   Test-only: requires Octave with tests/octave_shims on the path.
   if nargin < 2 || isempty(keep_log), keep_log = false; end
@@ -42,7 +44,8 @@ function summary = baseline_run(mode, keep_log, overrides)
   clear functions;
 
   in = WEC_User_Input();
-  if nargin < 3, overrides = default_overrides(mode); end
+  if nargin < 3, overrides = 'full'; end
+  if ischar(overrides), overrides = preset_overrides(mode, overrides); end
   in.materials.realisation_type = mode;
   for k = 1:size(overrides, 1)
     parts = strsplit(overrides{k, 1}, '.');
@@ -75,7 +78,7 @@ function summary = baseline_run(mode, keep_log, overrides)
   end
 end
 
-function overrides = default_overrides(mode)
+function overrides = preset_overrides(mode, preset)
 % The default n_sub = 100 makes build_config's circle-based floor code (compute_rmin_at_z.m:30-35)
 % read a centroid from a polygon area of -1.1e-14 m^2 (pure roundoff, at z = -1.756 m in strip 3)
 % and return a floor of 2500 kg/m^3 for strip 3, so the run stops with 'cannot float'.
@@ -83,6 +86,15 @@ function overrides = default_overrides(mode)
   overrides = cell(0, 2);
   if strcmp(mode, 'modular_precast')
     overrides = {'materials.modular_precast.n_sub', 101};
+  end
+  switch preset
+    case 'full'
+    case 'fast'
+      overrides = [overrides; {'geometry.n_z_levels', 40; ...
+                               'materials.thin_shell.n_z_grid', 60; ...
+                               'materials.modular_precast.n_z_grid', 60}];
+    otherwise
+      error('baseline_run:preset', 'unknown preset %s (full or fast).', preset);
   end
 end
 
