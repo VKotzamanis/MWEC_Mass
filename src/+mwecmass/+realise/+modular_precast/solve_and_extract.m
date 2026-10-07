@@ -17,10 +17,12 @@ function [realised, final_props] = solve_and_extract(config, x_opt, final3d, opt
 %   2. Each hollow module above k* gets the shell t_i >= t_min that holds V_uhpc,i: the root of
 %      V_uhpc,i(t) - V_uhpc,i on [t_min, t_max), t_max = d_close - eps_fit/2 over the hollow range
 %      (F2b), bracketed by bisection towards t_max (never evaluated, the void closes there), then
-%      fzero. Trial shells are refitted on the knots of the adaptive t_min set (F2 knots_from); the
-%      stored shell is the adaptive fit at the root. A module whose t_min shell already holds more
-%      UHPC than V_uhpc,i is built at t_min; one whose void closes first keeps the thickest shell
-%      evaluated. Both are reported.
+%      fzero. Trial shells are refitted on fixed knots (F2 knots_from), first those of the adaptive
+%      t_min set; the stored shell is the adaptive fit at the root. When that fit has another knot
+%      structure the search restarts on it (contract section 7 item 4), per module, until the
+%      structure no longer changes; a structure already searched ends the loop with a note. A
+%      module whose t_min shell already holds more UHPC than V_uhpc,i is built at t_min; one whose
+%      void closes first keeps the thickest shell evaluated. Both are reported.
 %   3. k* has the shell t_k* = t_min above its ballast (OD13). The ballast level in k* is the root
 %      of M(z_ballast) = rho_w V_sub at the Stage-2 draft (flotation, OD10). When no level inside
 %      k* reaches it, the module end with the smaller residual is kept and flotation fails.
@@ -147,12 +149,10 @@ t_max = mwecmass.solid.void_closing_distance(config.ms2_model, config.boundary_c
 probe = design;
 probe.t(hollow) = t_min;
 [ev, ctx] = mwecmass.realise.modular_precast.realise_modules(ctx, probe);
-ctx.knots_from = ev.inner(1);
+base = ev.inner(1);
 vu_min = [ev.bp.modules.V_uhpc]';
-uhpc_at = @(tt, i) module_uhpc(ctx, design, hollow, tt, i);
 for i = hollow
     target = split.V_uhpc_target(i);
-    lo = t_min;
     if vu_min(i) >= target
         t(i) = t_min;
         if vu_min(i) > target
@@ -161,35 +161,80 @@ for i = hollow
         end
         continue
     end
-    hi = t_max;
-    mid = lo + (hi - lo) / 2;
-    g_mid = -1;
-    while mid > lo && mid < hi
-        g_mid = uhpc_at(mid, i) - target;
-        if g_mid >= 0
+    searched = {base};
+    restarts = 0;
+    while true
+        ctx.knots_from = searched{end};
+        [t(i), closed, ctx] = shell_root(ctx, design, hollow, i, target, t_min, t_max);
+        ctx.knots_from = [];
+        probe.t(hollow) = t(i);
+        [ev, ctx] = mwecmass.realise.modular_precast.realise_modules(ctx, probe);
+        adaptive = ev.inner([ev.inner.t] == t(i));
+        if same_knots(adaptive, searched{end})
             break
         end
-        lo = mid;
-        mid = lo + (hi - lo) / 2;
+        if any(cellfun(@(s) same_knots(adaptive, s), searched))
+            notes{end + 1} = sprintf(['module %d: the adaptive fit at t = %.6g m returns to a knot ' ...
+                'structure already searched; stored at that t'], i, t(i)); %#ok<AGROW>
+            break
+        end
+        searched{end + 1} = adaptive; %#ok<AGROW>
+        restarts = restarts + 1;
     end
-    if g_mid == 0
-        t(i) = mid;
-    elseif g_mid > 0
-        t(i) = fzero(@(tt) uhpc_at(tt, i) - target, [lo mid], optimset('Display', 'off'));
-    else
-        t(i) = lo;
+    fprintf('      module %d: t = %.9f m, V_uhpc - target %.3g m^3, knot restarts %d\n', i, t(i), ...
+        ev.bp.modules(i).V_uhpc - target, restarts);
+    if closed
         notes{end + 1} = sprintf(['module %d: the void closes (t_max = %.6g m) before the shell ' ...
-            'holds the Stage-2 split %.6g m^3; built at t = %.6g m'], i, t_max, target, lo); %#ok<AGROW>
+            'holds the Stage-2 split %.6g m^3; built at t = %.6g m'], i, t_max, target, t(i)); %#ok<AGROW>
     end
 end
-ctx.knots_from = [];
 end
 
-function vu = module_uhpc(ctx, design, hollow, t, i)
+function [ti, closed, ctx] = shell_root(ctx, design, hollow, i, target, t_min, t_max)
+% Root of V_uhpc,i(t) - target on [t_min, t_max) on the knots of ctx.knots_from; bisection towards
+% t_max brackets it without evaluating t_max, where the void closes.
+lo = t_min;
+hi = t_max;
+mid = lo + (hi - lo) / 2;
+g_mid = -1;
+while mid > lo && mid < hi
+    [vu, ctx] = module_uhpc(ctx, design, hollow, mid, i);
+    g_mid = vu - target;
+    if g_mid >= 0
+        break
+    end
+    lo = mid;
+    mid = lo + (hi - lo) / 2;
+end
+closed = false;
+if g_mid == 0
+    ti = mid;
+elseif g_mid > 0
+    ti = fzero(@(tt) module_uhpc(ctx, design, hollow, tt, i) - target, [lo mid], ...
+        optimset('Display', 'off'));
+else
+    ti = lo;
+    closed = true;
+end
+end
+
+function [vu, ctx] = module_uhpc(ctx, design, hollow, t, i)
 d = design;
 d.t(hollow) = t;
-ev = mwecmass.realise.modular_precast.realise_modules(ctx, d);
+[ev, ctx] = mwecmass.realise.modular_precast.realise_modules(ctx, d);
 vu = ev.bp.modules(i).V_uhpc;
+end
+
+function same = same_knots(a, b)
+% Same pieces and knot vectors (the structure F2 knots_from keeps).
+same = numel(a.patches) == numel(b.patches);
+for p = 1:numel(a.patches)
+    if ~same
+        return
+    end
+    same = isequal(a.patches(p).surf.degree, b.patches(p).surf.degree) && ...
+        isequal(a.patches(p).surf.knots, b.patches(p).surf.knots);
+end
 end
 
 function [z, ctx, solver, note] = ballast_for_flotation(ctx, design, k, M_target, solver)

@@ -6,7 +6,8 @@ function test_precast_stage3()
 %   closed form is then printed only (rational faces, Gauss quadrature).
 %   Asserted: S8 layout, final_props from the realised body, volume closure (rule 11), shell and
 %   ballast bounds, flotation held to the Stage-3 constraint tolerance 1e-6 (AGENTS OD10), the
-%   status rule. Root-finding residuals and Stage-2 deviations are printed.
+%   status rule, the restart of the shell root search on a changed knot structure. Root-finding
+%   residuals and Stage-2 deviations are printed.
 
 root = fileparts(fileparts(fileparts(mfilename('fullpath'))));
 setup(root);
@@ -50,6 +51,7 @@ config = fixture_config('box', [], 2500);
 x = [0; s2.rho];
 r = stage3(config, x, f3);
 verify(r, [], config, s2, s8, mod_fields, tol_eq, 'box');
+r_c = r;
 
 % D: a Stage 2 equal to the realised values is accepted with zero deviation (same computation)
 f3e = f3;
@@ -70,6 +72,67 @@ check(fp.mass_total == r.props.mass_total && fp.mass_total ~= f3.mass_total && .
     strcmp(fp.stage3_status, 'failed'), 'closest design stored, not Stage 2');
 fprintf('box, flotation out of reach: mass %.3f kg vs displaced %.3f kg; reason: %s\n', ...
     r.props.mass_total, r.props.mass_buoyant_force, r.reason);
+
+% F: the adaptive fit above t_thr carries an extra knot, so the root found on the t_min knots has
+% another knot structure and the search restarts on it (contract section 7 item 4). t_thr lies
+% between t_min and the module-2 root of case C (109.2 mm) and above the module-3 root (78.1 mm).
+t_thr = 0.09;
+geo = config.hull_solid;
+t_min = config.constructability_t_min;
+knotted_box('reset');
+opts = struct('inner_fn', @(t, knots_from) knotted_box(geo, t, t_min, t_thr, knots_from));
+[f3, s2] = sti_stage2(config, 0, [NaN; 600; 600]);
+rk = mwecmass.realise.modular_precast.solve_and_extract(config, [0; s2.rho], f3, opts);
+verify(rk, [], config, s2, s8, mod_fields, tol_eq, 'box, knot restart');
+calls = knotted_box('log');
+check(any(calls(:, 2) == 1), 'a root search ran on the knots of the adaptive fit at the root');
+check(rk.design.t(2) > t_thr && rk.design.t(3) < t_thr, 'module roots on both sides of t_thr');
+fprintf('box, knot restart: %d inner-set calls on the inserted knot; t %s mm (case C %s mm)\n', ...
+    sum(calls(:, 2) == 1), mat2str(1000 * rk.design.t', 9), mat2str(1000 * r_c.design.t', 9));
+dev_k = [rk.modules.V_uhpc]' - rk.V_uhpc_target;
+dev_c = [r_c.modules.V_uhpc]' - r_c.V_uhpc_target;
+fprintf('box, knot restart: V_uhpc - target %s m^3 (case C %s m^3)\n', mat2str(dev_k', 3), ...
+    mat2str(dev_c', 3));
+if ~isempty(geo.analytic)
+    % stand-in kernel: the box volumes are closed forms of d, blind to the inserted knot, so the
+    % restarted root equals the case-C root bitwise
+    check(isequal(rk.design.t, r_c.design.t) && isequal(dev_k, dev_c), 'restart reproduces case C');
+end
+end
+
+function out = knotted_box(geo, t, t_min, t_thr, knots_from)
+% sti_inner_box with the knot u = 1/2 inserted in every side patch when t > t_thr (adaptive fit),
+% or when knots_from carries it (refit on fixed knots). Calls are logged as [t, refit on it].
+persistent calls
+if ischar(geo)
+    if strcmp(geo, 'reset')
+        calls = zeros(0, 2);
+    end
+    out = calls;
+    return
+end
+out = sti_inner_box(geo, t, t_min);
+if isempty(knots_from)
+    knotted = t > t_thr;
+else
+    knotted = any(arrayfun(@(q) numel(q.surf.knots{1}) == 5, knots_from.patches));
+    out.refit = true;
+end
+calls(end + 1, :) = [t, ~isempty(knots_from) && knotted];
+if ~knotted
+    return
+end
+for k = 1:numel(out.patches)
+    s = out.patches(k).surf;
+    if s.ctrl(1, 1, 3) == s.ctrl(2, 1, 3)
+        continue
+    end
+    % degree-1 insertion of u = 1/2 in [0 0 1 1]: the new row is the mean of the two rows
+    s.ctrl = cat(1, s.ctrl(1, :, :), (s.ctrl(1, :, :) + s.ctrl(2, :, :)) / 2, s.ctrl(2, :, :));
+    s.knots{1} = [0 0 0.5 1 1];
+    out.patches(k).surf = s;
+    out.report.patches(k).n_knots = [5 4];
+end
 end
 
 function config = fixture_config(name, wall, rho_uhpc)

@@ -8,7 +8,8 @@ function [ev, ctx] = realise_modules(ctx, design)
 %   that are not in design.solid_modules (contract section 7 item 2): taken from ctx.sets when a
 %   set of that t (bitwise) is there, else made by ctx.inner_fn(t, ctx.knots_from) over the whole
 %   hollow range ctx.z_hollow and kept in ctx.sets. With ctx.knots_from empty only adaptive sets
-%   (refit false) are used, so the stored design is always built on its own adaptive fit.
+%   (refit false) are used, so the stored design is always built on its own adaptive fit; with
+%   ctx.knots_from set only sets of its pieces and knot vectors.
 %   ev.body: S4 (mwecmass.solid.build_body), ev.bp: S6 (mwecmass.solid.body_properties with
 %   ctx.rho), ev.inner: the S2 sets the body uses.
 
@@ -27,13 +28,31 @@ ev.inner = inner;
 end
 
 function [set, ctx] = inner_set(ctx, t)
-adaptive_only = isempty(ctx.knots_from);
 for k = 1:numel(ctx.sets)
-    if isequal(ctx.sets(k).t, t) && (~adaptive_only || ~ctx.sets(k).refit)
-        set = ctx.sets(k);
-        return
+    s = ctx.sets(k);
+    if isequal(s.t, t)
+        if isempty(ctx.knots_from)
+            usable = ~s.refit;
+        else
+            usable = same_knots(s, ctx.knots_from);
+        end
+        if usable
+            set = s;
+            return
+        end
     end
 end
 set = ctx.inner_fn(t, ctx.knots_from);
 ctx.sets = [ctx.sets, set];
+end
+
+function same = same_knots(a, b)
+same = numel(a.patches) == numel(b.patches);
+for p = 1:numel(a.patches)
+    if ~same
+        return
+    end
+    same = isequal(a.patches(p).surf.degree, b.patches(p).surf.degree) && ...
+        isequal(a.patches(p).surf.knots, b.patches(p).surf.knots);
+end
 end
