@@ -6,7 +6,7 @@ function [lo, hi, u_star] = split_bspline_surface(patch, z)
 %   patch: S1 entry with z_of_u true (every control row has one z, weights separable), z strictly
 %   between z(u0) and z(u1), in either order. u* solves z(u*) = z, where z(u) = sum N_i a_i z_i /
 %   sum N_i a_i (rows z_i, row weights a_i); u* is bracketed between knot values and refined by
-%   bisection to adjacent doubles. u* is inserted to multiplicity du (Piegl & Tiller, The NURBS
+%   regula falsi (Illinois) to adjacent doubles. u* is inserted to multiplicity du (Piegl & Tiller, The NURBS
 %   Book, 2nd ed., algorithm A5.1, on homogeneous rows); a coordinate or weight that is equal in
 %   the two rows being combined is copied, every new row takes one z (computed from column 1) and
 %   the cut row takes z itself, so lo and hi keep z_of_u and share the cut row bitwise. lo is the
@@ -96,27 +96,39 @@ end
 lo = ku(chg);
 hi = ku(chg + 1);
 flo = f(chg);
-while true
-    mid = lo + (hi - lo) / 2;
-    if mid <= lo || mid >= hi
+fhi = f(chg + 1);
+% Illinois regula falsi, kept bracketing, until the bracket is two adjacent doubles
+side = 0;
+for it = 1:200
+    x = (flo * hi - fhi * lo) / (flo - fhi);
+    if ~(x > lo && x < hi)
+        x = lo + (hi - lo) / 2;
+    end
+    if x <= lo || x >= hi
         break
     end
-    fm = mwecmass.solid.eval_bspline_curve(zc, mid);
-    if fm == 0
-        lo = mid;
-        hi = mid;
-        break
+    fx = mwecmass.solid.eval_bspline_curve(zc, x);
+    if fx == 0
+        u_star = x;
+        return
     end
-    if sign(fm) == sign(flo)
-        lo = mid;
-        flo = fm;
+    if sign(fx) == sign(flo)
+        lo = x;
+        flo = fx;
+        if side == 1
+            fhi = fhi / 2;
+        end
+        side = 1;
     else
-        hi = mid;
+        hi = x;
+        fhi = fx;
+        if side == -1
+            flo = flo / 2;
+        end
+        side = -1;
     end
 end
-fl = abs(mwecmass.solid.eval_bspline_curve(zc, lo));
-fh = abs(mwecmass.solid.eval_bspline_curve(zc, hi));
-if fh < fl
+if abs(fhi) < abs(flo)
     u_star = hi;
 else
     u_star = lo;
