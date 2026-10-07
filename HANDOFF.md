@@ -1,6 +1,6 @@
 # HANDOFF — MWEC_Mass exact-geometry refactor
 
-Updated 2026-10-07 20:55 UTC on `claude/lucid-cray-7o9442`. Process file for agents: the
+Updated 2026-10-07 21:12 UTC on `claude/lucid-cray-7o9442`. Process file for agents: the
 orchestrator updates it at every milestone and at least every 100k tokens; delete it in T12.
 
 ## 1. Goal
@@ -64,6 +64,11 @@ Main `claude/lucid-cray-7o9442` = `f52e232`: general-kernel amendment, AGENTS ru
   by itself, all tests passing, its own exact test written, and the minimum of five scores ≥ 9; it
   reports `spec_issues` instead of enforcing a wrong spec. Implementers commit after every
   deliverable and push their task branch after every commit. Workflows never merge.
+- **Minor findings (owner approved, 2026-10-07 21:10 UTC).** The grader marks each required fix
+  `blocking` or `minor` and sets `minor_only` when only minor items remain. Then the fixer corrects
+  them and a quick check (Sonnet medium) confirms exactly those items, the clean pushed tree and the
+  affected tests; the task is accepted without another full round. Blocking findings still get a full
+  independent round. `lane.js` `minorPath`; a resume whose `last.minor_only` is true starts there.
 - **Merge workflow** (`merge.js`, args `{branches: [...]}`): merge `--no-ff`, run the suite, push
   only if green; an Opus xhigh grader checks diff = union of the branches, reruns the suite, checks
   the remote. One merge at a time.
