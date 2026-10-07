@@ -213,8 +213,11 @@ after the general-hulls amendment (owner, 2026-10-07: "No it needs to be general
 before J1.
 
 - F1 stand-in: `outer_nurbs(model)` and `outer_nurbs(model, cache, opts)`, `cache` and `opts`
-  ignored. S1 entries carry `visible`, `fit` (`[]`) and `swap_uv` (false): in `geo.outer`, `visible`
-  = k (one entry per visible surface on both fixtures); in the F2 stand-in's S2 set, each piece's
+  ignored. F6b stand-in: `body_section(body, z)` and `body_section(body, z, side)`; `'above'` (the
+  default) is its present half-open rule, `'below'` takes the faces and the module below a module
+  edge or `z_ballast` (contract F6b). S1 entries carry `visible`, `fit` (`[]`) and `swap_uv`
+  (false): in `geo.outer`, `visible` = k (one entry per visible surface on both fixtures); in the
+  F2 stand-in's S2 set, each piece's
   `visible` is that of the outer entry it is offset from (the cylinder: the three crease pieces of a
   quarter take that quarter's index, so the 12 pieces take 1 to 4). S1b and the F2 stand-in's S2 set
   carry `flat` (empty).
@@ -222,8 +225,10 @@ before J1.
   T2a) instead of `FitNotConverged`; that branch and the assertion on it are retired.
 
 Acceptance: every SK test passes with the field-set assertions extended by the new fields and the
-box assertion replaced by a comparison with `sti_inner_box`; `outer_nurbs(model, [], struct())`
-equals `outer_nurbs(model)` for both fixtures; the SK acceptance items of contract §3 still hold.
+box assertion replaced by a comparison with `sti_inner_box`; F6b at a module edge of a stand-in
+body gives the module above by default and the module below with `'below'`, the same outer loop;
+`outer_nurbs(model, [], struct())` equals `outer_nurbs(model)` for both fixtures; the SK acceptance
+items of contract §3 still hold.
 
 ### T2a — Kernel B, exact path: normal offset, fold trimming, spline surfaces (Sonnet high)
 
@@ -250,7 +255,8 @@ sides, or `vertex`, the point and the outer entries around it, from which `fit_z
 exact offset points), `general` the logical mask of the entries that take the general path, `opts` `t_min`, `max_passes`, `kind` (`outer` |
 `inner`) and, for `inner`, `d` and the outer `geo`. It returns the final S1 array (exact entries split
 at the band ends, general entries replaced by fitted faces, further entries moved to the general path
-by the seam, tie-break and Cuts rules), the S1b/S2 `flat` regions and the fit report of its faces.
+by the Cuts and flat-region, tie-break and seam rules, in F1's order), the S1b/S2 `flat` regions
+and the fit report of its faces.
 F1 and F2 call it only when an entry takes the general path; T2a tests only decks with none (on T2a's
 branch alone such a deck stops with the undefined-function error until J1).
 
@@ -394,7 +400,10 @@ Flat regions (contract §8). `split_side_cylinder.ms2`: the points and Lines of 
 RevSurfs `side_a` (side Line, 0° to 90°), `side_b` (90° to 180°), `bottom` and `top` (the disk Lines,
 0° to 180°) about the Line K–T; `Symmetry: y`. Every patch converts exactly, but the end of the seam
 `side_a`–`side_b` (90°) lies inside the rim rows of `bottom` and `top`, so these and their mirrors go
-general and become flat regions. Verified 2026-10-07: `MS2Parser` parses it (8 patches with the
+general and become flat regions (contract F1 order of the rules, step 1a); the side faces have no
+vertex inside a row and share their vertical seams end to end, so they stay exact whatever the
+patch names (the tie-break of step 2 never applies). Verified 2026-10-07: `MS2Parser` parses it (8
+patches with the
 mirrors) and T1 `outer_rows` (grid 60) returns one closed loop (shoelace area 2.25π m² less 1.2e-4 relative) at nine heights in
 [−2.95, 0.95] m. Asserted: `geo.outer` holds the four exact side faces; `geo.flat`
 holds two regions, z = −3 with `normal_z` −1 and z = 1 with +1, each covering a disk and its mirror
@@ -413,7 +422,11 @@ vertical Lines; its deck as the rectangles [0, 1] × [0, 0.3] and [0, 0.3] × [0
 one closed loop at ten heights off z = −1 in [−2.95, 0.95] m, area 9 m² below z = −1 and 2.04 m²
 above. At the foot of each of the four re-entrant column edges, e.g. (0.3, 0.3, −1), three concave
 creases meet (the re-entrant edge and the two foot lines), so the cone of normals there is the octant
-n_x, n_y, n_z ≤ 0. Asserted: the walls and the bottom stay exact; the pontoon top and the deck are
+n_x, n_y, n_z ≤ 0. Asserted: the walls and the bottom stay exact, whatever the patch names (the
+pontoon-top rectangles have corners inside the wall x = 1.5's top row and inside each other's rows,
+e.g. (1, 0.3, −1) inside a row of [0.3, 1.5] × [0.3, 1], so they merge into one flat region (contract
+F1 order of the rules, step 1a) before the vertices are counted, and their corners then put no vertex
+on the walls' rows (step 1b); likewise the deck); the pontoon top and the deck are
 flat regions (`geo.flat`: z = −1, `normal_z` +1, whose loops are the pontoon walls' top rows and,
 as a hole loop, the column walls' bottom rows; z = 1, +1); F2 at t = t_min gives a fan face at every
 concave crease and one sphere face at each of the four vertices, its points at distance d from the
@@ -458,15 +471,23 @@ from the faces below and of radius 0.75 from the faces above; the cap there is t
 between the circles) is written once, as an outer face of the module below; with both modules solid
 and with both hollow at t = t_min (the cap then the annulus between the radius 0.75 and the inner
 loop), each module and the fused hull pass `validate_brep` and `step_check.py`, I1 holds, and the
-solid module volumes are printed next to 4.5π and 1.125π m³ (rational faces).
+solid module volumes are printed next to 4.5π and 1.125π m³ (rational faces). F6b at z = −1 (the
+module edge on the shelf) raises no error: the default side `'above'` gives the module above and the
+outer loop of radius 0.75, `'below'` the module below and the loop of radius 1.5 (contract F6b),
+each equal to the F4 loop of that side.
 `tests/solid/fixtures/stepped_box.ms2` (`Symmetry: y`; RuledSurfs between Lines; the half y ≥ 0): a
 box x ∈ [−1, 1], y ∈ [−0.75, 0.75] from z = −2.5 whose deck lies at z = 0.5 for x < 0 and at z = 1.5
-for x > 0, with a riser at x = 0; ten patches: the bottom, the wall x = −1, the wall y = 0.75 in three
+for x > 0, with a riser at x = 0; eleven patches: the bottom in two pieces split at x = 0 (so that
+the common corner (0, 0.75, −2.5) of the two lower pieces of the wall y = 0.75 is a corner of every
+patch through it, not a point inside a bottom row), the wall x = −1, the wall y = 0.75 in three
 pieces (below z = 0.5 for x < 0 and for x > 0, above it for x > 0), the wall x = 1 below and above
-z = 0.5, the riser, the low and the high deck; every patch exact, every seam one curve. Verified
-2026-10-07: `MS2Parser` parses it (20 patches with the mirrors) and T1 `outer_rows` (grid 60) returns
-one closed loop at eight heights off z = 0.5 in [−2.45, 1.45] m, area 3 m² below z = 0.5 and 1.5 m²
-above. With a module edge at the step z = 0.5, where the loops from below and from above share the
+z = 0.5, the riser, the low and the high deck; every patch exact, every seam one curve shared end to
+end, no corner of any patch inside another patch's boundary (contract §8 Cuts). Verified
+2026-10-07: `MS2Parser` parses it (22 patches with the mirrors; no patch corner lies strictly inside
+an edge of another patch, checked on the parser's corner points) and T1 `outer_rows` (grid 60)
+returns one closed loop at eight heights off z = 0.5 in [−2.45, 1.45] m, area 3 m² below z = 0.5
+and 1.5 m² above. With a module edge at the step z = 0.5, where the loops from below and from
+above share the
 rows along x = 1 and along y = ±0.75 for x > 0: no error; the cap is the area of the loop from above,
 bounded by the shared rows (each one edge, taken once) and the riser's bottom rows; the low deck is
 written once, as an outer face of the module below; with both modules solid, `validate_brep`,
