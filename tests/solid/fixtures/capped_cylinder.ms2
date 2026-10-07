@@ -1,0 +1,18 @@
+MultiSurf 1.44
+Units: m kg
+BeginModel;
+FramePoint T 14 -1 / 0 * * 0.0 0.0 1.0 ;
+FramePoint D 14 -1 / 0 * * 0.5 0.0 1.0 ;
+FramePoint R 14 -1 / 0 * * 1.0 0.0 0.98 ;
+FramePoint Q 14 -1 / 0 * * 1.0 0.0 -1.0 ;
+FramePoint K 14 -1 / 0 * * 0.0 0.0 -1.0 ;
+BCurve deck_c 11 -1 8x4 / * 1 { T D } ;
+BCurve cap_c 11 -1 8x4 / * 1 { D R } ;
+BCurve wall_c 11 -1 8x4 / * 1 { R Q } ;
+BCurve bottom_c 11 -1 8x4 / * 1 { Q K } ;
+Line AX 6 -1 8x4 / * K T ;
+RevSurf deck 2 11 36x4 12x4 0 / * deck_c AX 0.0 360.0 ;
+RevSurf cap 2 11 36x4 12x4 0 / * cap_c AX 0.0 360.0 ;
+RevSurf wall 2 11 36x4 12x4 0 / * wall_c AX 0.0 360.0 ;
+RevSurf bottom 2 11 36x4 12x4 0 / * bottom_c AX 0.0 360.0 ;
+EndModel;

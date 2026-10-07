@@ -5,16 +5,19 @@ function [n, orient, limit] = surface_normals(model, cache, patch, u, v, orient)
 %   indices into model.visible_surfs (as in outer_rows rows(k).patch). Scalars
 %   broadcast. n is [N x 3].
 %
-%   S_u and S_v are the analytic derivatives of MS2Parser.eval_surface_with_derivs
-%   (central differences of eval_surface, parameter step 1e-6, only for surface
-%   types the parser has no derivatives for; C1 uses none).
+%   S_u and S_v come from MS2Parser.eval_surface_with_derivs (analytic for every
+%   surface type the parser evaluates; its central-difference fallback uses a
+%   parameter step of 1e-6).
 %
-%   Orientation: for each patch the sign of S_u x S_v is fixed once by the exact
-%   closed sections of outer_rows. Their counter-clockwise order gives the
-%   outward horizontal direction (t_y, -t_x), and the sign is chosen so that
-%   the horizontal part of the normal points that way (this covers mirror
-%   patches, whose parameter orientation is reversed). orient (fields names,
-%   sign) can be passed back in to skip that step.
+%   Orientation: the sign of S_u x S_v is fixed once per patch (mirror patches
+%   have reversed parameter orientation) by a 3-D step test on the exact closed
+%   sections of outer_rows. At sample points p of the patch with raw normal c, a
+%   step d along c must leave the hull (outside the section at the stepped
+%   height, or beyond the hull's z range) and a step -d must stay inside; d runs
+%   through 1e-2, 1e-3, 1e-4 of the hull height. This works for horizontal and
+%   near-horizontal patches as well as steep ones. Up to 3 decisive samples per
+%   patch must agree, otherwise error mwecmass:solid:OrientationUndecided.
+%   orient (fields names, sign) can be passed back in to skip that step.
 %
 %   limit(k) is true where |S_u x S_v| <= sqrt(eps)|S_u||S_v| (keel point, top of
 %   the neck): n is then the Richardson limit 2 n(h) - n(2h) along the
@@ -75,34 +78,67 @@ function c = limit_normal(model, name, u, v)
 end
 
 function orient = patch_orientation(model, cache)
+% Sign of S_u x S_v per patch from a 3-D step test on the exact closed sections:
+% a decisive sample has p + d*c outside the section at its height (or above/below
+% the hull) and p - d*c inside; then c points outward, and the reverse for -c.
     [~, grids] = mwecmass.solid.outer_rows(model, cache, []);
-    zr = grids.z_range;
-    rows = mwecmass.solid.outer_rows(model, cache, ...
-               zr(1) + (1:9)' / 10 * (zr(2) - zr(1)), grids);
+    ctx = struct('model', model, 'cache', cache, 'grids', grids, ...
+                 'rows', containers.Map('KeyType', 'double', 'ValueType', 'any'));
+    H = grids.z_range(2) - grids.z_range(1);
+    steps = H * [1e-2, 1e-3, 1e-4];
+    samples = [0.5 0.5; 0.3 0.7; 0.7 0.3; 0.2 0.2; 0.8 0.8; 0.1 0.6; 0.6 0.1];
     names = model.visible_surfs(:)';
-    best = zeros(numel(names), 1);
-    for k = 1:numel(rows)
-        r = rows(k);
-        if r.degenerate, continue; end
-        prev = [r.n, 1:r.n - 1];
-        next = [2:r.n, 1];
-        for p = unique(r.patch)'
-            idx = find(r.patch == p & ~r.seam);
-            if isempty(idx), continue; end
-            i = idx(ceil(numel(idx) / 2));
-            t = r.pts(next(i), 1:2) - r.pts(prev(i), 1:2);
-            out = [t(2), -t(1)] / norm(t);
-            c = raw_normal(model, names{p}, r.u(i), r.v(i));
-            cs = dot(c(1:2), out);
-            if abs(cs) > abs(best(p))
-                best(p) = cs;
+    sgn = zeros(numel(names), 1);
+    for p = 1:numel(names)
+        votes = zeros(1, 0);
+        for q = 1:size(samples, 1)
+            [c, ok] = raw_normal(model, names{p}, samples(q, 1), samples(q, 2));
+            if ~ok, continue; end
+            P = model.eval_surface(names{p}, samples(q, 1), samples(q, 2));
+            for d = steps
+                [ctx, out_p] = in_hull(ctx, P + d * c);
+                [ctx, in_p] = in_hull(ctx, P - d * c);
+                if out_p == 0 && in_p == 1
+                    votes(end + 1) = 1; %#ok<AGROW>
+                    break;
+                elseif out_p == 1 && in_p == 0
+                    votes(end + 1) = -1; %#ok<AGROW>
+                    break;
+                end
             end
+            if numel(votes) >= 3, break; end
         end
+        if isempty(votes) || any(votes ~= votes(1))
+            error('mwecmass:solid:OrientationUndecided', ...
+                  'Patch %s: the step test along S_u x S_v is %s.', names{p}, ...
+                  'inconsistent between samples or never decisive');
+        end
+        sgn(p) = votes(1);
     end
-    if any(abs(best) < 0.5)
-        error('mwecmass:solid:OrientationUndecided', ...
-              'Patch %s: no sampled section point has a horizontal normal component.', ...
-              names{find(abs(best) < 0.5, 1)});
+    orient = struct('names', {names}, 'sign', sgn);
+end
+
+function [ctx, r] = in_hull(ctx, q)
+% 1 inside, 0 outside the exact section at the height of q; NaN if the section cannot be built.
+    z = q(3);
+    if z <= ctx.grids.z_range(1) || z >= ctx.grids.z_range(2)
+        r = 0;
+        return;
     end
-    orient = struct('names', {names}, 'sign', sign(best));
+    if isKey(ctx.rows, z)
+        row = ctx.rows(z);
+    else
+        try
+            row = mwecmass.solid.outer_rows(ctx.model, ctx.cache, z, ctx.grids);
+        catch err
+            if ~strcmp(err.identifier, 'mwecmass:solid:SectionNotClosed'), rethrow(err); end
+            row = [];
+        end
+        ctx.rows(z) = row;
+    end
+    if isempty(row)
+        r = NaN;
+    else
+        r = double(inpolygon(q(1), q(2), row.pts(:, 1), row.pts(:, 2)));
+    end
 end

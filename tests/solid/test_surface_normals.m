@@ -115,7 +115,44 @@ function test_surface_normals
     check(d_rev <= 1e-12, 'normal leaves the plane through the revolution axis');
     % reflection in a symmetry plane maps the outward normal onto itself at a point of that plane
     check(max_seam_mirror <= 1e-12, 'normals of mirror-image patches differ at their seam');
+    check_flat_patches(root);
     fprintf('test_surface_normals passed\n');
+end
+
+function check_flat_patches(root)
+% Synthetic body revolved about a vertical axis: a flat horizontal deck (z = 1), a
+% thin cap (z in [0.98, 1], about 2.3 deg from horizontal), a vertical wall and a flat bottom.
+    model = mwecmass.geometry.MS2Parser.parse( ...
+                fullfile(root, 'tests', 'solid', 'fixtures', 'capped_cylinder.ms2'));
+    cache = mwecmass.geometry.precompute_boundary_cache(model, 60);
+    [~, grids] = mwecmass.solid.outer_rows(model, cache, []);
+    names = model.visible_surfs;
+    [~, orient] = mwecmass.solid.surface_normals(model, cache, names{1}, 0.5, 0.5);
+    delta = 1e-2;   % above the 60-point section sagitta (1.4e-3 m) of the unit circle
+    n_pts = 0;
+    for p = 1:numel(names)
+        for u = [0.1 0.5 0.9]
+            for v = [0.05 0.25 0.5 0.9]
+                P = model.eval_surface(names{p}, u, v);
+                n = mwecmass.solid.surface_normals(model, cache, p, u, v, orient);
+                check(abs(norm(n) - 1) <= 1e-12, 'flat-patch test: %s normal not unit', names{p});
+                step_test(model, cache, grids, P, n, delta);
+                radial = P(1:2) / norm(P(1:2));
+                switch names{p}
+                    case {'deck', 'cap'}
+                        check(n(3) > 0 && dot(n(1:2), radial) >= 0, ...
+                              'flat-patch test: %s normal does not point up and outward', names{p});
+                    case 'bottom'
+                        check(n(3) < 0, 'flat-patch test: bottom normal does not point down');
+                    case 'wall'
+                        check(abs(n(3)) <= 1e-12 && dot(n(1:2), radial) > 0.999999, ...
+                              'flat-patch test: wall normal not horizontal outward');
+                end
+                n_pts = n_pts + 1;
+            end
+        end
+    end
+    fprintf('flat/thin-patch body: %d points on 4 patches, outward by the 3-D step test\n', n_pts);
 end
 
 function ok = step_test(model, cache, grids, p, n, delta)

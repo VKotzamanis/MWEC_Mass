@@ -7,8 +7,12 @@ function [rows, grids] = outer_rows(model, cache, z, grids)
 %
 %   Every source patch is traced on the parameter grid cache.u_samples (n x n)
 %   by marching squares on z(u,v) - z_k. Each crossing of a grid edge is
-%   refined to rounding on the exact surface, so every point is exact and its
-%   (u,v) is known. Mirror patches are the source pieces with the coordinate
+%   refined on the exact surface until |z - z_k| <= 16 ulp, and its (u,v) is
+%   known. Where the surface is horizontal (dz = 0 to first order along it) the in-plane
+%   position is accurate only to about sqrt(16 ulp / |z_uu|), e.g. 5.5e-8 m at
+%   C1's shoulder z = -1. Features between grid nodes (extremes of z, narrow
+%   necks) are not resolved; the sampled z range of all patches is returned in
+%   grids.z_range. Mirror patches are the source pieces with the coordinate
 %   flip of the deck. Pieces are joined end to end by mutually nearest
 %   endpoints; the joined endpoints are one point stored once.
 %   The section is not assumed to be of any shape; only a section made of one
@@ -24,8 +28,8 @@ function [rows, grids] = outer_rows(model, cache, z, grids)
 %     patch2,u2,v2  [n x 1] the same point as seen from the other patch (0, NaN at non-seams)
 %     area          enclosed area [m^2] (> 0)
 %     seam_gap      largest distance between two endpoints identified at a joint [m]
-%     degenerate    true if z is not inside the open height range of the hull
-%                   (then n = 0 and pts is empty)
+%     degenerate    true if z is not inside the open range grids.z_range of the
+%                   sampled grid z values (then n = 0 and pts is empty)
 
     if nargin < 4 || isempty(grids)
         grids = build_grids(model, cache);
@@ -198,7 +202,7 @@ function pieces = march_patch(model, g, U, zk)
     n = numel(U);
     f = g.Z - zk;
     pos = f >= 0;
-    % z of a patch point carries about 5 ulp of rounding (projected edge curves of C1); 16 ulp stops the root search there
+    % composed curve evaluations (EdgeSnake/ProjCurve chains) carry a few ulp of z rounding (about 5 ulp measured on C1); 16 ulp stops the search at that floor
     tolz = 16 * eps(max(1, abs(zk)));
 
     cu = pos(1:n-1, :) ~= pos(2:n, :);
