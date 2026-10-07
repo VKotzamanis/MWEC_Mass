@@ -1,7 +1,8 @@
 function test_stage2_c1_formulation()
 %TEST_STAGE2_C1_FORMULATION Stage 1 and Stage 2 on C1 (no realisation): check the Stage-2 formulation
 %   at the returned point. Per mode: both starts are logged, the kept start has the lower objective
-%   among the starts that end within the solver's constraint tolerance, the result lies inside the
+%   among the starts that end within the solver's constraint tolerance (the smallest constraint
+%   violation when none does), the result lies inside the
 %   mode's bounds (upper bound = solid density of the mode's material), the inequality vector holds the
 %   GM floor and the density-ratio pairs only, and when the solver reports success (exitflag > 0) the
 %   GM floor and the flotation equality hold at the returned point to that tolerance. The values

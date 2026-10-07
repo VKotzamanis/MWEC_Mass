@@ -133,8 +133,10 @@ end
 
 %% STAGE 2: 3-D OPTIMISATION
 % fmincon (SQP) from two starts: the Stage-1 result and a bottom-filled design at the Stage-1
-% draft. The start whose result has the lower objective is kept and both are logged. Objective and
-% constraints are defined by stage2_objective and stage2_constraints.
+% draft. Among the starts that end within the solver's constraint tolerance the one with the lower
+% objective is kept; when no start ends within it, the one with the smallest constraint violation is
+% kept. Both are logged. Objective and constraints are defined by stage2_objective and
+% stage2_constraints.
 
 fprintf('\n╔══════════════════════════════════════════════════╗\n');
 fprintf('║ STAGE 2: 3-D OPTIMISATION                        ║\n');

@@ -41,7 +41,7 @@ assert(in.materials.thin_shell.rho_ballast >= in.materials.thin_shell.rho_shell,
      'well-posed) when rho_ballast >= rho_shell. A polymer shell with a ', ...
      'steel ballast satisfies this; the thin-shell mode requires this ordering.'], ...
     in.materials.thin_shell.rho_ballast, in.materials.thin_shell.rho_shell);
-in.materials.thin_shell.t_min           = 0.0254; % m, minimum shell thickness (one inch); also sets the Stage-2 density floors.
+in.materials.thin_shell.t_min           = 0.0254; % m, minimum shell thickness (one inch); used by Stage 3 only, the thin-shell Stage-2 density floors do not use it yet.
 in.materials.thin_shell.t_init          = in.materials.thin_shell.t_min;  % m, initial shell-thickness guess.
 in.materials.thin_shell.max_slope_factor = 5.0;   % dimensionless factor, thickness-taper limit.
 in.materials.thin_shell.n_z_grid        = 300;    % count, z-grid resolution for the shell solve.

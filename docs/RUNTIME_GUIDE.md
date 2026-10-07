@@ -168,8 +168,10 @@ optional post-processing diagnostics
 The default BEM branch loads and validates the WAMIT-format cache. When
 `in.bem.run_HAMS_MREL = true`, the alternative branch creates/updates a cache in the configured
 HAMS workspace before optimisation. Stage 1 generates a warm start; Stage 2 solves the full 3-D
-problem from two starts, the Stage-1 result and a bottom-filled design at the Stage-1 draft, and
-keeps the one with the lower objective; the selected realiser converts equivalent strip densities to physical material geometry.
+problem from two starts, the Stage-1 result and a bottom-filled design at the Stage-1 draft. Among the
+starts that end within the solver's constraint tolerance it keeps the one with the lower objective; when
+no start ends within it, it keeps the one with the smallest constraint violation. The selected realiser
+converts equivalent strip densities to physical material geometry.
 Output selection occurs after the calculation and does not alter the optimised values.
 
 ## 5. Coordinates, signs, units, and degrees of freedom
@@ -253,7 +255,7 @@ The authoritative definitions are in `WEC_User_Input.m`; propagation and validat
 | `in.materials.thin_shell.rho_air` | `1.2` | nonnegative double scalar | kg/m³ | Void/air density in the thin-shell model. |
 | `in.materials.thin_shell.rho_ballast` | `rho_shell` | double scalar | kg/m³ | Solid ballast density; must be `>= rho_shell` for the monotone analytic warm-start seed. |
 | `in.materials.thin_shell.t_init` | `thin_shell.t_min` (0.0254) | positive double scalar | m | Initial thickness guess; one inch, the same value as `t_min`. |
-| `in.materials.thin_shell.t_min` | `0.0254` | positive double scalar | m | Minimum shell thickness (one inch), set by the user; it also sets the Stage-2 density floors. |
+| `in.materials.thin_shell.t_min` | `0.0254` | positive double scalar | m | Minimum shell thickness (one inch), set by the user. Used by Stage 3 only; the thin-shell Stage-2 density floors do not use it yet. |
 | `in.materials.thin_shell.max_slope_factor` | `5.0` | positive double scalar | - | Limit controlling thickness taper with hull slope. |
 | `in.materials.thin_shell.n_z_grid` | `300` | positive integer scalar | count | Vertical integration/solve grid. |
 | `in.materials.modular_precast.rho_hull` | `2500` | positive double scalar | kg/m³ | UHPC density. |
