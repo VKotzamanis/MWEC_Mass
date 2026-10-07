@@ -1,36 +1,46 @@
 function [realised, final_props] = solve_and_extract(config, x_opt, final3d, opts)
-%SOLVE_AND_EXTRACT  Modular-precast Stage 3 from the whole Stage-2 solution: split, build, check.
+%SOLVE_AND_EXTRACT  Modular-precast Stage 3 from the whole Stage-2 solution: split, build, check,
+%optimise, closest fail.
 %
 %   [realised, final_props] = mwecmass.realise.modular_precast.solve_and_extract(config, x_opt, final3d, opts)
 %
 %   x_opt = [vs; rho_1 ... rho_N] and final3d = results.Final3D are the Stage-2 solution. config:
 %   hull_solid (S1b), ms2_model, boundary_cache, strip_edges, wall_strip_index,
 %   constructability_rho_hull (UHPC density), constructability_rho_air, constructability_t_min,
-%   per_strip_density_lb (Stage-2 floors, stored per module; optional), mass_acceptable_pct, and
-%   the fields evaluate_realised reads. opts.inner_fn (optional): provider of an S2 inner set,
-%   @(t, knots_from); default mwecmass.solid.offset_surface over the hollow range.
+%   per_strip_density_lb (Stage-2 floors, stored per module; optional), mass_acceptable_pct,
+%   vertical_shift_bounds (Stage-2 bounds of vs, used when the draft is released), and the fields
+%   evaluate_realised reads. opts.inner_fn (optional): provider of an S2 inner set,
+%   @(t, knots_from, z_range); default mwecmass.solid.offset_surface. opts.d_close_fn (optional):
+%   @(z_range) offset distance at which the void closes in z_range; default
+%   mwecmass.solid.void_closing_distance (F2b). opts.escalate (optional, default true): false
+%   stores the split design without the optimisation (tests of the split).
 %
-%   Process (AGENTS section 3 items 4, 7, 28, 32; contract section 7):
+%   Process (AGENTS section 3 items 4 to 7, 20, 27, 28, 31, 32; contract sections 7 and 8):
 %   1. Module volumes V_i of the exact outer body and the split V_uhpc,i = V_i (rho_i - rho_air) /
 %      (rho_uhpc - rho_air) (split_from_stage2). The wall module, modules at rho_uhpc and every
-%      module below the ballast module k* are full solid sections.
+%      module below the ballast module k* are full solid sections. Shell bounds per module:
+%      t_max,i = d_close over the module's z range - eps_fit/2 (F2b; the void closes there).
 %   2. Each hollow module above k* gets the shell t_i >= t_min that holds V_uhpc,i: the root of
-%      V_uhpc,i(t) - V_uhpc,i on [t_min, t_max), t_max = d_close - eps_fit/2 over the hollow range
-%      (F2b), bracketed by bisection towards t_max (never evaluated, the void closes there), then
-%      fzero. Trial shells are refitted on fixed knots (F2 knots_from), first those of the adaptive
-%      t_min set; the stored shell is the adaptive fit at the root. When that fit has another knot
-%      structure the search restarts on it (contract section 7 item 4), per module, until the
-%      structure no longer changes; a structure already searched ends the loop with a note. A
-%      module whose t_min shell already holds more UHPC than V_uhpc,i is built at t_min; one whose
-%      void closes first keeps the thickest shell evaluated. Both are reported.
+%      V_uhpc,i(t) - V_uhpc,i on [t_min, t_max,i), bracketed by bisection towards t_max,i (never
+%      evaluated, the void closes there), then fzero. Trial shells are refitted on fixed knots
+%      (F2 knots_from), first those of the adaptive t_min set; the stored shell is the adaptive fit
+%      at the root. When that fit has another knot structure the search restarts on it (contract
+%      section 7 item 4), per module, until the structure no longer changes; a structure already
+%      searched ends the loop with a note. A module whose t_min shell already holds more UHPC than
+%      V_uhpc,i is built at t_min; one whose void closes first keeps the thickest shell evaluated.
+%      Both are reported.
 %   3. k* has the shell t_k* = t_min above its ballast (OD13). The ballast level in k* is the root
 %      of M(z_ballast) = rho_w V_sub at the Stage-2 draft (flotation, OD10). When no level inside
 %      k* reaches it, the module end with the smaller residual is kept and flotation fails.
 %   4. The body (F5, F6) and the hydrostatics (F7) at the Stage-2 draft give final_props (F9); F10
 %      checks Z_CG, GM, coupled T_heave and T_pitch against Stage 2 with mass_acceptable_pct and
-%      flotation against TOL_EQ. status is 'accepted' when F10 passes, else 'failed'; the realised
-%      design is stored either way and Stage-2 properties are never returned.
-%   realised: S8 (escalation 'split'); final_props = realised.props + stage3_status, stage3_check.
+%      flotation against TOL_EQ (escalation 'split').
+%   5. When that check fails, solve optimises from the split (fixed_draft, then spill, then
+%      draft_free; see solve) and returns the accepted design or the closest fail.
+%   status is 'accepted' when F10 passes on the stored design, else 'failed' with the failing
+%   metrics, the escalation notes and the closest-fail rule in reason; the realised design is
+%   stored either way and Stage-2 properties are never returned. stage3_report prints it.
+%   realised: S8; final_props = realised.props + stage3_status, stage3_check.
 
 % Stage-3 equality tolerance: the ConstraintTolerance of the Stage-3 fmincon (AGENTS OD10).
 TOL_EQ = 1e-6;
@@ -61,12 +71,20 @@ if isequal(wall, N)
 elseif isequal(wall, 1)
     z_hollow(1) = e(2);
 end
-ctx = struct('geo', geo, 'rho', rho, 'z_hollow', z_hollow, 'knots_from', [], 'sets', []);
+if isfield(opts, 'd_close_fn') && ~isempty(opts.d_close_fn)
+    d_close_fn = opts.d_close_fn;
+else
+    d_close_fn = @(zr) mwecmass.solid.void_closing_distance(config.ms2_model, ...
+        config.boundary_cache, geo, zr);
+end
+ctx = struct('geo', geo, 'rho', rho, 'z_hollow', z_hollow, ...
+    't_max_hollow', d_close_fn(z_hollow) - eps_fit / 2, 'knots_from', [], 'sets', [], ...
+    'set_ranges', zeros(0, 2));
 if isfield(opts, 'inner_fn') && ~isempty(opts.inner_fn)
     ctx.inner_fn = opts.inner_fn;
 else
-    ctx.inner_fn = @(t, knots_from) mwecmass.solid.offset_surface(config.ms2_model, ...
-        config.boundary_cache, geo, t, z_hollow, struct('t_min', t_min, 'knots_from', knots_from));
+    ctx.inner_fn = @(t, knots_from, zr) mwecmass.solid.offset_surface(config.ms2_model, ...
+        config.boundary_cache, geo, t, zr, struct('t_min', t_min, 'knots_from', knots_from));
 end
 
 fprintf('\n    mwecmass.realise.modular_precast.solve_and_extract: split, build, check (Stage-2 draft)\n');
@@ -79,6 +97,11 @@ hs = mwecmass.solid.hydrostatics_at_draft(geo, vs, struct());
 M_target = config.RHO_WATER * hs.V_sub;
 print_split(split, e, rho, t_min, M_target, stage2.mass);
 
+t_max = NaN(N, 1);
+for i = [k, find(split.hollow)']
+    t_max(i) = d_close_fn([e(i), e(i + 1)]) - eps_fit / 2;
+end
+
 notes = {};
 t = NaN(N, 1);
 t(k) = t_min;
@@ -88,7 +111,7 @@ if ~isempty(k)
 end
 design = design_of(e, vs, t, z_ballast, find(split.solid)');
 if any(split.hollow)
-    [design.t, ctx, shell_notes] = shells_for_targets(ctx, design, split, config, geo, t_min, eps_fit);
+    [design.t, ctx, shell_notes] = shells_for_targets(ctx, design, split, t_min, t_max);
     notes = [notes, shell_notes];
 end
 
@@ -103,14 +126,32 @@ else
     end
 end
 
-ev = mwecmass.realise.modular_precast.realise_modules(ctx, design);
-props = mwecmass.realise.evaluate_realised(ev.bp, hs, design, config);
-check = mwecmass.realise.check_against_stage2(props, stage2, config.mass_acceptable_pct, TOL_EQ, ...
-    config.RHO_WATER);
+[props, check, ev, hs] = evaluate(ctx, design, hs, geo, config, stage2, TOL_EQ);
 X = [props.CG_total(3), props.periods.heave, props.periods.pitch];
 X2 = [stage2.Z_CG, stage2.T_heave, stage2.T_pitch];
 solver.fval = sum(((X - X2) ./ X2).^2);
 solver.max_eq_violation = max(abs([check.equalities.residual]));
+escalation = 'split';
+
+if ~check.pass && ~isempty(k) && (~isfield(opts, 'escalate') || opts.escalate)
+    vsb = [-geo.z_range(2), -geo.z_range(1)];
+    if isfield(config, 'vertical_shift_bounds') && ~isempty(config.vertical_shift_bounds)
+        vsb = [max(vsb(1), config.vertical_shift_bounds(1)), min(vsb(2), config.vertical_shift_bounds(2))];
+    end
+    P = struct('k', k, 'hollow', find(split.hollow)', 't_min', t_min, 't_max', t_max, ...
+        'vs_bounds', vsb, 'stage2', stage2, 'config', config, 'pct', config.mass_acceptable_pct, ...
+        'tol_eq', TOL_EQ, 'hs_fn', @(v) mwecmass.solid.hydrostatics_at_draft(geo, v, struct()));
+    [sol, ctx] = mwecmass.realise.modular_precast.solve(ctx, design, P);
+    design = sol.design;
+    solver = [solver, sol.solver];
+    escalation = sol.escalation;
+    notes = [notes, sol.notes];
+    [props, check, ev, hs] = evaluate(ctx, design, [], geo, config, stage2, TOL_EQ);
+    if ~check.pass && strcmp(sol.closest, 'optimum')
+        notes{end + 1} = sprintf(['closest fail: the %s optimum meets the equalities and fails the ' ...
+            'mass_acceptable_pct check'], escalation);
+    end
+end
 
 status = 'accepted';
 reason = '';
@@ -124,14 +165,26 @@ if ~isempty(ev.inner)
 end
 modules = mwecmass.realise.modular_precast.extract_strip_geometry(ev.bp, design, rho_stage2, rho_floor);
 realised = struct('mode', 'modular_precast', 'hull_name', geo.hull_name, 'status', status, ...
-    'reason', reason, 'escalation', 'split', 'vs', vs, 'draft', hs.draft, 'stage2', stage2, ...
+    'reason', reason, 'escalation', escalation, 'vs', design.vs, 'draft', hs.draft, 'stage2', stage2, ...
     'rho', rho, 'design', design, 'k_star', k, 'V_uhpc_target', split.V_uhpc_target, ...
     'modules', {modules}, 'props', props, 'check', check, 'solver', solver, 'fit', {fit}, ...
     'body', ev.body, 'step_files', {struct('name', {}, 'path', {}, 'bodies', {})});
 final_props = props;
 final_props.stage3_status = status;
 final_props.stage3_check = check;
-print_realised(realised, split, notes);
+mwecmass.realise.modular_precast.stage3_report(realised, notes);
+end
+
+function [props, check, ev, hs] = evaluate(ctx, design, hs, geo, config, stage2, tol_eq)
+% The stored design on its adaptive inner sets; hs is computed at design.vs when empty.
+ctx.knots_from = [];
+if isempty(hs)
+    hs = mwecmass.solid.hydrostatics_at_draft(geo, design.vs, struct());
+end
+ev = mwecmass.realise.modular_precast.realise_modules(ctx, design);
+props = mwecmass.realise.evaluate_realised(ev.bp, hs, design, config);
+check = mwecmass.realise.check_against_stage2(props, stage2, config.mass_acceptable_pct, tol_eq, ...
+    config.RHO_WATER);
 end
 
 function d = design_of(e, vs, t, z_ballast, solid_modules)
@@ -139,13 +192,11 @@ d = struct('mode', 'modular_precast', 'edges', e, 'vs', vs, 't', t, 'z_ballast',
     'solid_modules', solid_modules);
 end
 
-function [t, ctx, notes] = shells_for_targets(ctx, design, split, config, geo, t_min, eps_fit)
+function [t, ctx, notes] = shells_for_targets(ctx, design, split, t_min, t_max)
 % Shell thickness of every hollow module above k* that holds its V_uhpc target.
 notes = {};
 t = design.t;
 hollow = find(split.hollow)';
-t_max = mwecmass.solid.void_closing_distance(config.ms2_model, config.boundary_cache, geo, ...
-    ctx.z_hollow) - eps_fit / 2;
 probe = design;
 probe.t(hollow) = t_min;
 [ev, ctx] = mwecmass.realise.modular_precast.realise_modules(ctx, probe);
@@ -165,7 +216,7 @@ for i = hollow
     restarts = 0;
     while true
         ctx.knots_from = searched{end};
-        [t(i), closed, ctx] = shell_root(ctx, design, hollow, i, target, t_min, t_max);
+        [t(i), closed, ctx] = shell_root(ctx, design, hollow, i, target, t_min, t_max(i));
         ctx.knots_from = [];
         probe.t(hollow) = t(i);
         [ev, ctx] = mwecmass.realise.modular_precast.realise_modules(ctx, probe);
@@ -185,7 +236,7 @@ for i = hollow
         ev.bp.modules(i).V_uhpc - target, restarts);
     if closed
         notes{end + 1} = sprintf(['module %d: the void closes (t_max = %.6g m) before the shell ' ...
-            'holds the Stage-2 split %.6g m^3; built at t = %.6g m'], i, t_max, target, t(i)); %#ok<AGROW>
+            'holds the Stage-2 split %.6g m^3; built at t = %.6g m'], i, t_max(i), target, t(i)); %#ok<AGROW>
     end
 end
 end
@@ -286,28 +337,4 @@ for i = 1:numel(split.V)
     fprintf('      %-3d %9.4f %9.4f %10.3f %10.5f %12.6f %12.6f  %s\n', i, e(i), e(i + 1), ...
         split.rho_stage2(i), split.V(i), split.V_uhpc_target(i), split.V_air_target(i), role);
 end
-end
-
-function print_realised(r, split, notes)
-fprintf('      realised modules (body frame):\n');
-fprintf('      %-3s %9s %10s %12s %12s %12s %10s %10s\n', 'mod', 't[mm]', 'h_ball[m]', 'V_uhpc[m3]', ...
-    'target[m3]', 'V_air[m3]', 'rho_eff', 'rho2');
-for i = 1:numel(r.modules)
-    m = r.modules(i);
-    fprintf('      %-3d %9.3f %10.5f %12.6f %12.6f %12.6f %10.3f %10.3f\n', i, 1000 * m.t, m.h_ballast, ...
-        m.V_uhpc, split.V_uhpc_target(i), m.V_air, m.rho_eff, m.rho_stage2);
-end
-fprintf('      z_ballast = %.6f m (body), mass %.3f kg, flotation residual %.3g\n', r.design.z_ballast, ...
-    r.props.mass_total, r.check.equalities(1).residual);
-fprintf('      %-8s %12s %12s %10s %8s  %s\n', 'metric', 'Stage 2', 'realised', 'dev[%]', 'limit', 'pass');
-for m = r.check.metrics
-    fprintf('      %-8s %12.6f %12.6f %10.4f %8.2f  %d\n', m.name, m.stage2, m.value, 100 * m.rel_dev, ...
-        100 * m.limit, m.pass);
-end
-fprintf('      GM equality residual %.3g (Stage-3 solver constraint)\n', r.check.equalities(2).residual);
-for k = 1:numel(notes)
-    fprintf('      note: %s\n', notes{k});
-end
-fprintf('      Stage 3 status: %s%s\n', r.status, ...
-    mwecmass.internal.ternary(isempty(r.reason), '', [' (' r.reason ')']));
 end

@@ -4,7 +4,8 @@ function [results, final_props] = run(config, x_opt, opt_results)
 %   [results, final_props] = mwecmass.realise.modular_precast.run(config, x_opt, opt_results)
 %
 %   x_opt = [vs; rho_1 ... rho_N] and opt_results.Final3D are the Stage-2 solution; it is split,
-%   built and checked by solve_and_extract. results = opt_results with results.stage3 (S8) and
+%   built, checked and, when the check fails, optimised (escalation and closest fail, solve) by
+%   solve_and_extract. results = opt_results with results.stage3 (S8) and
 %   results.stage2_3d.properties = final_props; results.Final3D stays the Stage-2 design.
 %   final_props always describes the realised design, accepted or failed. The figures
 %   (plot_modular_precast) and the STEP files (mwecmass.output.step.export_stage3 into

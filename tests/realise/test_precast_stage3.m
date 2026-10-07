@@ -1,5 +1,7 @@
 function test_precast_stage3()
 %TEST_PRECAST_STAGE3  Modular-precast Stage 3 (split, build, check, store) on the SK fixtures.
+%   Every case stops after the split (opts.escalate = false); the optimisation that follows a
+%   failed check, and F14 (run.m), are tested in test_precast_stage3_solve.
 %   Kernel F1-F7 are the SK stand-ins until J1 (cylinder inner sets through F2, box inner sets
 %   through sti_inner_box); Stage 2 is sti_stage2 (closed-form prisms), not an optimiser run.
 %   After J1 the same cases run on the real kernel (join test); the hull-volume sum against the
@@ -18,14 +20,11 @@ mod_fields = {'z_lo', 'z_hi', 't', 'h_ballast', 'V', 'V_uhpc', 'V_air', 'mass', 
     'rho_floor', 'CG_world'};
 tol_eq = 1e-6;
 
-% A: cylinder through F14 (run.m), no wall module; F2 inner sets
+% A: cylinder, no wall module; F2 inner sets
 config = fixture_config('cylinder', [], 2500);
 vs = 0.5;
 [f3, s2] = sti_stage2(config, vs, [NaN; 300; 270; 440]);
-opt = struct('Final3D', f3, 'stage2_3d', struct('properties', f3), 'constructability', []);
-[results, fp] = mwecmass.realise.modular_precast.run(config, [vs; s2.rho], opt);
-r = results.stage3;
-check(isequaln(results.Final3D, f3) && isequaln(results.stage2_3d.properties, fp), 'F14 results layout');
+[r, fp] = mwecmass.realise.modular_precast.solve_and_extract(config, [vs; s2.rho], f3, inner_opts(config));
 verify(r, fp, config, s2, s8, mod_fields, tol_eq, 'cylinder');
 check(isequal(r.design.solid_modules, zeros(1, 0)) && r.k_star == 1, 'cylinder roles');
 fx = sti_closed_form('fixture', 'cylinder');
@@ -100,7 +99,8 @@ t_thr = 0.09;
 geo = config.hull_solid;
 t_min = config.constructability_t_min;
 knotted_box('reset');
-opts = struct('inner_fn', @(t, knots_from) knotted_box(geo, t, t_min, t_thr, knots_from));
+opts = struct('inner_fn', @(t, knots_from, z_range) knotted_box(geo, t, t_min, t_thr, knots_from), ...
+    'escalate', false);
 [f3, s2] = sti_stage2(config, 0, [NaN; 600; 600]);
 rk = mwecmass.realise.modular_precast.solve_and_extract(config, [0; s2.rho], f3, opts);
 verify(rk, [], config, s2, s8, mod_fields, tol_eq, 'box, knot restart');
@@ -166,11 +166,11 @@ config.output.save.stage3 = struct('precast_midplane', false, 'precast_strips', 
 end
 
 function opts = inner_opts(config)
-opts = struct();
+opts = struct('escalate', false);
 if strcmp(config.hull_solid.hull_name, 'box')
     t_min = config.constructability_t_min;
     geo = config.hull_solid;
-    opts.inner_fn = @(t, knots_from) sti_inner_box(geo, t, t_min);
+    opts.inner_fn = @(t, knots_from, z_range) sti_inner_box(geo, t, t_min);
 end
 end
 
