@@ -1,5 +1,7 @@
 function test_sk_offset_slice()
 %TEST_SK_OFFSET_SLICE  Stand-ins F2, F2b, F3b, F4 and sti_inner_box against the fixture closed forms.
+%   Reads geo.analytic (stand-in marker of F1) and asserts stand-in exactness: J1, which merges the
+%   real F1-F4, deletes or rewrites this test.
 
 root = fileparts(fileparts(fileparts(mfilename('fullpath'))));
 setup(root);

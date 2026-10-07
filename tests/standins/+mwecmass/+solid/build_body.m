@@ -164,7 +164,7 @@ if precast
         end
     end
 elseif zb > zmin && zb < zmax
-    m_in = module_of(zb - 0);
+    m_in = module_of(zb);
     m_out = m_in;
     jj = find(e == zb);
     if ~isempty(jj)
@@ -204,10 +204,12 @@ else
 end
 used = set_of(set_of > 0);
 eps_fit = [];
+inner_t = [];
 if ~isempty(used)
     eps_fit = inner(used(1)).eps_fit;
+    inner_t = unique([inner(unique(used)).t]);
 end
-body = struct('design', design, 'inner_t', unique([inner(unique(used)).t]), 'planes', planes(:)', ...
+body = struct('design', design, 'inner_t', inner_t, 'planes', planes(:)', ...
     'brep', brep, 'shells', shells, 'analytic', struct('fixture', fx, 'd', d, 'eps_fit', eps_fit));
 
 % ------------------------------------------------------------ nested helpers

@@ -3,8 +3,9 @@ function props = evaluate_realised(bp, hs, design, config)
 %
 %   props = mwecmass.realise.evaluate_realised(bp, hs, design, config)
 %
-%   bp: S6 (stand-in F6), hs: S7 (stand-in F7), design: S3, config with config.hull_solid.analytic
-%   set (tests put the stand-in S1b there), else mwecmass:standin:NotAnalytic. Fields and formulas
+%   bp: S6, hs: S7, design: S3, config.hull_solid: the S1b of a fixture deck, identified by
+%   sti_closed_form('fixture', ...) through its analytic field or its hull_name, so the real F1 geo
+%   of a fixture is accepted; any other geo errors mwecmass:standin:NotAnalytic. Fields and formulas
 %   of contract F9 (mass, CG_total = [0 0 CG_body(3) + vs], I_cg, GM_L = KM - CG_total(3),
 %   K33 = rho_w g Aw, K55 = M g GM when GM > 0, uncoupled periods 2 pi sqrt((M + A33)/K33) and
 %   2 pi sqrt((I_yy + A55)/K55), Inf when K <= 1e-6, as properties_3d.m section 11), with the
@@ -12,10 +13,13 @@ function props = evaluate_realised(bp, hs, design, config)
 %   mwecmass.hydrostatics.coupled_periods_by_share, as build_realised_properties.m. props.analytic
 %   marks stand-in output for the check_against_stage2 stand-in; the real F9 does not set it.
 
-if ~isstruct(config) || ~isfield(config, 'hull_solid') || ~isstruct(config.hull_solid) || ...
-        ~isfield(config.hull_solid, 'analytic') || isempty(config.hull_solid.analytic)
-    error('mwecmass:standin:NotAnalytic', 'evaluate_realised stand-in: config.hull_solid.analytic is empty (not a stand-in fixture)');
+if ~isstruct(config) || ~isfield(config, 'hull_solid') || ~isstruct(config.hull_solid)
+    error('mwecmass:standin:NotAnalytic', 'evaluate_realised stand-in: config.hull_solid is not a stand-in fixture geo');
 end
+if exist('sti_closed_form', 'file') ~= 2
+    addpath(fullfile(fileparts(fileparts(fileparts(mfilename('fullpath')))), 'fixtures'), '-end');
+end
+fx = sti_closed_form('fixture', config.hull_solid);
 vs = design.vs;
 M = bp.total.mass;
 I = bp.total.I_cg;
@@ -73,7 +77,7 @@ props.realised_strip_density = rho_eff;
 props.realised_strip_edges = design.edges(:);
 e = design.edges(:);
 props.components = struct('density', num2cell(rho_eff), 'z_level', num2cell((e(1:end - 1) + e(2:end)) / 2 + vs));
-props.analytic = config.hull_solid.analytic;
+props.analytic = fx;
 end
 
 function T = uncoupled(m, k)

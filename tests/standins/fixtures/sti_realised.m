@@ -12,8 +12,8 @@ function [realised, final_props] = sti_realised(config, design, rho, stage2, opt
 %   The design is evaluated with the public kernel names: inner sets by
 %   mwecmass.solid.offset_surface (cylinder) or sti_inner_box (box), then build_body,
 %   body_properties, hydrostatics_at_draft, mwecmass.realise.evaluate_realised and
-%   check_against_stage2, so it runs on the stand-ins now and on the real functions after the
-%   joins. V_uhpc_target is the precast split of AGENTS section 3 item 4.1,
+%   check_against_stage2. The F9 stand-in identifies a fixture also by hull_name, so it accepts the
+%   geo of the real F1 (analytic = []) between J1 and J2. V_uhpc_target is the precast split of AGENTS section 3 item 4.1,
 %   V_i (rho_i - rho_air) / (rho_uhpc - rho_air). No solver runs: solver holds one entry for
 %   opts.escalation with exitflag NaN. final_props = props + stage3_status, stage3_check.
 

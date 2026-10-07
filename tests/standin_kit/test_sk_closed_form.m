@@ -1,6 +1,8 @@
 function test_sk_closed_form()
 %TEST_SK_CLOSED_FORM  sti_closed_form V, S, J against Gauss-Legendre integration in z of its own
 %   sections (piecewise constant in z, so the 2-node rule is exact), and the F7 stand-in.
+%   The F7 part asserts the stand-in's exact equality with the closed form: J1, which merges the
+%   real F7, rewrites that part; the sti_closed_form part stays valid.
 
 root = fileparts(fileparts(fileparts(mfilename('fullpath'))));
 setup(root);

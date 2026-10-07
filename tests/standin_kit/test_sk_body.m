@@ -2,6 +2,8 @@ function test_sk_body()
 %TEST_SK_BODY  Stand-in F5, F6, F6b on both fixtures and both modes: B-rep validity, shared edges,
 %   STEP import (closed solids, solid count), volume closure, sections.
 %   The closed forms of sti_closed_form are the independent oracle of the OCC volumes (printed).
+%   Reads body.analytic (stand-in marker of F5): J1, which merges the real F5, F6, F6b, deletes or
+%   rewrites this test.
 
 root = fileparts(fileparts(fileparts(mfilename('fullpath'))));
 setup(root);
@@ -31,6 +33,8 @@ cases = {
     gb, ib, 'modular_precast', eb, [0.15; 0.1; 0.1], -1.5, [], 'box precast, ballast at an edge'
     gb, ib, 'thin_shell', eb, 0.1 * ones(3, 1), -1, [], 'box thin shell, ballast in module 2'
     gb, ib, 'thin_shell', eb, 0.15 * ones(3, 1), -2.45, [], 'box thin shell, ballast below the inner z_lo'
+    gb, [], 'modular_precast', eb, NaN(3, 1), -2.5, 1:3, 'box precast, every module solid (no inner set)'
+    gc, [], 'modular_precast', ec, NaN(4, 1), -2, 1:4, 'cylinder precast, every module solid (no inner set)'
     };
 worst = struct('closure', 0, 'hull', 0, 'occ', 0, 'section', 0);
 for c = 1:size(cases, 1)

@@ -1,5 +1,7 @@
 function test_sk_outer_nurbs()
 %TEST_SK_OUTER_NURBS  Stand-in F1 and F3 on the fixture decks: S1/S1b fields, exactness, seams, poles, orientation.
+%   Reads geo.analytic (stand-in marker of F1): J1, which merges the real F1 and F3, deletes or
+%   rewrites this test.
 
 root = fileparts(fileparts(fileparts(mfilename('fullpath'))));
 setup(root);

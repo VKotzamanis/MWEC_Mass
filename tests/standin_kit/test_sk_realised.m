@@ -1,5 +1,8 @@
 function test_sk_realised()
 %TEST_SK_REALISED  sti_config, sti_stage2, sti_realised and the F9, F10 stand-ins on both fixtures and modes.
+%   Reads no stand-in marker of F1-F7; the F9 stand-in identifies a fixture by hull_name when
+%   geo.analytic is empty, as the real F1 returns it. J2, which merges the real F9, F10 and deletes
+%   their stand-ins, deletes or rewrites this test.
 
 root = fileparts(fileparts(fileparts(mfilename('fullpath'))));
 setup(root);
@@ -79,7 +82,25 @@ for c = 1:size(cases, 1)
     off.Z_CG = same.Z_CG * 1.25;
     ck = mwecmass.realise.check_against_stage2(p, off, 10, Inf, config.RHO_WATER);
     check(~ck.pass && isequal(ck.failed, {'Z_CG'}) && ~isempty(strfind(ck.reason, 'Z_CG')), 'F10 failure report');
+
+    % F9 on the geo of the real F1 (analytic = []) identifies the fixture by hull_name
+    hs = mwecmass.solid.hydrostatics_at_draft(config.hull_solid, vs, struct());
+    real_cfg = config;
+    real_cfg.hull_solid.analytic = [];
+    p2 = mwecmass.realise.evaluate_realised(bp, hs, design, real_cfg);
+    check(isequaln(p2, p), '%s %s: F9 differs when geo.analytic is empty', name, mode);
 end
+
+% all modules solid: no inner set
+config = sti_config('box');
+config.hull_solid = mwecmass.solid.outer_nurbs(config.ms2_model);
+[~, stage2] = sti_stage2(config, 0, [NaN; 600; 500]);
+design = struct('mode', 'modular_precast', 'edges', config.strip_edges, 'vs', 0, 't', NaN(3, 1), ...
+    'z_ballast', -2.5, 'solid_modules', 1:3);
+r = sti_realised(config, design, struct('uhpc', 2500, 'air', 1.2), stage2, struct('t_min', 0.08));
+check(isempty(r.body.inner_t) && all([r.modules.V_air] == 0) && all(isnan([r.modules.t])), 'all-solid design');
+fprintf('box precast, every module solid: M %.1f kg, Z_CG %.4f m, GM %.4f m | %s\n', ...
+    r.props.mass_total, r.props.CG_total(3), r.props.GM_L, r.status);
 end
 
 function setup(root)

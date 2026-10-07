@@ -5,6 +5,8 @@ function test_sk_not_analytic()
 %   its projection on y = 0, u-degree 2; a body and props without the stand-in marker; a config
 %   whose hull_solid is that geo. F3 (eval_bspline_curve, eval_bspline_surface) is exempt: its
 %   signature carries neither a geo nor a patch and its evaluation is exact for every NURBS.
+%   J1 deletes the rows of the F1-F7 and F6b stand-ins it removes, J2 the rows of F9 and F10; the
+%   rows of the fixture helpers sti_closed_form and sti_inner_box stay.
 
 root = fileparts(fileparts(fileparts(mfilename('fullpath'))));
 if exist('OCTAVE_VERSION', 'builtin')
