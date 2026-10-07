@@ -1,6 +1,6 @@
 # HANDOFF — MWEC_Mass exact-geometry refactor
 
-Updated 2026-10-07 15:25 UTC on `claude/lucid-cray-7o9442`. Process file for agents: the
+Updated 2026-10-07 15:45 UTC on `claude/lucid-cray-7o9442`. Process file for agents: the
 orchestrator updates it at every milestone and at least every 100k tokens; delete it in T12.
 
 ## 1. Goal
@@ -18,7 +18,7 @@ STEP output of the realised bodies. The binding documents, in this order:
 
 ## 2. Progress tracker
 
-Main `claude/lucid-cray-7o9442` holds the general-kernel amendment (`e7e9114`) and AGENTS rule 12 (judge by metrics). Every task branch `task/<id>` is on GitHub.
+Main `claude/lucid-cray-7o9442` = `f52e232`: general-kernel amendment, AGENTS rule 12 (judge by metrics), SK2, T0d; suite 27 passed, 1 skipped (476 s). Every task branch `task/<id>` is on GitHub.
 
 | Task | What | Lane | Status | Grade (rounds) | Head |
 |---|---|---|---|---|---|
@@ -35,10 +35,10 @@ Main `claude/lucid-cray-7o9442` holds the general-kernel amendment (`e7e9114`) a
 | T7 | thin-shell rebuild | S | resumed (`wf_0aa3006e-39b`): two deferred line ranges, rounds 5–6 | 7, 7, 7, 8 | task/T7 `bbee405` |
 | T8 | figures from the realised solid | O | resumed with Opus high (`wf_11198ef4-0cf`), rounds 9–10: void outlines with holes (material island), resolution limit stated, U-shaped mock, stray file | 8, 8, 8, 8, 6, 6, 6, 6 | task/T8 `b0a9c9f` |
 | T10 | Stage-3 STEP exports | O | accepted, waits for J2 | 9 (3) | `07856a2` |
-| T0d | geometry cache of `build_config` (C1: fresh build 421 s CPU, reload 0.44 s) | P | accepted, merging with SK2 | 9 (2) | `158d77d` |
+| T0d | geometry cache of `build_config` (C1: fresh build 421 s CPU, reload 0.44 s) | P | merged `f52e232` | 9 (2); merge 10 | `158d77d` |
 | T4a | Stage-2 changes (delete `c_mono`, `c_mass_min`; bottom-filled start; bounds) | P | implementing (Sonnet high) | — | task/T4a |
 | T4b | Stage-2 floors from the kernel (merges after J1) | P | queued after T4a | — | — |
-| SK2 | stand-ins updated to spec2 | SK2 | accepted, merging with T0d | 9 (3) | `753a11e` |
+| SK2 | stand-ins updated to spec2 | SK2 | merged `1bb06d6` | 9 (3); merge 10 | `753a11e` |
 | T2a | exact-path offset, fold trim, adaptive fit | K1 | implementing: F3, F3b/F4, F1 committed; F2 (offset, trim, fit) in progress; F2b next | — | task/T2a `59aeb4f` |
 | T2b | general path (refits, flat regions, mirrors) | K | after T2a, ∥ T3 | — | — |
 | T3 | bodies and exact properties | K | after T2a | — | — |
