@@ -140,8 +140,8 @@ end
 
 function xc = crossing_x(P)
 % x of the root of y between the ends of a span whose end values have different [y > 0]: the
-% Illinois form of regula falsi on the span, ended when y is exactly 0, the iterate stops moving, or
-% the bracket collapses to adjacent floats. A root at an end (y = 0 exactly) is returned without iterating.
+% Illinois form of regula falsi on the span, ended when y is exactly 0 or the bracket collapses to
+% adjacent floats. A root at an end (y = 0 exactly) is returned without iterating.
 if P(end, 2) == 0
     xc = P(end, 1) / P(end, 3);
     return
@@ -155,8 +155,6 @@ tb = 1;
 ya = P(1, 2);
 yb = P(end, 2);
 side = 0;
-t_old = NaN;
-xc = P(end, 1) / P(end, 3);
 for it = 1:200
     t = (ta * yb - tb * ya) / (yb - ya);
     if ~(t > ta && t < tb)
@@ -164,10 +162,9 @@ for it = 1:200
     end
     q = bez_point(P, t);
     xc = q(1) / q(3);
-    if q(2) == 0 || t == t_old
+    if q(2) == 0
         return
     end
-    t_old = t;
     if (q(2) > 0) == (ya > 0)
         ta = t;
         ya = q(2);
