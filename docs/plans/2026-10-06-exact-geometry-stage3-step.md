@@ -242,7 +242,7 @@ intervals inside the z range; `FitInputMissing`; the options `max_passes`, `forc
 structured inner pieces (`rev_z`, `ruled_parallel`); creases split along u and v (convex: trimmed;
 concave: a face of the crease curve offset along its fan of normals); at a vertex whose cone of
 normals spans a solid angle, the sphere face that closes the gap between the fan faces (contract
-F2; found by T2a's F2, fitted by T2b's `fit_z_faces`); seams shared bitwise;
+F2; found by T2a's F2, fitted by T2b's `fit_z_faces`); seams shared as one curve (contract S1, same curve);
 `c0_u`/`c0_v` knot rows in S1 and S2; F2 `opts.knots_from` (refit at a new t on fixed knots); the
 cylinder fixture is its join test, the box is not (T2a still runs the real F2 on it, below).
 
@@ -263,7 +263,7 @@ branch alone such a deck stops with the undefined-function error until J1).
 Files: `src/+mwecmass/+solid/outer_nurbs.m`, `offset_surface.m`, `trim_fold.m`,
 `fit_bspline_surface.m`, `eval_bspline_surface.m`, `eval_bspline_curve.m`,
 `split_bspline_surface.m`, `slice_bspline_surface.m`, `void_closing_distance.m`, tests,
-`tests/solid/fixtures/stepped_spar.ms2` and `box_swapped.ms2`.
+`tests/solid/fixtures/stepped_spar.ms2`, `box_swapped.ms2` and `split_wall_box.ms2`.
 
 - Adaptive, error-bounded fitting as specified in AGENTS.md §5 item 9: initial nodes dense where
   curvature is high or the void is narrow; offset by t + ε/2 along the exact normal; trim the
@@ -282,10 +282,19 @@ patches exact, contract §3; `outer_nurbs(model)` and `outer_nurbs(model, cache,
 `geo`). The box: the real F2 set equals `sti_inner_box` (convex C0 v-seams, trimmed along parameter
 lines, structure kept), compared and printed.
 
-Column vertices (contract F1). `tests/solid/fixtures/split_wall_box.ms2`: SK's `box.ms2` with the wall
-y = 0.75 drawn as two RuledSurfs split at z = −1 (one loop per section). Asserted: F1 splits the walls
-x = ±1 and y = −0.75 at z = −1 into exact pieces with the shared rows bitwise; the seam fields pair up
-(I2); the brep of the test helper passes `validate_brep` and `step_check.py` with volume 9 m³.
+Column corners (contract F1). `tests/solid/fixtures/split_wall_box.ms2`: SK's `box.ms2` with the wall
+y = 0.75 drawn as two RuledSurfs `box_side2lo` and `box_side2hi` between Lines split at z = −1 (new
+FramePoints M2 (1, 0.75, −1) and M3 (−1, 0.75, −1); one loop per section). T2a asserts only what F1
+decides: `box_side1`, `box_side3` and `box_side4` (the walls x = 1, x = −1 and y = −0.75; −1 is a
+patch-corner height strictly inside their z range) are each split at z = −1 into two exact pieces
+whose cut rows are shared bitwise, every control point of a cut row at z = −1 bitwise and its end
+points equal to the corners there (M2, M3 on the walls x = ±1); `box_side2lo`, `box_side2hi`,
+`box_bottom` and `box_top` are not split; every patch takes the exact path (`exact` true, so
+`fit_z_faces` is never called); and every boundary that two entries share is the same curve
+(contract S1), e.g. the lower piece of `box_side1` (column knots [0 0 u* u*]) and `box_side2lo`
+(Line, knots [0 0 1 1]), and `box_side2lo` and `box_bottom` (the same Line run the other way). The
+full-body assertions (seam fields pair up, I2, `validate_brep`, `step_check.py`, volume 9 m³) run at
+J1 in `tests/solid/test_join_general.m`.
 
 Exact-path additions (contract F1). `stepped_spar.ms2` (format of SK's `cylinder.ms2`): FramePoints
 K (0, 0, −3), P1 (1.5, 0, −3), P2 (1.5, 0, −1), P3 (0.75, 0, −1), P4 (0.75, 0, 1), T (0, 0, 1); a
@@ -305,7 +314,7 @@ the parser's z of `box_side1` depends on v alone, and T1 `outer_rows` gives the 
 `box.ms2` at z = −2, −1, 0. Asserted: z of the
 side faces depends on v alone, F1 exchanges u and v (`swap_uv` true; control points and weights
 transposed bitwise), they take the exact path, the parser's edge e is S1 boundary 5 − e, the seams
-pair up bitwise (I2), and F4 sections at z = −1 equal those of `box.ms2` bitwise. Deck check, on
+pair up (I2: each shared boundary the same curve, contract S1), and F4 sections at z = −1 equal those of `box.ms2` bitwise. Deck check, on
 copies written by the test: `box.ms2` plus a `Variable` line and a line of an unknown type that
 nothing references gives the same `geo`; `FramePoint T1` given an unknown type (referenced by `V1`)
 raises `UnsupportedEntity`; `box_top` given an unknown type raises `HullNotClosed`; `cylinder.ms2`
@@ -487,7 +496,7 @@ the common corner (0, 0.75, −2.5) of the two lower pieces of the wall y = 0.75
 patch through it, not a point inside a bottom row), the wall x = −1, the wall y = 0.75 in three
 pieces (below z = 0.5 for x < 0 and for x > 0, above it for x > 0), the wall x = 1 below and above
 z = 0.5, the riser, the low and the high deck; every patch exact, every seam one curve shared end to
-end, no corner of any patch inside another patch's boundary (contract §8 Cuts). Verified
+end (the same curve, contract S1), no corner of any patch inside another patch's boundary (contract §8 Cuts). Verified
 2026-10-07: `MS2Parser` parses it (22 patches with the mirrors; no patch corner lies strictly inside
 an edge of another patch, checked on the parser's corner points) and T1 `outer_rows` (grid 60)
 returns one closed loop at eight heights off z = 0.5 in [−2.45, 1.45] m, area 3 m² below z = 0.5
@@ -506,7 +515,12 @@ so the hollow and thin-shell cases run at J1.)
 
 Merges T2a, T2b and T3 in that order, deletes the stand-ins of F1–F7 and F6b, and reruns every
 consumer test on the real code (the join test, contract §3). Adds `tests/solid/test_join_general.m`
-(J1's file), which runs the general-path fixtures of T2b through the real F1, F2, F5, F6 and F7:
+(J1's file), which runs the general-path fixtures of T2b through the real F1, F2, F5, F6 and F7, and
+T2a's `split_wall_box.ms2` (all exact, with the column-corner splits at z = −1) through the real F1,
+F5 and F6: the seam fields pair up (face k boundary b names [j c] exactly when face j boundary c
+names [k b]), I2 holds (each shared boundary one edge, the same curve, contract S1), the hull passes
+`validate_brep` and `step_check.py` (one closed solid, METRE), and its volume equals 9 m³ (bilinear
+faces, asserted exact);
 `split_side_cylinder.ms2` with module edges at z = −2 and z = 0: the two flat regions of `geo.flat`
 are F5 plane faces whose loops are the chains of the rows that name them; each module and the fused
 hull pass `validate_brep` and `step_check.py` (closed solids, solid count); I1 holds; the hull volume
