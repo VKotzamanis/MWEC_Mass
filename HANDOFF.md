@@ -1,6 +1,6 @@
 # HANDOFF — MWEC_Mass exact-geometry refactor
 
-Updated 2026-10-07 22:00 UTC on `claude/lucid-cray-7o9442`. Process file for agents: the
+Updated 2026-10-07 22:25 UTC on `claude/lucid-cray-7o9442`. Process file for agents: the
 orchestrator updates it at every milestone and at least every 100k tokens; delete it in T12.
 
 ## 1. Goal
@@ -32,7 +32,7 @@ Main `claude/lucid-cray-7o9442` = `f52e232`: general-kernel amendment, AGENTS ru
 | spec2 | contract amendment: general kernel (owner) + errata | K | merged `e7e9114` | 9 (round 8; errata 9; merge 10) | `5ce48fc` |
 | T5 | UHPC Stage 3 a: split, build, check, store | U | accepted (round 5); waits for J2 | 7, 8, 8, 8, 9 | `31f470f` |
 | T6 | UHPC Stage 3 b: optimisation, spill, closest fail | U | round 1 rejected at 5 (optimum not reached: phase-2 skipped near tol, no feasibility step, draft released on one failed rebuild); fixing (`wf_f16b85f9-6d8`) | 5 | task/T6 `3e1d450` |
-| T7 | thin-shell rebuild | S | round 7: 8, minor findings only → fix + quick check (`wf_e28ebbef-e94`) | 7, 7, 7, 8, 8, 8, 8 | task/T7 `2753871` |
+| T7 | thin-shell rebuild | S | accepted (round 7: code correct; 2 minor items fixed and quick-checked); waits for J2 | 7, 7, 7, 8, 8, 8, 8 + quick check | `4c310df` |
 | T8 | figures from the realised solid | O | accepted (round 10); waits for J2 | 8, 8, 8, 8, 6, 6, 6, 6, 7, 9 | `3b0a0be` |
 | T10 | Stage-3 STEP exports | O | accepted, waits for J2 | 9 (3) | `07856a2` |
 | T0d | geometry cache of `build_config` (C1: fresh build 421 s CPU, reload 0.44 s) | P | merged `f52e232` | 9 (2); merge 10 | `158d77d` |
