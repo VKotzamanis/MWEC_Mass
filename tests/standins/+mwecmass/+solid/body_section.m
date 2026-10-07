@@ -10,10 +10,12 @@ function sec = body_section(body, z, side)
 %   z_lo <= z < z_hi, so a plane face height belongs to the faces above it (z_max to the faces
 %   below it), and the module with edges(i) <= z < edges(i+1) (the last module at z_max); 'below'
 %   takes the faces with z_lo < z <= z_hi (z_min: those above it) and the module with
-%   edges(i) < z <= edges(i+1) (the first module at z_min). At a module edge or at z_ballast the
-%   two sides therefore differ in the module and in the inner loop (the void of that side, none
-%   where that side is solid); elsewhere they agree. Neither fixture has a flat part inside its z
-%   range. inner is empty and solid is true where the module has no air at z on that side.
+%   edges(i) < z <= edges(i+1) (the first module at z_min). The two sides can differ only at a
+%   module edge (the module, and the inner loop where the voids of the two modules differ), at
+%   z_ballast (the inner loop: the void on the side where it is, none on the solid side) and at an
+%   end of a void (the height of a constant-z piece of an inner set: the void loop on the void's
+%   side only); elsewhere they agree. Neither fixture has a flat part of the outer surface inside
+%   its z range. inner is empty and solid is true where the module has no air at z on that side.
 
 if ~isstruct(body) || ~isfield(body, 'analytic') || isempty(body.analytic)
     error('mwecmass:standin:NotAnalytic', 'body_section stand-in: body.analytic is empty (not a stand-in body)');
