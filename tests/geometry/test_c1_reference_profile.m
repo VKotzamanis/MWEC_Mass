@@ -3,7 +3,7 @@ function test_c1_reference_profile()
 %   Reference: tests/reference/c1_reference.py (--profile, --offset), written from the deck text.
 %   No MATLAB kernel code is involved; later tasks compare the kernel against these values.
 %   Asserted, all exact by construction, at 1e-14 (the reference evaluates B-spline and arc
-%   derivatives analytically, so the residuals are a few hundred roundoffs at most):
+%   derivatives analytically, so the residuals are a few eps; 1e-14, about 45 eps, leaves a margin):
 %     - outward normals are unit vectors orthogonal to the unit tangents;
 %     - the normal turned about the axis equals unit(S_s x S_theta) of the revolved patch;
 %     - C1 oracle (deck knowledge, used only as an independent check): the neck is the vertical
@@ -23,8 +23,9 @@ function test_c1_reference_profile()
     require(n_unit < tol && n_orth < tol, 'normals unit and orthogonal to tangents');
     require(max(gap) < tol, 'turned normal equals S_s x S_theta');
 
-    z_neck = [-3.0 -2.0 -1.0 -0.5 0.0 0.5 0.9];
-    z_neck = z_neck(z_neck > -0.3671875 & z_neck < 0.95);
+    % The neck is the vertical segment of curve1's first knot span (control points pt2, pt3, pt4 all
+    % on x = -0.1 in the deck), z in [-0.5, 1.0]; the heights stay inside it.
+    z_neck = [-0.45 0.0 0.5 0.95];
     t = 0.0762;
     off = run(script, deck, sprintf('--offset %.17g %s', t, sprintf(' %.17g', z_neck)));
     got = arrayfun(@(r) r.x_half_width, off);

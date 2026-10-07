@@ -12,11 +12,12 @@ that face's boundary.
 
 Usage:
   python3 -I tests/step_check.py FILE.step [--mesh-size H] [--expect-solids N] [--expect-units METRE]
-         [--expect-open-edges N] [--expect-volume V] [--volume-rtol R] [--bbox-atol A]
+         [--expect-open-edges N] [--expect-volume V --volume-rtol R]
 Exit status 1 if any given --expect-* check fails; without them the file is only reported.
---expect-volume V is compared with the sum of the exact solid volumes (relative tolerance R, default
-1e-9). --mesh-size H is the maximum surface-mesh edge length (default 1/80 of the bounding-box
-diagonal); the mesh volume carries the chord error of the flat triangles and is reported, not gated.
+--expect-volume V is compared with the sum of the exact solid volumes within the relative tolerance
+R; R has no default, because each caller states and justifies its own bound, so --expect-volume
+without --volume-rtol is an error (exit status 2). --mesh-size H is the maximum surface-mesh edge
+length (default 1/80 of the bounding-box diagonal); the mesh volume carries the chord error of the flat triangles and is reported, not gated.
 """
 import argparse
 import json
@@ -124,8 +125,10 @@ def main(argv):
     ap.add_argument("--expect-units")
     ap.add_argument("--expect-open-edges", type=int)
     ap.add_argument("--expect-volume", type=float)
-    ap.add_argument("--volume-rtol", type=float, default=1e-9)
+    ap.add_argument("--volume-rtol", type=float)
     args = ap.parse_args(argv[1:])
+    if args.expect_volume is not None and args.volume_rtol is None:
+        ap.error("--expect-volume requires --volume-rtol (no default tolerance)")
     report = check(args.file, args.mesh_size)
     failures = []
     if args.expect_solids is not None and report["n_solids"] != args.expect_solids:

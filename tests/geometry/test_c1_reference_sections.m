@@ -56,7 +56,7 @@ function test_c1_reference_sections()
     end
     % Bound 1e-13 m2: the reference sums 32-point Gauss-Legendre pieces of arcs and lines
     % (roundoff only); the largest stadium area at these heights is 13.24 m2 (half-width 1.513 m,
-    % z = -1.339 m), so 1e-13 m2 is about 7.6e-15 relative, a few units of double roundoff.
+    % z = -1.339 m), so 1e-13 m2 is about 7.6e-15 relative, about 34 eps; the residuals are a few eps, so the gate leaves a margin.
     if max(oracle_gap) > 1e-13
         error('test_c1_reference_sections:oracle', ...
               'reference area departs from the stadium formula by %.3e m2', max(oracle_gap));

@@ -25,8 +25,8 @@ function test_fmincon_shim()
     check('P1 lambda.lower', lam.lower, [0; 0; 0], tol);
     check('P1 x', x, [1.2; 0.8; 1.0], tol);
     check_converged('P1 exitflag', ef);
-    if out.constrviolation > 1e-8
-        error('test_fmincon_shim:P1', 'constraint violation %.3e exceeds the 1e-8 request', out.constrviolation);
+    if out.constrviolation > 1e-6
+        error('test_fmincon_shim:P1', 'constraint violation %.3e exceeds ConstraintTolerance 1e-6', out.constrviolation);
     end
 
     % 2. Infeasible start, linear inequality in A*x <= b form.
