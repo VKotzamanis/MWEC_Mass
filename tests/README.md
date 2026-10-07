@@ -39,15 +39,15 @@ MWEC_REGRESSION=1 TESTS_FILTER=regression octave --no-gui --quiet tests/run_test
 |---|---|
 | `octave_shims/` | Replacements for MATLAB functions Octave 8.4 lacks (`fmincon` over `sqp`, `optimoptions`, `contains`, `discretize`, `datetime`, `issorted`, `java` (SHA-256 only), `double`/`logical` (`.empty` form), `startsWith`, `endsWith`). See its README. |
 | `shim/` | Tests of the shims (`test_fmincon_shim.m`, `test_misc_shims.m`). |
-| `geometry/` | Geometry tests against the independent reference (`test_c1_reference_sections.m`, `test_c1_reference_profile.m`). |
+| `geometry/` | Geometry tests against the independent reference (`test_c1_reference_sections.m`, `test_c1_reference_profile.m`) and `test_ms2_parser_identity.m`, which replays every public `MS2Parser` evaluation on `Input/C1.ms2` and on `fixtures/ms2_all_entity_types.ms2` (all entity types, references to undefined entities, entities with an empty brace list, and each public evaluator named after an entity type called with the struct of `model.entities`) and requires bit-identical outputs and errors against `fixtures/ms2_parser_reference.mat`. `ms2_parser_cases.m` and `ms2_parser_record.m` hold the decks, grids and calls. |
 | `reference/` | `c1_reference.py`: evaluator of `Input/C1.ms2` written from the deck text: section area and inertias per height, the profile with outward normals, and the normal-offset half-width per height and wall thickness. |
 | `regression/` | `test_pipeline_baseline.m`: reruns the Octave pipeline and requires the numbers recorded in `baseline/` (see Pipeline under Octave). Runs only with `MWEC_REGRESSION=1`. |
 | `baseline/` | `octave_v1_baseline.json` (full preset, both modes), `octave_v1_baseline_fast.json` (fast preset, modular precast) and `matlab_v1_reference.json` (the MATLAB v1.0 results read from `Output/C1_*_results.mat`); `test_baseline_vs_matlab.m` prints the recorded Octave values next to the MATLAB ones from these files, without a pipeline run. The MATLAB file also holds the Stage-2 design (`results.Final3D`) per mode. |
 | `step/`, `step_check.py` | STEP writer tests and the gmsh/OpenCASCADE import check of STEP files. |
-| `fixtures/` | `C1_wamit_cache_v5.mat`: the BEM cache converted to a format Octave can read. |
+| `fixtures/` | `C1_wamit_cache_v5.mat`: the BEM cache converted to a format Octave can read. `ms2_parser_reference.mat`: the outputs of `MS2Parser` before it resolved each entity once (written by `tools/make_ms2_parser_reference.m`; not to be regenerated from a changed parser). `ms2_all_entity_types.ms2`: a deck with every entity type. |
 
 `tools/` holds the scripts that make the baseline and fixture files: `convert_v73_to_v5.py`,
-`make_matlab_v1_reference.py`, `baseline_run.m`, `write_octave_baseline.m`.
+`make_matlab_v1_reference.py`, `baseline_run.m`, `write_octave_baseline.m`, `make_ms2_parser_reference.m`.
 
 ## Pipeline under Octave
 
