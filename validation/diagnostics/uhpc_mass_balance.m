@@ -22,28 +22,28 @@ function uhpc_mass_balance(result_file, output_folder)
     ct  = r.constructability;
 
     rho_w    = cfg.RHO_WATER;             % [kg/m^3]
-    rho_uhpc = ct.rho_steel;              % [kg/m^3] UHPC (field name inherited)
-    rho_void = ct.rho_air;                % [kg/m^3]
+    rho_uhpc = ct.rho_uhpc;               % [kg/m^3] UHPC
+    rho_air  = ct.rho_air;                % [kg/m^3]
     zmin     = cfg.hull_z_min;
     zmax     = cfg.hull_z_max;
 
-    zg  = ct.z_grid(:);                   % [m] body frame
-    Ao  = ct.A_outer_grid(:);             % [m^2]
-    Ai  = ct.A_inner_grid(:);             % [m^2]
-    Aj  = max(0, Ao - Ai);                % [m^2] jacket annulus
-    zf  = ct.z_fill;                      % [m]
-    vs  = ct.vertical_shift;              % [m]
-    zwl = -vs;                            % [m] waterline, body frame
-    se  = ct.strip_edges(:);
-    Ns  = numel(se) - 1;
+    zg   = ct.z_grid(:);                  % [m] body frame
+    Ao   = ct.A_outer_grid(:);            % [m^2]
+    Ai   = ct.A_inner_grid(:);            % [m^2]
+    Aj   = max(0, Ao - Ai);               % [m^2] jacket annulus
+    zbal = ct.z_ballast;                  % [m]
+    vs   = ct.vertical_shift;             % [m]
+    zwl  = -vs;                           % [m] waterline, body frame
+    se   = ct.strip_edges(:);
+    Ns   = numel(se) - 1;
     wIdx = ct.wall_strip_idx;
 
-    % EFFECTIVE material split, respecting the z_fill rule that integrate_split
-    % applies: below z_fill the WHOLE section is UHPC, whatever A_inner says.
-    % The strip-aware grid can carry A_inner > 0 below z_fill, because a strip is
-    % flagged solid only when its ENTIRE span lies below z_fill.  Shading by
+    % EFFECTIVE material split, respecting the z_ballast rule that integrate_split
+    % applies: below z_ballast the WHOLE section is UHPC, whatever A_inner says.
+    % The strip-aware grid can carry A_inner > 0 below z_ballast, because a strip is
+    % flagged solid only when its ENTIRE span lies below z_ballast.  Shading by
     % A_inner alone therefore draws void where the mass model counts material.
-    below  = zg <= zf;
+    below  = zg <= zbal;
     A_mat  = Aj;   A_mat(below) = Ao(below);   % [m^2] UHPC area
     A_vd   = Ai;   A_vd(below)  = 0;           % [m^2] void area
 
@@ -52,7 +52,7 @@ function uhpc_mass_balance(result_file, output_folder)
     tl = tiledlayout(fig, 2, 2, 'TileSpacing', 'compact', 'Padding', 'compact');
     title(tl, sprintf(['UHPC realisation - mass balance   ' ...
           '(\\rho_{UHPC}=%.0f, \\rho_{void}=%.2f kg/m^3, t=%.1f mm, N=%d strips)'], ...
-          rho_uhpc, rho_void, ct.t_min*1000, Ns), ...
+          rho_uhpc, rho_air, ct.t_min*1000, Ns), ...
           'FontWeight', 'bold', 'FontSize', 13);
 
     C_uhpc = [0.35 0.42 0.55];
@@ -99,9 +99,9 @@ function uhpc_mass_balance(result_file, output_folder)
     plot(ax, Ai, zg, ':', 'Color', [0.45 0.45 0.45], 'LineWidth', 1.1, ...
          'DisplayName', 'A_{inner}(z)  (geometry only)');
 
-    yline(ax, zf,  '-',  'Color', [0.85 0.35 0.10], 'LineWidth', 1.8, ...
-          'Label', sprintf('z_{fill} = %.3f m', zf), 'FontSize', 9, ...
-          'LabelHorizontalAlignment', 'right', 'DisplayName', 'z_{fill}');
+    yline(ax, zbal, '-', 'Color', [0.85 0.35 0.10], 'LineWidth', 1.8, ...
+          'Label', sprintf('z_{ballast} = %.3f m', zbal), 'FontSize', 9, ...
+          'LabelHorizontalAlignment', 'right', 'DisplayName', 'z_{ballast}');
     yline(ax, zwl, '--', 'Color', C_wl, 'LineWidth', 1.8, ...
           'Label', sprintf('waterline = %.3f m', zwl), 'FontSize', 9, ...
           'LabelHorizontalAlignment', 'left', 'DisplayName', 'waterline');
@@ -111,20 +111,20 @@ function uhpc_mass_balance(result_file, output_folder)
     end
 
     xlabel(ax, 'sectional area  [m^2]'); ylabel(ax, 'z  (body frame)  [m]');
-    title(ax, '(b)  Material distribution: solid below z_{fill}, hollow above', ...
+    title(ax, '(b)  Material distribution: solid below z_{ballast}, hollow above', ...
           'FontSize', 11);
     legend(ax, 'Location', 'east', 'FontSize', 7.5);
     ylim(ax, [zmin, zmax]);
     text(ax, 0.97, 0.055, ...
-         sprintf('note: A_{inner}>0 between %.3f and %.3f m,\nbut that band is below z_{fill} \\Rightarrow counted solid', ...
-                 se(2), zf), 'Units','normalized','HorizontalAlignment','right', ...
+         sprintf('note: A_{inner}>0 between %.3f and %.3f m,\nbut that band is below z_{ballast} \\Rightarrow counted solid', ...
+                 se(2), zbal), 'Units','normalized','HorizontalAlignment','right', ...
          'FontSize',7.5,'Color',[0.35 0.35 0.35]);
 
     %% ---- (c) BUILD-UP: cumulative mass vs cumulative displacement ---------
     ax = nexttile(tl, 3); hold(ax, 'on'); grid(ax, 'on'); box(ax, 'on');
 
-    % A_mat / A_vd already carry the z_fill rule (computed once, above).
-    dM_dz  = rho_uhpc*A_mat + rho_void*A_vd;                     % [kg/m]
+    % A_mat / A_vd already carry the z_ballast rule (computed once, above).
+    dM_dz  = rho_uhpc*A_mat + rho_air*A_vd;                      % [kg/m]
     M_cum  = cumtrapz(zg, dM_dz);                                % [kg]
 
     Vsub_c = max(0, interp1(cfg.Aw_table_z, cfg.V_sub_table, zg, 'linear', 0));
@@ -135,7 +135,7 @@ function uhpc_mass_balance(result_file, output_folder)
     plot(ax, Mb_cum/1e3, zg, '-', 'Color', C_wl, 'LineWidth', 1.6, ...
          'DisplayName', 'cumulative displaced mass  \rho_w V_{sub}(z)');
     yline(ax, zwl, '--', 'Color', C_wl, 'LineWidth', 1.5, 'HandleVisibility','off');
-    yline(ax, zf,  '-',  'Color', [0.85 0.35 0.10], 'LineWidth', 1.5, 'HandleVisibility','off');
+    yline(ax, zbal, '-', 'Color', [0.85 0.35 0.10], 'LineWidth', 1.5, 'HandleVisibility','off');
     plot(ax, ct.M_total/1e3, zwl, 'o', 'MarkerSize', 9, 'LineWidth', 1.8, ...
          'MarkerFaceColor', 'w', 'Color', [0.75 0.25 0.15], ...
          'DisplayName', 'balance point at the waterline');
@@ -158,17 +158,17 @@ function uhpc_mass_balance(result_file, output_folder)
 
     for k = 1:Ns
         zlo = se(k);  zhi = se(k+1);
-        % Include z_fill as a breakpoint ONLY when it lies inside this strip.
+        % Include z_ballast as a breakpoint ONLY when it lies inside this strip.
         % Adding it unconditionally extends the integration past the strip edge
         % and double-counts volume (this is the bug that made sum(V) = 2x V_hull).
         bp = [zlo; zhi; zg(zg > zlo & zg < zhi)];
-        if zf > zlo && zf < zhi, bp = [bp; zf]; end %#ok<AGROW> -- bp is rebuilt from [zlo; zhi; ...] fresh each k iteration; this conditionally appends at most one breakpoint, not an accumulating loop.
+        if zbal > zlo && zbal < zhi, bp = [bp; zbal]; end %#ok<AGROW> -- bp is rebuilt from [zlo; zhi; ...] fresh each k iteration; this conditionally appends at most one breakpoint, not an accumulating loop.
         bp = unique(sort(bp));
         Ao_b = interp1(zg, Ao, bp, 'linear', 0);
         Ai_b = interp1(zg, Ai, bp, 'linear', 0);
         Aj_b = max(0, Ao_b - Ai_b);
         V_o(k) = trapz(bp, Ao_b);
-        lo = bp <= zf;  hi = bp >= zf;
+        lo = bp <= zbal;  hi = bp >= zbal;
         Vu = 0;  Vv = 0;
         if sum(lo) >= 2, Vu = Vu + trapz(bp(lo), Ao_b(lo)); end
         if sum(hi) >= 2
@@ -176,7 +176,7 @@ function uhpc_mass_balance(result_file, output_folder)
             Vv = Vv + trapz(bp(hi), Ai_b(hi));
         end
         M_u(k) = rho_uhpc * Vu;
-        M_v(k) = rho_void * Vv;
+        M_v(k) = rho_air * Vv;
     end
     rho_real = (M_u + M_v) ./ max(V_o, eps);   % [kg/m^3] realised effective
 
@@ -207,8 +207,8 @@ function uhpc_mass_balance(result_file, output_folder)
     txt = sprintf(['M_{UHPC} = %.1f kg   M_{void} = %.1f kg   M_{total} = %.1f kg\n' ...
                    'V_{UHPC} = %.3f m^3 (%.1f%% of envelope)   V_{void} = %.3f m^3\n' ...
                    '\\rho_w V_{sub} = %.1f kg   -> residual %.1e %%'], ...
-        ct.M_steel, ct.M_air, ct.M_total, ...
-        ct.V_steel, 100*ct.V_steel/ct.V_hull, ct.V_air, ...
+        ct.M_uhpc, ct.M_air, ct.M_total, ...
+        ct.V_uhpc, 100*ct.V_uhpc/ct.V_hull, ct.V_air, ...
         rho_w*ct.V_sub, ct.mass_balance_error_pct);
     annotation(fig, 'textbox', [0.52 0.005 0.46 0.055], 'String', txt, ...
         'FontSize', 8.5, 'EdgeColor', [0.8 0.8 0.8], 'BackgroundColor', [0.98 0.98 0.98], ...

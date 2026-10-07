@@ -1,32 +1,32 @@
 function out = evaluate_design_point(vs, t_offset_strip, is_solid_strip, ...
-                                        z_fill, grids, ctx)
+                                        z_ballast, grids, ctx)
 %EVALUATE_DESIGN_POINT Evaluate UHPC/void hydrostatics, mass properties, GM, and periods.
-% grids already encode per-strip thickness and solid masks; vs and z_fill define the realised pose.
+% grids already encode per-strip thickness and solid masks; vs and z_ballast define the realised pose.
 % Returns the standard realised-property struct, with infeasible/non-positive-mass points flagged.
     cfg = ctx.config;
     out = mwecmass.realise.empty_realised_properties();
 
-    R = mwecmass.realise.thin_shell.integrate_split(grids, z_fill);
+    R = mwecmass.realise.thin_shell.integrate_split(grids, z_ballast);
 
-    V_steel = R.V_below_outer + R.V_above_jacket;
+    V_uhpc  = R.V_below_outer + R.V_above_jacket;
     V_air   = R.V_above_inner;
 
-    int_z_x_A_steel = R.int_zA_below_outer + R.int_zA_above_jacket;
+    int_z_x_A_uhpc  = R.int_zA_below_outer + R.int_zA_above_jacket;
     int_z_x_A_air   = R.int_zA_above_inner;
-    int_x2_steel    = R.int_Ix_below_outer + R.int_Ix_above_jacket;
+    int_x2_uhpc     = R.int_Ix_below_outer + R.int_Ix_above_jacket;
     int_x2_air      = R.int_Ix_above_inner;
-    int_y2_steel    = R.int_Iy_below_outer + R.int_Iy_above_jacket;
+    int_y2_uhpc     = R.int_Iy_below_outer + R.int_Iy_above_jacket;
     int_y2_air      = R.int_Iy_above_inner;
-    int_z2_A_steel  = R.int_z2A_below_outer + R.int_z2A_above_jacket;
+    int_z2_A_uhpc   = R.int_z2A_below_outer + R.int_z2A_above_jacket;
     int_z2_A_air    = R.int_z2A_above_inner;
 
-    M_steel = ctx.rho_steel * V_steel;
-    M_air   = ctx.rho_air   * V_air;
-    M_total = M_steel + M_air;
+    M_uhpc  = ctx.rho_uhpc * V_uhpc;
+    M_air   = ctx.rho_air  * V_air;
+    M_total = M_uhpc + M_air;
 
-    out.V_steel = V_steel;
+    out.V_uhpc  = V_uhpc;
     out.V_air   = V_air;
-    out.M_steel = M_steel;
+    out.M_uhpc  = M_uhpc;
     out.M_air   = M_air;
     out.M_total = M_total;
 
@@ -35,29 +35,29 @@ function out = evaluate_design_point(vs, t_offset_strip, is_solid_strip, ...
         return;
     end
 
-    if V_steel > 1e-12
-        z_cg_steel = int_z_x_A_steel / V_steel;
+    if V_uhpc > 1e-12
+        z_cg_uhpc = int_z_x_A_uhpc / V_uhpc;
     else
-        z_cg_steel = 0.5 * (ctx.hull_z_min + z_fill);
+        z_cg_uhpc = 0.5 * (ctx.hull_z_min + z_ballast);
     end
     if V_air > 1e-12
         z_cg_air = int_z_x_A_air / V_air;
     else
-        z_cg_air = 0.5 * (z_fill + ctx.hull_z_max);
+        z_cg_air = 0.5 * (z_ballast + ctx.hull_z_max);
     end
-    CG_z_body = (M_steel * z_cg_steel + M_air * z_cg_air) / M_total;
+    CG_z_body = (M_uhpc * z_cg_uhpc + M_air * z_cg_air) / M_total;
 
-    Iyy_total_origin = ctx.rho_steel * (int_x2_steel + int_z2_A_steel) + ...
-                       ctx.rho_air   * (int_x2_air   + int_z2_A_air);
-    Ixx_total_origin = ctx.rho_steel * (int_y2_steel + int_z2_A_steel) + ...
-                       ctx.rho_air   * (int_y2_air   + int_z2_A_air);
-    Izz_total_origin = ctx.rho_steel * (int_x2_steel + int_y2_steel) + ...
-                       ctx.rho_air   * (int_x2_air   + int_y2_air);
+    Iyy_total_origin = ctx.rho_uhpc * (int_x2_uhpc + int_z2_A_uhpc) + ...
+                       ctx.rho_air  * (int_x2_air  + int_z2_A_air);
+    Ixx_total_origin = ctx.rho_uhpc * (int_y2_uhpc + int_z2_A_uhpc) + ...
+                       ctx.rho_air  * (int_y2_air  + int_z2_A_air);
+    Izz_total_origin = ctx.rho_uhpc * (int_x2_uhpc + int_y2_uhpc) + ...
+                       ctx.rho_air  * (int_x2_air  + int_y2_air);
     Iyy_about_cg = max(0, Iyy_total_origin - M_total * CG_z_body^2);
     Ixx_about_cg = max(0, Ixx_total_origin - M_total * CG_z_body^2);
     Izz_about_cg = max(0, Izz_total_origin);
 
-    out.z_cg_steel       = z_cg_steel;
+    out.z_cg_uhpc        = z_cg_uhpc;
     out.z_cg_air         = z_cg_air;
     out.CG_z_body        = CG_z_body;
     out.Iyy_total_origin = Iyy_total_origin;

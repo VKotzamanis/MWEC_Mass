@@ -114,9 +114,11 @@ final_props = S.final_props;
 
 | Fields | Units / convention | Used for |
 | --- | --- | --- |
-| `t_steel`, `t_offset_strip`, `t_UHPC`, `t_min`, `t_min_active` | m. `Inf` thickness denotes a solid strip. | Precast wall and strip geometry. |
+| `t_uhpc`, `t_offset_strip`, `t_UHPC`, `t_min`, `t_min_active` | m. `Inf` thickness denotes a solid strip. | Precast wall and strip geometry. |
+| `z_ballast` | m, body frame. Top of the solid ballast region. | Precast ballast level. |
 | `wall_strip_idx`, `wall_z_bottom`, `wall_z_top`, `wall_height`, `strip_edges`, `strip_z_lo`, `strip_z_hi` | Indices and body-frame elevations [m]. | Wall and strip layout. |
-| `rho_hull`, `rho_fill`, `strip_rho_eff` | kg/m³. Here `rho_fill` is void/air density. | Material definition. |
+| `rho_hull`, `rho_uhpc`, `rho_air`, `strip_rho_eff` | kg/m³. `rho_air` is the density of the air in the voids. | Material definition. |
+| `V_uhpc`, `V_air`, `V_hull`, `M_uhpc`, `M_air`, `z_cg_uhpc`, `z_cg_air` | m³, kg and m (body frame). | Volume, mass and centroid accounting. |
 | `strip_V_total`, `strip_V_UHPC`, `strip_V_void`, `strip_mass_UHPC`, `strip_mass_void`, `strip_mass_total` | m³ and kg. | Per-strip mass accounting. |
 | `strip_is_wall`, `strip_is_solid`, `strip_is_feasible`, `is_solid_strip`, `feasibility` | Logical values and summary struct. | Constructability reporting. |
 | `strip_Iyy_UHPC`, `strip_Iyy_void`, `strip_z_cg` | kg·m² and m. | Per-strip inertia and centre-of-gravity data. |
@@ -130,15 +132,34 @@ final_props = S.final_props;
 
 | Fields | Units / convention | Used for |
 | --- | --- | --- |
-| `t_steel`, `z_fill`, `draft`, `vertical_shift`, `draft_optimiser`, `vs_optimiser` | m. `z_fill` is body-frame elevation. | Thin-shell geometry and Stage-2 comparison. |
-| `rho_shell`, `rho_fill`, `rho_air` | kg/m³. Here `rho_fill` is solid-fill density. | Material definition. |
-| `V_steel`, `V_shell`, `V_fill`, `V_air`, `V_hull` | m³ | Volume accounting. |
-| `M_steel`, `M_shell`, `M_fill`, `M_air`, `M_total` | kg | Mass accounting. |
+| `t_steel`, `z_ballast`, `draft`, `vertical_shift`, `draft_optimiser`, `vs_optimiser` | m. `z_ballast` is body-frame elevation. | Thin-shell geometry and Stage-2 comparison. |
+| `rho_shell`, `rho_ballast`, `rho_air` | kg/m³. `rho_ballast` is the density of the solid ballast. | Material definition. |
+| `V_steel`, `V_shell`, `V_ballast`, `V_air`, `V_hull` | m³. `V_steel` = shell + ballast. | Volume accounting. |
+| `M_steel`, `M_shell`, `M_ballast`, `M_air`, `M_total` | kg. `M_steel` = shell + ballast. | Mass accounting. |
 | `CG_z_body`, `CG_z_world`, `CB_z_world`, `KM_world`, `GM_realised` | m | Stability reporting. |
 | `Ixx_total_origin`, `Iyy_total_origin`, `Izz_total_origin`, `Ixx_about_cg`, `Iyy_about_cg`, `Izz_about_cg` | kg·m² | Inertia reporting. |
 | `T_heave_realised`, `T_pitch_realised`, `K33_hydro`, `K55_hydro`, `A11`, `A33`, `A55` | Dynamic properties. | Realised-response reporting. |
-| `strip_rho_eff`, `strip_edges`, `strip_V_env`, `strip_V_solid`, `strip_V_void`, `strip_V_fill`, `strip_V_shell` | Per-strip density, geometry, and volumes. | Strip-level reporting. |
+| `strip_rho_eff`, `strip_edges`, `strip_V_env`, `strip_V_solid`, `strip_V_void`, `strip_V_ballast`, `strip_V_shell` | Per-strip density, geometry, and volumes. | Strip-level reporting. |
 | `targets`, `residuals`, `mass_balance_error_pct`, `phi_star`, `feasible`, `exitflag`, `solver`, `elapsed_seconds` | Solver and residual data. | Realisation-solve review. |
+
+### Field names that changed
+
+Results written before the ballast and material renaming carry the old names. They map as follows.
+
+| Old `.mat` field | New field |
+| --- | --- |
+| `z_fill` (`results.constructability`, `results.steel_data`) | `z_ballast` |
+| `rho_fill` in `results.constructability` (air) | `rho_air` |
+| `rho_fill` in `results.steel_data` (solid ballast) | `rho_ballast` |
+| `rho_steel` in `results.steel_data` (held the ballast density) | removed; use `rho_ballast` |
+| `t_steel`, `rho_steel`, `V_steel`, `M_steel`, `z_cg_steel` in `results.constructability` (held UHPC quantities) | `t_uhpc`, `rho_uhpc`, `V_uhpc`, `M_uhpc`, `z_cg_uhpc` |
+| `V_fill`, `M_fill`, `z_cg_fill`, `strip_V_fill` in `results.steel_data` | `V_ballast`, `M_ballast`, `z_cg_ballast`, `strip_V_ballast` |
+| `rho_fill` in `results.config` (thin shell, solid ballast) | `rho_ballast` |
+| `constructability_rho_fill` in `results.config` (air) | `constructability_rho_air` |
+| `z_fill`, `V_steel` in `results.constructability.iter_history` | `z_ballast`, `V_uhpc` |
+| `in.materials.thin_shell.rho_void`, `in.materials.modular_precast.rho_fill` (inputs) | `in.materials.thin_shell.rho_air`, `in.materials.modular_precast.rho_air` |
+| `in.materials.thin_shell.rho_fill` (input) | `in.materials.thin_shell.rho_ballast` |
+| `fill_material`, `fill_level` in `results.config.output.style.fill_palette` | `ballast_material`, `ballast_level` |
 
 ## `final_props`
 

@@ -1,7 +1,7 @@
 function solve_data = solve(config, x_opt_3d, final_props, opts)
-%SOLVE Constrained UHPC realisation solve for vertical shift, fill level, and strip jackets.
-% DVs are [vertical_shift; z_fill; non-wall thicknesses]. Flotation equality and GM floor are constraints;
-% heave/pitch range penalties form the objective. The wall is pinned solid and below-fill regions are solid.
+%SOLVE Constrained UHPC realisation solve for vertical shift, ballast level, and strip jackets.
+% DVs are [vertical_shift; z_ballast; non-wall thicknesses]. Flotation equality and GM floor are constraints;
+% heave/pitch range penalties form the objective. The wall is pinned solid and below-ballast regions are solid.
 % Returns steel_data-compatible fields plus per-strip thickness, solid mask, edges, and wall index.
 % See docs/METHODS_ENGINE.md#realise-modular-precast
     t_solve_start = tic;
@@ -42,18 +42,12 @@ function solve_data = solve(config, x_opt_3d, final_props, opts)
     end
 
     % Resolve material + numerical options
-    % config.rho_steel (7500 kg/m^3 steel, WEC_User_Input.m in.materials.thin_shell.rho_shell)
-    % is a UHPC-density fallback here only because +modular_precast/solve_and_extract.m:38 always sets
-    % opts.rho_steel = rho_UHPC (2500 kg/m^3) before calling this function. If that assignment
-    % were ever dropped, opt_or_cfg would silently substitute the wrong material's density with
-    % no warning. Assert the caller-supplied option is present; no value change.
-    assert(isfield(opts, 'rho_steel') && ~isempty(opts.rho_steel), ...
+    % config.rho_steel is the thin-shell steel density, so it must never stand in for the UHPC
+    % density: the caller has to supply opts.rho_uhpc.
+    assert(isfield(opts, 'rho_uhpc') && ~isempty(opts.rho_uhpc), ...
            'mwecmass:modular_precast:MissingUHPCDensity', ...
-           ['modular_precast.solve requires opts.rho_steel (the UHPC/hull ', ...
-            'density) to be set by the caller; falling back to config.rho_steel would ', ...
-            'silently substitute the thin-shell steel density (%.0f kg/m^3) for UHPC.'], ...
-           config.rho_steel);
-    rho_uhpc         = mwecmass.internal.option_or_config(opts, 'rho_steel',        config.rho_steel);
+           'modular_precast.solve requires opts.rho_uhpc (the UHPC density) to be set by the caller.');
+    rho_uhpc         = opts.rho_uhpc;
     rho_air          = mwecmass.internal.option_or_config(opts, 'rho_air',          config.rho_air);
     t_init           = mwecmass.internal.option_or_config(opts, 't_init',           config.steel_t_init);
     t_min            = mwecmass.internal.option_or_config(opts, 't_min',            config.steel_t_min);
@@ -103,7 +97,7 @@ function solve_data = solve(config, x_opt_3d, final_props, opts)
     fprintf('      Bounds : t∈[%.5f, %.4f] m  vs∈[%.3f, %.3f] m  ρ_UHPC=%.0f  ρ_void=%.2f\n', ...
             t_min, 0.95*t_max, vs_lb, vs_ub, rho_uhpc, rho_air);
 
-    %% Analytic z_fill seed
+    %% Analytic z_ballast seed
     is_solid_seed = false(N_strips, 1);
     is_solid_seed(wall_strip_idx) = true;
     t_strip_seed = t_init * ones(N_strips, 1);
@@ -127,30 +121,30 @@ function solve_data = solve(config, x_opt_3d, final_props, opts)
                            (rho_uhpc - rho_air);
 
     if V_inner_below_target < 0
-        z_fill_seed = hull_z_min + 1e-3;
+        z_ballast_seed = hull_z_min + 1e-3;
     elseif V_inner_below_target > V_inner
-        z_fill_seed = hull_z_max - 1e-3;
+        z_ballast_seed = hull_z_max - 1e-3;
     else
         cumV = cumtrapz(grids_seed.z, grids_seed.A_inner);
         interior = grids_seed.A_inner > 1e-10;
         if sum(interior) < 2
-            z_fill_seed = 0.5 * (hull_z_min + hull_z_max);
+            z_ballast_seed = 0.5 * (hull_z_min + hull_z_max);
         else
             [V_uniq, ia_uniq] = unique(cumV(interior), 'stable');
             z_int = grids_seed.z(interior);
-            z_fill_seed = interp1(V_uniq, z_int(ia_uniq), ...
-                                  V_inner_below_target, 'linear', 'extrap');
+            z_ballast_seed = interp1(V_uniq, z_int(ia_uniq), ...
+                                     V_inner_below_target, 'linear', 'extrap');
         end
-        z_fill_seed = max(hull_z_min + 1e-3, ...
-                          min(hull_z_max - 1e-3, z_fill_seed));
+        z_ballast_seed = max(hull_z_min + 1e-3, ...
+                             min(hull_z_max - 1e-3, z_ballast_seed));
     end
-    fprintf('      Warm-start z_fill seed: %.4f m (analytic, M_buoy=%.0f kg)\n', ...
-            z_fill_seed, M_buoy_target);
+    fprintf('      Warm-start z_ballast seed: %.4f m (analytic, M_buoy=%.0f kg)\n', ...
+            z_ballast_seed, M_buoy_target);
 
     %% Nested-solver context
     ctx = struct();
     ctx.config           = config;
-    ctx.rho_steel        = rho_uhpc;
+    ctx.rho_uhpc         = rho_uhpc;
     ctx.rho_air          = rho_air;
     ctx.max_slope_factor = max_slope_factor;
     ctx.n_z_grid         = n_z_grid;
@@ -161,17 +155,17 @@ function solve_data = solve(config, x_opt_3d, final_props, opts)
     ctx.wall_strip_idx   = wall_strip_idx;
     ctx.nw_idx           = nw_idx;
     % is_solid_strip held constant during the solve: wall pinned solid;
-    % all others non-solid (z_fill controls the below-z_fill solid
+    % all others non-solid (z_ballast controls the below-z_ballast solid
     % region implicitly via integrate_split).  Promotion to
-    % is_solid_strip(i)=true for below-z_fill strips happens AFTER
+    % is_solid_strip(i)=true for below-z_ballast strips happens AFTER
     % the solve, for visualisation/extract_strip_geometry consumers.
     ctx.is_solid_strip = is_solid_seed;
 
     %% fmincon SQP
-    % DVs: x = [vs; z_fill; t_offset_strip(nw_idx)]
+    % DVs: x = [vs; z_ballast; t_offset_strip(nw_idx)]
     lb = [vs_lb;     hull_z_min + 1e-3;     t_min        * ones(N_nw, 1)];
     ub = [vs_ub;     hull_z_max - 1e-3;     0.95 * t_max * ones(N_nw, 1)];
-    x0 = [vs_opt;    z_fill_seed;           t_init       * ones(N_nw, 1)];
+    x0 = [vs_opt;    z_ballast_seed;        t_init       * ones(N_nw, 1)];
     x0 = max(lb, min(ub, x0));
 
     %% DESIGN-TRAJECTORY LOGGING
@@ -179,7 +173,7 @@ function solve_data = solve(config, x_opt_3d, final_props, opts)
     iter_hist = struct( ...
         'iter',        [], ...   % fmincon iteration index
         'vs',          [], ...   % vertical shift            [m]
-        'z_fill',      [], ...   % UHPC/void transition      [m]
+        'z_ballast',   [], ...   % UHPC/void transition      [m]
         'draft',       [], ...   % |hull_z_min + vs|         [m]
         't_strip',     [], ...   % N_strips x n_iter, Inf = solid [m]
         'M_total',     [], ...   % realised mass             [kg]
@@ -187,7 +181,7 @@ function solve_data = solve(config, x_opt_3d, final_props, opts)
         'GM',          [], ...   % metacentric height        [m]
         'T_heave',     [], ...   % uncoupled heave period    [s]
         'T_pitch',     [], ...   % uncoupled pitch period    [s]
-        'V_steel',     [], ...   % UHPC volume               [m^3]
+        'V_uhpc',      [], ...   % UHPC volume               [m^3]
         'V_air',       [], ...   % void volume               [m^3]
         'CG_z_world',  [], ...   % CG elevation, world frame [m]
         'phi',         [], ...   % objective value           [-]
@@ -209,7 +203,7 @@ function solve_data = solve(config, x_opt_3d, final_props, opts)
         @obj_fn, x0, [], [], [], [], lb, ub, @con_fn, fminopts);
 
     vs_star    = x_star(1);
-    zf_star    = x_star(2);
+    zb_star    = x_star(2);
     t_nw_star  = x_star(3:end);
 
     %% Rebuild per-strip arrays from converged x*
@@ -219,10 +213,10 @@ function solve_data = solve(config, x_opt_3d, final_props, opts)
     for kk = 1:N_nw
         t_offset_strip(nw_idx(kk)) = t_nw_star(kk);
     end
-    % Promote strips fully below z_fill* to solid (consumer parity)
+    % Promote strips fully below z_ballast* to solid (consumer parity)
     for i = 1:N_strips
         if i == wall_strip_idx, continue; end
-        if strip_edges(i+1) <= zf_star + 1e-9
+        if strip_edges(i+1) <= zb_star + 1e-9
             is_solid_final(i) = true;
             t_offset_strip(i) = inf;
         end
@@ -239,7 +233,7 @@ function solve_data = solve(config, x_opt_3d, final_props, opts)
               n_zero_interior, n_z_grid);
     end
     realised = mwecmass.realise.modular_precast.evaluate_design_point( ...
-        vs_star, t_offset_strip, is_solid_final, zf_star, grids_final, ctx);
+        vs_star, t_offset_strip, is_solid_final, zb_star, grids_final, ctx);
 
     if ~realised.feasible
         warning('mwecmass:modular_precast:InfeasibleUHPCOptimum', ...
@@ -255,26 +249,26 @@ function solve_data = solve(config, x_opt_3d, final_props, opts)
 
     %% Package output (steel_data shape + per-strip extras)
     solve_data = struct();
-    solve_data.t_steel          = mean(t_nw_star);   % representative global value
-    solve_data.z_fill           = zf_star;
+    solve_data.t_uhpc           = mean(t_nw_star);   % representative global value
+    solve_data.z_ballast        = zb_star;
     solve_data.draft            = realised.draft;
     solve_data.vertical_shift   = vs_star;
     solve_data.draft_optimiser  = draft_opt;
     solve_data.vs_optimiser     = vs_opt;
-    solve_data.rho_steel        = rho_uhpc;
+    solve_data.rho_uhpc         = rho_uhpc;
     solve_data.rho_air          = rho_air;
     solve_data.t_max            = t_max;
     solve_data.t_min            = t_min;
     solve_data.t_min_active     = t_min_active;
 
-    solve_data.V_steel = realised.V_steel;
+    solve_data.V_uhpc  = realised.V_uhpc;
     solve_data.V_air   = realised.V_air;
-    solve_data.V_hull  = realised.V_steel + realised.V_air;
-    solve_data.M_steel = realised.M_steel;
+    solve_data.V_hull  = realised.V_uhpc + realised.V_air;
+    solve_data.M_uhpc  = realised.M_uhpc;
     solve_data.M_air   = realised.M_air;
     solve_data.M_total = realised.M_total;
 
-    solve_data.z_cg_steel       = realised.z_cg_steel;
+    solve_data.z_cg_uhpc        = realised.z_cg_uhpc;
     solve_data.z_cg_air         = realised.z_cg_air;
     solve_data.CG_z_body        = realised.CG_z_body;
     solve_data.CG_z_world       = realised.CG_z_world;
@@ -328,7 +322,7 @@ function solve_data = solve(config, x_opt_3d, final_props, opts)
 
     % Design trajectory (one record per accepted SQP iterate).
     % NOTE: t_strip here is the DV state during the solve, where only
-    % the wall is Inf.  The post-solve promotion of below-z_fill
+    % the wall is Inf.  The post-solve promotion of below-z_ballast
     % strips to solid is NOT applied retroactively to the history —
     % t_offset_strip above is the final, promoted vector.
     solve_data.iter_history = iter_hist;
@@ -337,8 +331,8 @@ function solve_data = solve(config, x_opt_3d, final_props, opts)
 
     %% Console report
     fprintf('      ──────── Constructable Solve Result (fmincon SQP) ────────\n');
-    fprintf('      vs*     : %.4f m   z_fill* : %.4f m   draft* : %.4f m\n', ...
-            vs_star, zf_star, realised.draft);
+    fprintf('      vs*     : %.4f m   z_ballast* : %.4f m   draft* : %.4f m\n', ...
+            vs_star, zb_star, realised.draft);
     fprintf('      M_total : %.1f kg   target  %.1f kg   (%+.2f%%)\n', ...
             realised.M_total, tgt.mass, solve_data.residuals.dmass_pct);
     fprintf('      Mass-balance : %.3e kg  (%.4f%% of M_total)  ← ceq residual\n', ...
@@ -374,7 +368,7 @@ function solve_data = solve(config, x_opt_3d, final_props, opts)
     end
 
     function f = obj_fn(x)
-        vs_ = x(1);  zf_ = x(2);
+        vs_ = x(1);  zb_ = x(2);
         [t_off, is_sol] = unpack_dvs(x);
         [g_, n_zero_] = mwecmass.realise.modular_precast.build_geometry_grid( ...
             ctx.config, ctx.strip_edges, t_off, is_sol, ...
@@ -383,7 +377,7 @@ function solve_data = solve(config, x_opt_3d, final_props, opts)
             f = 1e4; return;
         end
         r_ = mwecmass.realise.modular_precast.evaluate_design_point( ...
-            vs_, t_off, is_sol, zf_, g_, ctx);
+            vs_, t_off, is_sol, zb_, g_, ctx);
         if ~isfinite(r_.T_heave) || ~isfinite(r_.T_pitch)
             f = 1e4; return;
         end
@@ -397,7 +391,7 @@ function solve_data = solve(config, x_opt_3d, final_props, opts)
     end
 
     function [c, ceq] = con_fn(x)
-        vs_ = x(1);  zf_ = x(2);
+        vs_ = x(1);  zb_ = x(2);
         [t_off, is_sol] = unpack_dvs(x);
         [g_, n_zero_] = mwecmass.realise.modular_precast.build_geometry_grid( ...
             ctx.config, ctx.strip_edges, t_off, is_sol, ...
@@ -406,7 +400,7 @@ function solve_data = solve(config, x_opt_3d, final_props, opts)
             c = 1.0; ceq = 1.0; return;
         end
         r_ = mwecmass.realise.modular_precast.evaluate_design_point( ...
-            vs_, t_off, is_sol, zf_, g_, ctx);
+            vs_, t_off, is_sol, zb_, g_, ctx);
         if ~isfinite(r_.M_total) || ~isfinite(r_.mass_buoyant_force) || ...
                 r_.mass_buoyant_force <= 0
             c = 1.0; ceq = 1.0; return;
@@ -434,7 +428,7 @@ function solve_data = solve(config, x_opt_3d, final_props, opts)
         end
 
         vs_l = x(1);
-        zf_l = x(2);
+        zb_l = x(2);
         [t_l, is_l] = unpack_dvs(x);
 
         [g_l, nz_l] = mwecmass.realise.modular_precast.build_geometry_grid( ...
@@ -445,11 +439,11 @@ function solve_data = solve(config, x_opt_3d, final_props, opts)
         end
 
         r_l = mwecmass.realise.modular_precast.evaluate_design_point( ...
-            vs_l, t_l, is_l, zf_l, g_l, ctx);
+            vs_l, t_l, is_l, zb_l, g_l, ctx);
 
         iter_hist.iter(end+1)       = optimValues.iteration;
         iter_hist.vs(end+1)         = vs_l;
-        iter_hist.z_fill(end+1)     = zf_l;
+        iter_hist.z_ballast(end+1)  = zb_l;
         iter_hist.draft(end+1)      = r_l.draft;
         iter_hist.t_strip           = [iter_hist.t_strip, t_l(:)];
         iter_hist.M_total(end+1)    = r_l.M_total;
@@ -457,7 +451,7 @@ function solve_data = solve(config, x_opt_3d, final_props, opts)
         iter_hist.GM(end+1)         = r_l.GM;
         iter_hist.T_heave(end+1)    = r_l.T_heave;
         iter_hist.T_pitch(end+1)    = r_l.T_pitch;
-        iter_hist.V_steel(end+1)    = r_l.V_steel;
+        iter_hist.V_uhpc(end+1)     = r_l.V_uhpc;
         iter_hist.V_air(end+1)      = r_l.V_air;
         iter_hist.CG_z_world(end+1) = r_l.CG_z_world;
         iter_hist.phi(end+1)        = optimValues.fval;

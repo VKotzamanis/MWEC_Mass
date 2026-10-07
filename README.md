@@ -102,7 +102,7 @@ Set `in.materials.realisation_type` in `WEC_User_Input.m` to one of the followin
 | Value | Purpose | Realisation solve |
 | --- | --- | --- |
 | `'preliminary'` | Preserves the optimised equivalent-density distribution for concept evaluation. | None; passes through the Stage 2 design. |
-| `'thin_shell'` | Represents the hull as a variable-thickness shell with a lower solid-fill region. | Solves shell thickness and fill elevation subject to the configured bounds. |
+| `'thin_shell'` | Represents the hull as a variable-thickness shell with a lower solid ballast region. | Solves shell thickness and ballast elevation subject to the configured bounds. |
 | `'modular_precast'` | Represents the hull as stacked precast rings with solid/wall regions and internal voids. | Solves the constructable modular geometry and recomputes realised properties. |
 
 All three modes use the same geometry, hydrostatics, hydrodynamic interpolation, and two-stage optimisation core. Realisation changes the reported as-built mass properties; it does not merely change a plot.

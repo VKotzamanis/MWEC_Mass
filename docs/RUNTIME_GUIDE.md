@@ -26,7 +26,7 @@ see [Methods and computational engine](METHODS_ENGINE.md); for exported MAT-file
 ## 1. Purpose and prerequisites
 
 The suite optimises the vertical distribution of mass in a free-floating wave-energy-converter
-hull, then optionally realises that distribution as a thin steel shell with fill or as modular
+hull, then optionally realises that distribution as a thin steel shell with ballast or as modular
 precast UHPC with internal voids. One run evaluates one realisation type.
 
 Requirements:
@@ -132,7 +132,7 @@ The three modes are:
 | Value | Calculation after Stage 2 | Principal mode-specific record |
 |---|---|---|
 | `'preliminary'` | No material-realisation solve | Optimiser result passes through |
-| `'thin_shell'` | Steel shell and solid-fill solve | `results.steel_data` |
+| `'thin_shell'` | Steel shell and solid-ballast solve | `results.steel_data` |
 | `'modular_precast'` | UHPC wall/ring and void solve | `results.constructability` |
 
 ## 4. Execution lifecycle
@@ -249,14 +249,14 @@ The authoritative definitions are in `WEC_User_Input.m`; propagation and validat
 |---|---:|---|---|---|
 | `in.materials.realisation_type` | `'thin_shell'` | char row | - | Exactly `'preliminary'`, `'thin_shell'`, or `'modular_precast'`. |
 | `in.materials.thin_shell.rho_shell` | `7500` | positive double scalar | kg/m³ | Structural shell density. |
-| `in.materials.thin_shell.rho_void` | `1.2` | nonnegative double scalar | kg/m³ | Void/air density in the thin-shell model. |
-| `in.materials.thin_shell.rho_fill` | `rho_shell` | double scalar | kg/m³ | Solid-fill density; must be `>= rho_shell` for the monotone analytic warm-start seed. |
+| `in.materials.thin_shell.rho_air` | `1.2` | nonnegative double scalar | kg/m³ | Void/air density in the thin-shell model. |
+| `in.materials.thin_shell.rho_ballast` | `rho_shell` | double scalar | kg/m³ | Solid ballast density; must be `>= rho_shell` for the monotone analytic warm-start seed. |
 | `in.materials.thin_shell.t_init` | `0.02` | positive double scalar | m | Initial thickness guess; it may be below `t_min` because it is a numerical seed. |
 | `in.materials.thin_shell.t_min` | `0.025` | positive double scalar | m | Minimum shell thickness. |
 | `in.materials.thin_shell.max_slope_factor` | `5.0` | positive double scalar | - | Limit controlling thickness taper with hull slope. |
 | `in.materials.thin_shell.n_z_grid` | `300` | positive integer scalar | count | Vertical integration/solve grid. |
 | `in.materials.modular_precast.rho_hull` | `2500` | positive double scalar | kg/m³ | UHPC density. |
-| `in.materials.modular_precast.rho_fill` | `1.2` | nonnegative double scalar | kg/m³ | Internal void/air density; distinct from thin-shell solid fill. |
+| `in.materials.modular_precast.rho_air` | `1.2` | nonnegative double scalar | kg/m³ | Air density in the precast voids. |
 | `in.materials.modular_precast.t_min` | `0.0762` | positive double scalar | m | Minimum precast thickness (3 in by default). |
 | `in.materials.modular_precast.wall_height` | `1.8` | positive double scalar | m | Height assigned to the wall region. |
 | `in.materials.modular_precast.n_sub` | `100` | positive integer scalar | count | Vertical samples per strip. |
@@ -452,14 +452,14 @@ Every colour is an RGB row in `[0,1]`.
 | `out.style.color.series_b` | `[1.00,0.00,0.00]` | Second comparison series. |
 | `out.style.fill_palette.solid_material` | `[0.45,0.46,0.50]` | Solid structural material. |
 | `out.style.fill_palette.jacket_material` | `[0.74,0.76,0.80]` | Jacket material. |
-| `out.style.fill_palette.fill_material` | `[0.55,0.55,0.60]` | Filled-strip material. |
+| `out.style.fill_palette.ballast_material` | `[0.55,0.55,0.60]` | Ballast (solid below `z_ballast`) material. |
 | `out.style.fill_palette.shell` | `[0.82,0.82,0.82]` | Shell annulus. |
 | `out.style.fill_palette.void` | `[1.00,1.00,1.00]` | Void/air. |
 | `out.style.fill_palette.hatch` | `[0.50,0.52,0.58]` | Void hatch. |
 | `out.style.fill_palette.boundary` | `[0.10,0.10,0.10]` | Outer material boundary. |
 | `out.style.fill_palette.inner_boundary` | `[0.30,0.30,0.32]` | Inner shell boundary. |
 | `out.style.fill_palette.waterline` | `[0.15,0.55,0.95]` | Still-water line. |
-| `out.style.fill_palette.fill_level` | `[0.95,0.55,0.10]` | Fill-level line. |
+| `out.style.fill_palette.ballast_level` | `[0.95,0.55,0.10]` | Ballast-level line. |
 | `out.style.fill_palette.wall_boundary` | `[0.80,0.15,0.10]` | Precast wall boundary. |
 | `out.style.color.dof` | `[0.12 0.47 0.71; 0.20 0.63 0.17; 0.89 0.10 0.11]` | Surge/heave/pitch primary colours by row. |
 | `out.style.color.dof_secondary` | `[0.40 0.65 0.85; 0.55 0.78 0.52; 0.95 0.50 0.50]` | Surge/heave/pitch secondary colours. |
@@ -657,7 +657,7 @@ separate location before running, because standard filenames are deterministic a
 | Water-depth mismatch | `in.bem.water_depth` differs from cache metadata | Use the cache's physical depth or regenerate coefficients for the intended site. |
 | Query clamps at a cache endpoint | Optimisation bounds exceed the cache shift grid | Regenerate a wider cache or narrow `vertical_shift_bounds`. |
 | Invalid realisation type | Typo or unsupported value | Use exactly one of the three strings in §3. |
-| Thin-shell seed assertion | `rho_fill < rho_shell` | Restore the required density ordering or use a compatible material model. |
+| Thin-shell seed assertion | `rho_ballast < rho_shell` | Restore the required density ordering or use a compatible material model. |
 | Modular-precast strip assertion | Fewer than three strips | Set `num_ballast_sections >= 3`. |
 | No hydrodynamic plots despite `true` flags | Dispatcher availability gate is unmet | Supply the configured HAMS executable where appropriate, or treat the cached coefficients through the exported MAT data. |
 | No diagnostic files | Diagnostics are false by default, results MAT disabled, or mode gate unmet | Enable only the desired `out.save.diagnostics.*` flag and keep `out.save.results_mat=true`. |

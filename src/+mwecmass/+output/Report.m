@@ -212,7 +212,7 @@ classdef Report
             mwecmass.output.emit(fids, '│  CONSTRUCTABILITY: UHPC + VOID REALIZATION                        \n');
             mwecmass.output.emit(fids, '├──────────────────────────────────────────────────────────────────┤\n');
             mwecmass.output.emit(fids, '│  Materials: UHPC = %.0f kg/m^3, void = %.1f kg/m^3\n', ...
-                cstr.rho_hull, cstr.rho_fill);
+                cstr.rho_hull, cstr.rho_air);
             mwecmass.output.emit(fids, '│  t_min = %.1f mm,  wall height = %.2f m\n', ...
                 cstr.t_min * 1000, cstr.wall_height);
 
