@@ -31,20 +31,33 @@ both Stage-3 realisations, the stored contours, the figures and the STEP writer
 - **Worktrees:** tasks run in git worktrees on task branches. The orchestrator merges accepted
   branches into `claude/lucid-cray-7o9442` and pushes after the full test suite passes. Work
   happens in the cloud container only.
-- **Waves.** Tasks in one wave run in parallel; a wave starts when the previous one is merged.
-  - A: T0 harness, T1 kernel rows and normals, T9 STEP writer.
-  - B: T0c parser entity lookups, T0d geometry cache, T2 offset, fold trimming and spline fit.
-  - C: T0b renames, T3 bodies and exact properties. **Owner checkpoint after T3.**
-  - D: T4a, then T4b (both edit `build_config.m` and the Stage-2 files).
-  - E: T5 then T6 (UHPC Stage 3), in parallel with T7 (thin shell). **Owner checkpoint after T6.**
-  - F: T8 figures, T10 Stage-3 STEP exports. **Owner checkpoint after T10.**
-  - G: T11 cleanup, then T12 docs, then T13 final review.
-- **Baseline:** the Octave regression baseline (T0, `tests/baseline/`) may change only in a task
-  that intends to change results (T4a, T4b, T5, T6, T7). That task updates the baseline in the
-  same commit and prints the changed quantities. Renames (T0b), parser lookups (T0c) and the
-  geometry cache (T0d) leave every number identical. Full-pipeline tests run only with
+- **Interfaces:** `2026-10-07-interfaces.md` is the contract every task builds and tests against
+  (structures S1–S8, functions F1–F14, invariants I1–I9, stand-in kit SK, file ownership map).
+- **Lanes.** Wave A (T0, T1, T9) is done; from there tasks run in lanes and meet at joins
+  (contract §6). Tasks in different lanes run in parallel; inside a lane they run in order.
+  - J0: merge T0, T1, T9 and the contract.
+  - Lane K: SK stand-in kit, then T2, then T3; join J1 merges T2 and T3. **Owner checkpoint
+    after T3.**
+  - Lane N: T0b, merged as soon as accepted (every later lane starts from the new names); T0c in
+    parallel (it edits only `MS2Parser.m`).
+  - Lane P: after T0b and T0c: T0d, then T4a, then T4b (all edit `build_config.m`); T4b merges
+    after J1.
+  - Lane U: after T0b: T5, then T6. Lane S: after T0b: T7. Lane O: after T0b: T8 and T10.
+  - J2: after J1 and lane P, the group T5, T6, T7, T8, T10 merges as one chain in that order; the
+    first whole-pipeline runs follow. **Owner checkpoints after T6 and after T10**, on those runs.
+  - Lane G: T11 cleanup, then T12 docs, then T13 final review.
+  - Before a producer is merged, its consumers test against the stand-ins of SK (contract §3).
+    A shared file is edited in the order of the contract's file ownership map (§4), each edit
+    after rebasing on the earlier ones.
+- **Baseline:** the Octave regression baseline (T0, `tests/baseline/`) may change only through
+  tasks that intend to change results (T4a, T4b, T5, T6, T7). Renames (T0b), parser lookups (T0c)
+  and the geometry cache (T0d) leave every number identical. Full-pipeline tests run only with
   `MWEC_REGRESSION=1` (a C1 run takes 24–94 min in Octave). Owner (2026-10-07): no
-  whole-pipeline run before Waves B–E are implemented; components are tested on their own.
+  whole-pipeline run before T5–T7 are implemented; components are tested on their own. Tasks are
+  therefore graded on component tests, and acceptance items that need a whole-pipeline run are
+  checked after J2: the baseline on the integration commit after T0d must reproduce exactly
+  (T0b, T0c, T0d), then C1 runs of both modes on the J2 head serve T4a, T4b, T5, T6, T7 and T10,
+  and the baseline is regenerated once with the changed quantities printed per task.
 - Checkpoints with the owner report measured numbers, not claims.
 - Deletions happen in the same commit as the code that replaces them. The pipeline must not sit
   in a broken state between tasks.
@@ -85,6 +98,8 @@ Kept as exact geometry: `MS2Parser` evaluation of `RevSurf` (revolved spline), a
 
 ### T0 — Toolchain, test harness, baseline (Sonnet medium)
 
+Contract: implements the test harness every item uses (contract §0, Tests); consumes nothing.
+
 Already in place: `tools/install_toolchain.sh` (verified: Octave 8.4.0, gmsh 4.15.2) and
 `tests/octave_shims/startsWith.m`, `endsWith.m` (Octave 8 single-space-pattern bug).
 
@@ -103,8 +118,11 @@ the install script in future cloud sessions.
 
 ### T0b — Rename the ballast and density variables (Sonnet medium)
 
-Wave C (after T0d, which also edits `build_config.m`), so every Stage-2 and Stage-3 task uses
-the new names. Pure renaming: no change to any
+Contract: implements the names of contract §0 and I5 in existing code; first in the contract §4 order of every
+shared file.
+
+Lane N, merged before lanes P, U, S and O start, so every Stage-2 and Stage-3 task uses the new
+names. Pure renaming: no change to any
 formula or value; every number in the baseline stays identical. Covers `src/`, `WEC_User_Input.m`, `WEC_Output_Options.m`, `validation/`,
 `Input/WAMIT/` if affected, `docs/`, `README.md`, `AGENTS.md`.
 
@@ -125,8 +143,10 @@ Octave; the T0 smoke tests pass; `RESULT_SCHEMA.md`, `export_schema.m` and
 
 ### T0c — Parser: resolve each entity once (Sonnet high)
 
-Wave B; owner request (2026-10-07). Files: `src/+mwecmass/+geometry/MS2Parser.m`, new tests and
-fixtures.
+Contract: no contract item; `MS2Parser` API unchanged (consumed by F1, F2).
+
+Lane N, parallel to T0b; owner request (2026-10-07). Files: `src/+mwecmass/+geometry/MS2Parser.m`,
+new tests and fixtures.
 
 - Every point evaluation looks up its curves and surfaces by name in a `containers.Map`. Octave
   profile of `build_config` (C1, thin shell): 2,067 s in total, of which `containers.Map`
@@ -144,7 +164,9 @@ entries are printed before and after.
 
 ### T0d — Save and reload the geometry products of `build_config` (Sonnet high)
 
-Wave B; owner request (2026-10-07). Files: `src/+mwecmass/+driver/build_config.m`, one new helper
+Contract: no contract item; its cached block later holds `config.hull_solid` (S1b) and F8 (added by T4b).
+
+Lane P, after T0b and T0c; owner request (2026-10-07). Files: `src/+mwecmass/+driver/build_config.m`, one new helper
 under `src/+mwecmass/+internal/`, `WEC_User_Input.m`, `.gitignore`, `tests/run_tests.m`.
 
 - Save the products of the expensive geometry steps of `build_config` (boundary cache;
@@ -166,6 +188,8 @@ baseline reproduces exactly; build and load times are printed.
 
 ### T1 — Kernel A: outer surface rows and normals (Sonnet high)
 
+Contract: done; `outer_rows` and `surface_normals` are consumed by F2 and by the I9 test.
+
 Files: `src/+mwecmass/+solid/outer_rows.m`, `surface_normals.m`, tests.
 
 - Sample each `.ms2` patch so that rows are horizontal sections at requested heights (module
@@ -178,6 +202,9 @@ Acceptance: sections equal `extract_isocurve_at_z` and the Python reference; nor
 outward, continuous across patch seams; exact symmetry under the deck's mirror planes.
 
 ### T2 — Kernel B: normal offset, fold trimming, spline surfaces (Sonnet high)
+
+Contract: implements S1, S1b, S2, S2r, F1, F2, F2b, F3, F3b, F4 and invariants I3, I4, I9; consumes T1
+(`surface_normals`, `outer_rows`) and the SK fixtures. Starts after SK in lane K.
 
 Files: `src/+mwecmass/+solid/offset_surface.m`, `trim_fold.m`, `fit_bspline_surface.m`,
 `eval_bspline_surface.m`, `slice_bspline_surface.m`, tests.
@@ -196,6 +223,9 @@ the independent erosion result for module 4 (void 3.548 m³ with the v1.0 module
 `z_ballast`); a slender-section case (thin-shell neck, t = 0.025 m) passes M3.
 
 ### T3 — Kernel C: bodies and exact properties (Sonnet high)
+
+Contract: implements S3–S7, F5, F6, F6b, F7 and invariants I1, I2, I6–I8 (including pole vertices and
+a `write_step` + `step_check` import of C1 bodies); consumes F1–F4 (T2), T9 `write_step`/`validate_brep`.
 
 Files: `src/+mwecmass/+solid/build_body.m`, `body_properties.m`, `hydrostatics_at_draft.m`,
 tests.
@@ -216,6 +246,8 @@ reported; agreement with an independent `gmsh` mesh integration of the same body
 **Owner checkpoint after T3.**
 
 ### T4a — Stage-2 changes that do not need the kernel (Sonnet high)
+
+Contract: no kernel item; edits shared files in the contract §4 order (after T0d). Stage-2 runs are checked after J2.
 
 Files: `src/+mwecmass/+optim/stage2_constraints.m`, `solve_2d_surrogate.m`, `stage2_bounds.m`,
 `run.m`, `src/+mwecmass/+driver/build_config.m`, `WEC_User_Input.m`; delete D14, D15.
@@ -239,6 +271,9 @@ and the changed quantities are printed.
 
 ### T4b — Stage-2 floors from the kernel, both modes (Sonnet high)
 
+Contract: implements F8 and `config.hull_solid` (S1b, inside the T0d cache); consumes F1, F2, F5, F6
+(SK stand-ins until J1). Merges after J1.
+
 Files: `src/+mwecmass/+driver/build_config.m`, `src/+mwecmass/+optim/stage2_bounds.m`; delete D1,
 D3.
 
@@ -256,6 +291,10 @@ under the Octave shim for both modes; the baseline is updated in the same commit
 quantities are printed.
 
 ### T5 — UHPC Stage 3, part a: split, build, check, store (Sonnet high) — needs OD2
+
+Contract: implements S8 and its schema for both modes, F9, F10 and F14 for modular precast (including the
+F11 and F13 calls); consumes F2, F2b, F5–F7 (SK until J1), `config.hull_solid`. Paths of F9, F10 per
+contract §3.
 
 Files: `src/+mwecmass/+realise/+modular_precast/` (`solve_and_extract.m`, new
 `split_from_stage2.m`, `realise_modules.m`, `check_against_stage2.m`, rewrite of
@@ -287,6 +326,9 @@ table; `final_props` never contains Stage-2 values for this mode.
 
 ### T6 — UHPC Stage 3, part b: optimisation, spill, closest fail (Sonnet high)
 
+Contract: extends F14 (precast escalation, closest fail) and fills S8 `step`, `solver`, `check`; consumes
+S8, F9, F10 (T5), F2, F2b, F5–F7; caching per contract §7.
+
 Files: `src/+mwecmass/+realise/+modular_precast/solve.m` (rewrite), new `stage3_report.m`.
 
 - Runs only when T5's check fails. Start point: T5's split. Variables: draft, ballast level in
@@ -315,6 +357,10 @@ unreachable GM) produces a stored, plotted, flagged closest-fail design. **Owner
 after T6.**
 
 ### T7 — Thin-shell rebuild on the kernel (Sonnet high)
+
+Contract: implements F14 for thin shell (S8 with `ballast`, `shell`, `air`, including the F11 and F13
+calls); consumes F2, F2b, F5–F7 (SK until J1), F9 and F10 (SK until J2), `config.hull_solid`; caching per
+contract §7.
 
 Also in T7: evaluate coupled periods in the objective (I20), and replace the fallback to Stage 2
 with the closest-fail rule (OD4): flagged status, per-metric report, plotted, stored in
@@ -349,6 +395,8 @@ thin-shell functions.
 
 ### T8 — Figures from the realised solid (Sonnet high)
 
+Contract: implements F12, F13; consumes S8 (SK `sti_realised`), F6b.
+
 Files: `src/+mwecmass/+output/+figures/` (new `realised_section_data.m` returning the y = 0 slice
 and plan sections of the realised body; `plot_modular_precast.m`, `plot_steel_solve.m`,
 `plot_optimised_cross_section.m`), `validation/diagnostics/stage_animations.m`; delete D8, D10,
@@ -360,7 +408,9 @@ D13.
 Acceptance: data functions tested in Octave against T3 sections; the owner confirms the figures
 in MATLAB.
 
-### T9 — STEP writer (Sonnet high) — wave A (separate files)
+### T9 — STEP writer (Sonnet high) — wave A (separate files, done)
+
+Contract: done; its B-rep struct is the `brep` of S4, consumed by F11 and the T3 tests.
 
 Files: `src/+mwecmass/+output/+step/write_step.m` and helpers, tests.
 
@@ -379,6 +429,8 @@ the analytic value.
 
 ### T10 — Stage-3 STEP exports (Sonnet high)
 
+Contract: implements F11 and `out.save.stage3.step`; consumes S4, S8 (SK `sti_realised`), T9 `write_step`.
+
 Files: realisation `run.m` files, `WEC_Output_Options.m` (new `out.save.stage3.step_*`
 switches), `src/+mwecmass/+output/+step/` builders.
 
@@ -396,16 +448,22 @@ Acceptance: C1 files pass `tests/step_check.py`; imported volumes equal the kern
 
 ### T11 — Remaining cleanup (Sonnet medium)
 
+Contract: edits shared files last in the contract §4 order (before T12); checks I5 over the whole code.
+
 `offset_polygon.m` if orphaned (D11); remaining D9 fields in `export_schema.m` and `Report.m`;
 check that no shape-assumption pattern remains (`grep` for `sqrt(.*/pi)`, `pi\s*\*\s*r`,
 `compute_rmin`, `R_eq`, `max_slope`, `cos_alpha`, `L_k`, `homothetic`).
 
 ### T12 — Documentation (Sonnet medium)
 
+Contract: documents S1–S8 and F1–F14 as implemented; last in the contract §4 order of every doc file.
+
 Rewrite the methods, runtime and schema sections listed under D12; document the kernel, the new
 Stage 3, the status/report fields and the STEP outputs; update `CHANGELOG.md` and `AGENTS.md`.
 
 ### T13 — Final review (Opus high)
+
+Contract: checks every invariant I1–I9 and the contract §4 order on the merged branch.
 
 Whole-branch review against AGENTS.md §1 and §5; full Octave test run; a short list of what the
 owner must confirm in MATLAB (real `fmincon` runs, figures).
