@@ -15,8 +15,11 @@ broken_loop = good;
 broken_loop.faces(1).loops{1} = broken_loop.faces(1).loops{1}([1 3 2 4]);
 twice = good;
 twice.bodies(2) = twice.bodies(1);
+parallel_xdir = good;
+parallel_xdir.surfaces{1}.xdir = parallel_xdir.surfaces{1}.normal;
 
-cases = {open_solid, 'open solid shell'; broken_loop, 'broken loop'; twice, 'repeated body name'};
+cases = {open_solid, 'open solid shell'; broken_loop, 'broken loop'; twice, 'repeated body name'; ...
+    parallel_xdir, 'xdir parallel to the plane normal'};
 for k = 1:size(cases, 1)
     id = '';
     try

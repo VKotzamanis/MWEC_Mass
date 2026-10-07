@@ -128,6 +128,13 @@ function check_surface(s, k)
                 ~all(isfinite([s.origin(:); s.normal(:)]))
             fail(sprintf('surface %d: plane needs a finite origin and a non-zero normal', k));
         end
+        if isfield(s, 'xdir') && ~isempty(s.xdir)
+            n = s.normal(:) / norm(s.normal);
+            x = s.xdir(:);
+            if numel(x) ~= 3 || ~all(isfinite(x)) || ~any(x - (x' * n) * n)
+                fail(sprintf('surface %d: xdir must be finite and not parallel to the normal', k));
+            end
+        end
     elseif strcmp(s.type, 'bspline')
         need(s, {'degree', 'ctrl', 'knots', 'weights'}, sprintf('surface %d', k));
         sz = size(s.ctrl);

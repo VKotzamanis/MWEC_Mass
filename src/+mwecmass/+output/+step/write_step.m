@@ -8,8 +8,8 @@ function write_step(brep, filename)
 %   as ADVANCED_BREP_SHAPE_REPRESENTATION (MANIFOLD_SOLID_BREP, or BREP_WITH_VOIDS when the body
 %   has void shells), sheets as MANIFOLD_SURFACE_SHAPE_REPRESENTATION (SHELL_BASED_SURFACE_MODEL
 %   of OPEN_SHELLs). Only entities reachable from a body are written. Each body gets the layers
-%   <name>_faces, <name>_edges and <name>_vertices; an edge or vertex shared with an earlier body
-%   stays on that body's layer.
+%   <name>_faces, <name>_edges and <name>_vertices; an edge, a vertex or a face (referenced with
+%   the same sign) shared with an earlier body is written once and stays on that body's layer.
 %
 %   Input struct brep (all indices are 1-based):
 %     uncertainty  optional scalar, stated distance accuracy in metres (default 1e-7)
@@ -31,8 +31,10 @@ function write_step(brep, filename)
 %                    surface    surface index
 %                    same_sense true if the face normal equals the surface normal
 %                    loops      cell array of signed edge index vectors; loops{1} is the outer
-%                               bound, counter-clockwise seen from the face normal; a negative
-%                               index traverses that edge from its end vertex to its start
+%                               bound, counter-clockwise seen from the face normal; further loops
+%                               are holes, clockwise seen from the face normal (the face lies to
+%                               the left of every loop); a negative index traverses that edge
+%                               from its end vertex to its start
 %     bodies       struct array with fields
 %                    name    printable ASCII, unique
 %                    kind    'solid' or 'sheet'
@@ -56,7 +58,6 @@ cid = zeros(numel(brep.curves), 1);
 eid = zeros(numel(brep.edges), 1);
 sid = zeros(numel(brep.surfaces), 1);
 fid = zeros(numel(brep.faces), 2);
-used = struct('faces', [], 'edges', [], 'vertices', []);
 
 ac = emit('APPLICATION_CONTEXT(''core data for automotive mechanical design processes'')');
 emit(sprintf('APPLICATION_PROTOCOL_DEFINITION(''international standard'',''automotive_design'',2000,#%d)', ac));

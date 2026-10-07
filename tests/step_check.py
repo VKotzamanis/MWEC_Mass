@@ -15,8 +15,14 @@ JSON keys
   mesh_volumes          divergence-theorem volume of the surface mesh of every volume; gmsh
                         orients each triangle by the orientation of its face in the imported shell
                         (outward on the outer shell, into the cavity on a void), so no flip is applied
-  open_edges            mesh edges whose incident triangles do not pair up as one forward and one
-                        reverse use, summed over the volumes and the surfaces that bound no volume
+  open_edges_volumes    mesh edges whose incident triangles do not pair up as one forward and one
+                        reverse use, summed over the volumes (0 for closed solids)
+  open_edges_sheets     the same count over the surfaces that bound no volume (free sheets); the
+                        boundary of a bounded sheet counts here
+  open_edges            open_edges_volumes + open_edges_sheets
+
+All shapes in the file are imported (highestDimOnly=False), so a file holding solids and sheets
+reports both; n_surfaces counts the faces bounding the solids and the sheet faces.
   mesh_size             element size used for the surface mesh (default: bbox diagonal / 20)
 """
 import json
@@ -68,7 +74,7 @@ def main(argv):
     gmsh.option.setNumber("General.Terminal", 0)
     gmsh.option.setString("Geometry.OCCTargetUnit", "M")
     gmsh.model.add("step_check")
-    gmsh.model.occ.importShapes(path)
+    gmsh.model.occ.importShapes(path, highestDimOnly=False)
     gmsh.model.occ.synchronize()
 
     volumes = [t for _, t in gmsh.model.getEntities(3)]
@@ -98,9 +104,9 @@ def main(argv):
         p = xyz - np.array(bbox[:3])
         a, b, c = p[tri[:, 0]], p[tri[:, 1]], p[tri[:, 2]]
         mesh_volumes.append(float(np.einsum("ij,ij->", a, np.cross(b, c)) / 6.0))
+    open_volumes = sum(open_edge_count(g) for g in groups)
     free = [surface_triangles(s, node_index) for s in surfaces if s not in bounding]
-    if free:
-        groups.append(np.vstack(free))
+    open_sheets = open_edge_count(np.vstack(free)) if free else 0
 
     all_tri = np.vstack([surface_triangles(s, node_index) for s in surfaces]) if surfaces else np.zeros((0, 3), dtype=np.int64)
     used = xyz[np.unique(all_tri)] if len(all_tri) else np.zeros((0, 3))
@@ -116,7 +122,9 @@ def main(argv):
         "bbox_mesh": bbox_mesh,
         "occ_volumes": occ_volumes,
         "mesh_volumes": mesh_volumes,
-        "open_edges": sum(open_edge_count(g) for g in groups),
+        "open_edges_volumes": open_volumes,
+        "open_edges_sheets": open_sheets,
+        "open_edges": open_volumes + open_sheets,
         "mesh_size": mesh_size,
     }
     gmsh.finalize()
