@@ -68,20 +68,25 @@ function test_fmincon_shim()
     check_flag('P5 iterations', out.iterations, 3);
 
     % 6. OutputFcn gets 'init' (iteration 0) then 'done', and a stop request at 'init' gives -1.
-    log = {};
     function_log = @(x, ov, state) log_state(state, ov);
     log_state('reset', []);
     with_fcn = optimoptions('fmincon', 'OutputFcn', function_log);
     [~, ~, ef, out] = fmincon(f2, [-4; -4], [-1 -2], -6, [], [], [], [], [], with_fcn);
-    log = log_state('get', []);
-    fprintf('P6 OutputFcn states: %s (iterations at done = %d)\n', strjoin(log(:, 1)', ','), log{end, 2});
-    if ~isequal(log(:, 1)', {'init', 'done'}) || log{1, 2} ~= 0 || log{end, 2} ~= out.iterations
+    states = log_state('get', []);
+    fprintf('P6 OutputFcn states: %s (iterations at done = %d)\n', strjoin(states(:, 1)', ','), states{end, 2});
+    if ~isequal(states(:, 1)', {'init', 'done'}) || states{1, 2} ~= 0 || states{end, 2} ~= out.iterations
         error('test_fmincon_shim:outputfcn', 'OutputFcn state sequence or iteration counts wrong');
     end
     stopper = optimoptions('fmincon', 'OutputFcn', @(x, ov, state) true);
     [x, ~, ef] = fmincon(f2, [-4; -4], [-1 -2], -6, [], [], [], [], [], stopper);
     check_flag('P6 stop at init exitflag', ef, -1);
     check('P6 stop at init x', x, [-4; -4], 0);
+
+    % 7. optimoptions keeps the solver name and updates an existing struct.
+    o = optimoptions('fmincon', 'MaxIterations', 5);
+    o = optimoptions(o, 'MaxIterations', 7, 'Display', 'off');
+    check_flag('P7 SolverName', strcmp(o.SolverName, 'fmincon'), true);
+    check_flag('P7 updated option', o.MaxIterations, 7);
 
     % 8. Contradictory constraints x <= 1 and x >= 2: no feasible point, exitflag -2.
     warning('off', 'Octave:SQP-QP-subproblem');
@@ -92,12 +97,6 @@ function test_fmincon_shim()
     if out.constrviolation < 0.5
         error('test_fmincon_shim:P8', 'a violation of at least 0.5 is unavoidable, got %.3e', out.constrviolation);
     end
-
-    % 7. optimoptions keeps the solver name and updates an existing struct.
-    o = optimoptions('fmincon', 'MaxIterations', 5);
-    o = optimoptions(o, 'MaxIterations', 7, 'Display', 'off');
-    check_flag('P7 SolverName', strcmp(o.SolverName, 'fmincon'), true);
-    check_flag('P7 updated option', o.MaxIterations, 7);
 end
 
 function v = check_row(x)

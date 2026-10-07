@@ -55,7 +55,8 @@ function test_c1_reference_sections()
               'contour is not exactly mirror symmetric (gap %.3e m)', max(mirror_gap));
     end
     % Bound 1e-13 m2: the reference sums 32-point Gauss-Legendre pieces of arcs and lines
-    % (roundoff only); the stadium area is at most 4*0.6 + pi*0.6^2 = 3.6 m2 here.
+    % (roundoff only); the largest stadium area at these heights is 13.24 m2 (half-width 1.513 m,
+    % z = -1.339 m), so 1e-13 m2 is about 7.6e-15 relative, a few units of double roundoff.
     if max(oracle_gap) > 1e-13
         error('test_c1_reference_sections:oracle', ...
               'reference area departs from the stadium formula by %.3e m2', max(oracle_gap));

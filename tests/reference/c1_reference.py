@@ -25,8 +25,31 @@ Deck semantics used (read from the deck text):
   RuledSurf    straight lines joining equal parameters of the two curves.
   Symmetry     'x y' adds the images mirrored in x = 0, in y = 0 and in both.
 
-Usage: python3 tests/reference/c1_reference.py [--deck PATH] z1 [z2 ...]
-Prints a JSON list of {"z", "area", "Ixx", "Iyy", "x_half_width"}.
+Outer profile (the section of surface1 in its meridian plane y = 1, curve6, and equally the edge of
+the ruled flat sides): points, unit tangents and outward unit normals, from analytic curve
+derivatives. The normal of the revolved patch at another angle is the profile normal turned about
+the axis; it is also computed from S_s x S_theta and the two must agree. The flat sides surface2 are
+planes containing the y direction, so their normal is the profile normal as well.
+
+Normal offset by t (the wall): the profile moved inward along its outward normal. A point of the
+raw offset curve belongs to the offset surface only if its distance to the outer walls (the profile and its mirror image in x = 0) equals t;
+points inside the fold or closer to the opposite wall (distance < t) are discarded. Revolution and the ruling leave this planar
+construction unchanged, so the half-width of the offset section at a height is the |x| of the valid
+offset-curve crossings of that height.
+
+Usage:
+  python3 tests/reference/c1_reference.py [--deck PATH] z1 [z2 ...]
+      JSON list of {"z", "area", "Ixx", "Iyy", "x_half_width"}.
+  python3 tests/reference/c1_reference.py [--deck PATH] --profile N
+      JSON {"profile": [N points {"s", "x", "y", "z", "tx", "tz", "nx", "nz",
+      "revolved_normal_gap"}]}: s is the curve6 parameter, (tx, tz) the unit tangent, (nx, nz) the
+      outward unit normal in the profile plane, revolved_normal_gap the length of the difference
+      between the turned normal and S_s x S_theta (unit) at the middle of the angle range (null
+      for points on the axis).
+  python3 tests/reference/c1_reference.py [--deck PATH] --offset T z1 [z2 ...]
+      JSON list of {"z", "t", "x_half_width_valid": [...], "x_half_width_raw": [...],
+      "x_half_width": largest valid value or null}: crossings of the height z by the offset curve,
+      all of them and those that survive the fold test.
 """
 import json
 import sys
@@ -142,6 +165,52 @@ class Model:
                 return p
             return proj
         raise ValueError("not a curve entity: %s %s" % (kind, name))
+
+    def deriv(self, name):
+        """Analytic d/dt of a curve entity, t in [0, 1]."""
+        key = ("dcv", name)
+        if key not in self.cache:
+            self.cache[key] = self._deriv(name)
+        return self.cache[key]
+
+    def _deriv(self, name):
+        kind, a = self.ent[name]
+        if kind == "BCurve":
+            degree = int(a[1])
+            pts = np.array([self.point(n) for n in a[a.index("{") + 1:a.index("}")]])
+            n = len(pts)
+            interior = [k / (n - degree) for k in range(1, n - degree)]
+            knots = np.r_[np.zeros(degree + 1), interior, np.ones(degree + 1)]
+            d = BSpline(knots, pts, degree).derivative()
+            return lambda t: d(min(max(t, 0.0), 1.0))
+        if kind == "Arc":
+            p_a, centre, p_b = (self.point(n) for n in a[2:5])
+            ua = p_a - centre
+            radius = np.linalg.norm(ua)
+            ua = ua / radius
+            vb = p_b - centre
+            vb = vb - np.dot(vb, ua) * ua
+            wb = vb / np.linalg.norm(vb)
+            sweep = np.arccos(np.clip(np.dot(p_b - centre, ua) / radius, -1, 1))
+            return lambda t: radius * sweep * (-np.sin(t * sweep) * ua + np.cos(t * sweep) * wb)
+        if kind == "PolyCurve2":
+            parts = [self.deriv(n) for n in a[a.index("{") + 1:a.index("}")]]
+            m = len(parts)
+
+            def dpoly(t):
+                k = min(int(t * m), m - 1)
+                return m * parts[k](t * m - k)
+            return dpoly
+        if kind == "BSubCurve":
+            bead_a, bead_b = a[a.index("{") + 1:a.index("}")]
+            parent = self.ent[bead_a][1][0]
+            t0, t1 = float(self.ent[bead_a][1][1]), float(self.ent[bead_b][1][1])
+            base = self.deriv(parent)
+            return lambda s: (t1 - t0) * base(t0 + s * (t1 - t0))
+        if kind == "Line":
+            p0, p1 = self.point(a[1]), self.point(a[2])
+            return lambda t: p1 - p0
+        raise ValueError("no derivative for entity: %s %s" % (kind, name))
 
     def _revolve(self, profile, axis_name, angle_deg):
         axis = self.ent[axis_name]
@@ -265,19 +334,134 @@ def loop_properties(loop):
     return sign * area, sign * ixx, sign * iyy, xmax
 
 
+def profile_name(entities):
+    surfaces = [(n, a) for n, (k, a) in entities.items() if k == "RevSurf"]
+    assert len(surfaces) == 1, "one RevSurf expected"
+    return surfaces[0][0], surfaces[0][1][1], surfaces[0][1]
+
+
+def profile_frame(model, curve_name, s):
+    """Point, unit tangent and outward unit normal (x-z plane) of the profile at parameter s.
+
+    The profile runs from the top on the axis, towards -x and down to the keel: counter-clockwise
+    in the x-z plane, so the outward normal is the tangent turned clockwise, (tz, -tx).
+    """
+    p = model.curve(curve_name)(s)
+    d = model.deriv(curve_name)(s)
+    t = np.array([d[0], d[2]]) / np.hypot(d[0], d[2])
+    return p, t, np.array([t[1], -t[0]])
+
+
+def revolved_normal_gap(model, surf_args, curve_name, s):
+    """|turned profile normal - unit(S_s x S_theta)| at the middle of the angle range, or None on the axis."""
+    axis = model.ent[surf_args[2]]
+    a0, a1 = model.point(axis[1][1]), model.point(axis[1][2])
+    k = (a1 - a0) / np.linalg.norm(a1 - a0)
+    lo, hi = np.deg2rad(float(surf_args[3])), np.deg2rad(float(surf_args[4]))
+    mid = 0.5 * (lo + hi)
+    p, t, n = profile_frame(model, curve_name, s)
+    d = model.deriv(curve_name)(s)
+    v = p - a0
+
+    def turn(w, ang):
+        return w * np.cos(ang) + np.cross(k, w) * np.sin(ang) + k * np.dot(k, w) * (1 - np.cos(ang))
+    # Profile plane: the profile sits at the end angle hi.
+    n3 = np.array([n[0], 0.0, n[1]])
+    turned = turn(n3, mid - hi)
+    ss = turn(d, mid)
+    stheta = np.cross(k, turn(v, mid))
+    cross = np.cross(ss, stheta)
+    if np.linalg.norm(stheta) < 1e-9:
+        return None  # the profile point lies on the axis: S_theta vanishes, no normal from S_s x S_theta
+    cross = cross / np.linalg.norm(cross)
+    # S_s x S_theta may point either way; compare with the sign that agrees with the turned normal.
+    if np.dot(cross, turned) < 0:
+        cross = -cross
+    return float(np.linalg.norm(turned - cross))
+
+
+def point_segment_distance(points, poly):
+    a, b = poly[:-1], poly[1:]
+    ab = b - a
+    denom = np.sum(ab * ab, axis=1)
+    out = np.empty(len(points))
+    for i, q in enumerate(points):
+        u = np.clip(np.sum((q - a) * ab, axis=1) / denom, 0.0, 1.0)
+        c = a + u[:, None] * ab
+        out[i] = np.sqrt(np.min(np.sum((q - c) ** 2, axis=1)))
+    return out
+
+
+def offset_half_widths(model, curve_name, t_wall, zs, n_dense=20001, n_scan=4001):
+    """Crossings of each height z by the inward normal offset of the profile, with the fold test."""
+    dense_s = np.linspace(0.0, 1.0, n_dense)
+    half = np.array([[model.curve(curve_name)(s)[0], model.curve(curve_name)(s)[2]] for s in dense_s])
+    # The deck's symmetry 'x' puts the opposite wall at the mirror image, so a point of the void
+    # must also be at least t from that wall (the two walls of a slender section never meet).
+    dense = np.vstack([half, half[::-1] * np.array([-1.0, 1.0])])
+
+    def offset_point(s):
+        p, _, n = profile_frame(model, curve_name, s)
+        return np.array([p[0], p[2]]) - t_wall * n
+
+    scan = np.linspace(0.0, 1.0, n_scan)
+    zoff = np.array([offset_point(s)[1] for s in scan])
+    result = []
+    for z in zs:
+        raw = []
+        for i in range(n_scan - 1):
+            f0, f1 = zoff[i] - z, zoff[i + 1] - z
+            if f0 == 0.0 or f0 * f1 < 0:
+                root = brentq(lambda s: offset_point(s)[1] - z, scan[i], scan[i + 1], xtol=1e-15, rtol=8.9e-16)
+                raw.append(root)
+        pts = np.array([offset_point(r) for r in raw]).reshape(-1, 2)
+        dist = point_segment_distance(pts, dense) if len(raw) else np.array([])
+        # The distance of a valid offset point to the outer walls is t to within the dense
+        # polyline's chord error; points of the fold are closer than t by far more than that.
+        steps = np.hypot(*np.diff(half, axis=0).T)
+        chord = float(np.max(steps))
+        valid = [abs(pts[k, 0]) for k in range(len(raw)) if dist[k] >= t_wall - chord]
+        result.append({"z": z, "t": t_wall,
+                       "x_half_width_valid": valid,
+                       "x_half_width_raw": [abs(p[0]) for p in pts],
+                       "x_half_width": max(valid) if valid else None})
+    return result
+
+
 def main(argv):
     deck = "Input/C1.ms2"
     zs = []
+    n_profile = None
+    t_wall = None
     i = 1
     while i < len(argv):
         if argv[i] == "--deck":
             deck = argv[i + 1]
+            i += 2
+        elif argv[i] == "--profile":
+            n_profile = int(argv[i + 1])
+            i += 2
+        elif argv[i] == "--offset":
+            t_wall = float(argv[i + 1])
             i += 2
         else:
             zs.append(float(argv[i]))
             i += 1
     symmetry, entities = parse_deck(deck)
     model = Model(entities)
+    if n_profile is not None or t_wall is not None:
+        _, curve_name, surf_args = profile_name(entities)
+        if n_profile is not None:
+            rows = []
+            for s in np.linspace(0.0, 1.0, n_profile):
+                p, t, n = profile_frame(model, curve_name, s)
+                rows.append({"s": s, "x": p[0], "y": p[1], "z": p[2], "tx": t[0], "tz": t[1],
+                             "nx": n[0], "nz": n[1],
+                             "revolved_normal_gap": revolved_normal_gap(model, surf_args, curve_name, s)})
+            print(json.dumps({"profile": rows}, indent=1))
+        else:
+            print(json.dumps(offset_half_widths(model, curve_name, t_wall, zs), indent=1))
+        return
     result = []
     for z in zs:
         loop = chain(section_pieces(model, symmetry, z))

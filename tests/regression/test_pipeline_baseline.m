@@ -1,28 +1,31 @@
 function test_pipeline_baseline()
 %TEST_PIPELINE_BASELINE Rerun the Octave pipeline on C1 and require the baseline numbers exactly.
-%   Both realisation types run through mwecmass.driver.run (tools/baseline_run.m). The code is
-%   deterministic, so every recorded number must reproduce to the last bit: the gate is equality
-%   of jsonencode(summary), which prints each double with the shortest text that reads back to
-%   the same double, against the text stored in tests/baseline/octave_v1_baseline.json. There is
-%   no tolerance. The MATLAB v1.0 values are printed alongside as information only: Octave's sqp
-%   is not MATLAB's, so those differ by construction.
+%   The pipeline runs through mwecmass.driver.run (tools/baseline_run.m) in the modes that the
+%   selected baseline file holds. The code is deterministic, so every recorded number must
+%   reproduce to the last bit: the gate is equality of jsonencode(summary), which prints each
+%   double with the shortest text that reads back to the same double, against the member text
+%   stored in the baseline file. There is no tolerance. The MATLAB v1.0 values are printed
+%   alongside as information only: Octave's sqp is not MATLAB's, so those differ by construction.
 %   The Octave run is long (see the seconds_<mode> members of the baseline files; most of it is
 %   the hull-section tables in build_config, where Octave's containers.Map lookups dominate).
-%   TESTS_BASELINE_PRESET selects the case: 'fast' (default) is the baseline_run preset with
-%   coarser z-grids and the file octave_v1_baseline_fast.json; 'full' is the author input and
-%   octave_v1_baseline.json. TESTS_BASELINE_MODES (comma separated, default both) limits the
-%   run, for example TESTS_BASELINE_MODES=thin_shell; the default is every mode that the selected
-%   baseline file holds. tests/run_tests.m runs this test only when MWEC_REGRESSION=1.
+%   Environment variables:
+%     TESTS_BASELINE_PRESET  'fast' (default): baseline_run preset with coarser z-grids, compared
+%                            with octave_v1_baseline_fast.json; 'full': the author inputs,
+%                            compared with octave_v1_baseline.json.
+%     TESTS_BASELINE_MODES   comma separated modes to run, for example thin_shell; the default is
+%                            every mode that the selected baseline file holds.
+%   tests/run_tests.m runs this test only when MWEC_REGRESSION=1.
     root = fileparts(fileparts(fileparts(mfilename('fullpath'))));
     addpath(fullfile(root, 'tests', 'octave_shims'), fullfile(root, 'tools'));
     preset = getenv('TESTS_BASELINE_PRESET');
     if isempty(preset), preset = 'fast'; end
     suffix = '';
     if ~strcmp(preset, 'full'), suffix = ['_' preset]; end
+    % A struct, not a containers.Map: baseline_run clears functions, which breaks Map objects.
     members = read_members(fullfile(root, 'tests', 'baseline', ['octave_v1_baseline' suffix '.json']));
     matlab_ref = jsondecode(fileread(fullfile(root, 'tests', 'baseline', 'matlab_v1_reference.json')));
 
-    modes = intersect({'modular_precast', 'thin_shell'}, keys(members));
+    modes = intersect({'modular_precast', 'thin_shell'}, fieldnames(members)');
     selected = getenv('TESTS_BASELINE_MODES');
     if ~isempty(selected)
         modes = strsplit(selected, ',');
@@ -30,15 +33,15 @@ function test_pipeline_baseline()
     mismatches = {};
     for k = 1:numel(modes)
         mode = modes{k};
-        if ~isKey(members, mode)
+        if ~isfield(members, mode)
             error('test_pipeline_baseline:noBaseline', 'no baseline entry for %s', mode);
         end
         t0 = tic;
         summary = baseline_run(mode, false, preset);
-        fprintf('%s (%s): pipeline run %.0f s (baseline run %s s)\n', mode, preset, toc(t0), members(['seconds_' mode]));
+        fprintf('%s (%s): pipeline run %.0f s (baseline run %s s)\n', mode, preset, toc(t0), members.(['seconds_' mode]));
         fresh_text = jsonencode(summary);
-        if ~strcmp(fresh_text, members(mode))
-            found = compare(mode, jsondecode(members(mode)), jsondecode(fresh_text));
+        if ~strcmp(fresh_text, members.(mode))
+            found = compare(mode, jsondecode(members.(mode)), jsondecode(fresh_text));
             if isempty(found)
                 found = {[mode ': texts differ but decode to the same doubles']};
             end
@@ -55,11 +58,11 @@ end
 
 function members = read_members(path)
 % One JSON member per line, written by tools/write_octave_baseline.m.
-    members = containers.Map();
+    members = struct();
     lines = strsplit(fileread(path), sprintf('\n'));
     for k = 1:numel(lines)
         tok = regexp(lines{k}, '^"([^"]+)": (.*?),?$', 'tokens', 'once');
-        if ~isempty(tok), members(tok{1}) = tok{2}; end
+        if ~isempty(tok), members.(tok{1}) = tok{2}; end
     end
 end
 

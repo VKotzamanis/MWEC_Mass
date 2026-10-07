@@ -148,12 +148,22 @@ function summary = summarise(mode, results, final_props)
   summary.draft = final_props.draft;
   summary.realised_strip_density = row(final_props.realised_strip_density);
   stage3 = struct();
-  names = {'t_steel', 'vertical_shift', 'draft', 't_max', 't_min_active', 'V_steel', ...
+  % The wall material names the thickness and volume keys. The production field is read under
+  % its v1.0 name (t_steel, V_steel, which held UHPC quantities in modular precast) or its new name.
+  if strcmp(mode, 'thin_shell')
+    wall = 'steel';
+  else
+    wall = 'uhpc';
+  end
+  names = {['t_' wall], 'vertical_shift', 'draft', 't_max', 't_min_active', ['V_' wall], ...
            'V_air', 'M_total', 'CG_z_world', 'GM_realised', 'T_heave_realised', ...
            'T_pitch_realised', 'mass_balance_error_pct', 'phi_star', 'feasible', 'exitflag'};
   for k = 1:numel(names)
-    if isfield(c, names{k})
-      stage3.(names{k}) = double(c.(names{k}));
+    for source = {names{k}, strrep(names{k}, '_uhpc', '_steel')}
+      if isfield(c, source{1})
+        stage3.(names{k}) = double(c.(source{1}));
+        break;
+      end
     end
   end
   % The ballast level field is read under either of its two names.

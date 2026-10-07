@@ -1,8 +1,8 @@
 # Tests
 
 GNU Octave 8.4 runs the tests; production code stays MATLAB R2022b compatible. Install the toolchain
-once per container with `bash tools/install_toolchain.sh` (Octave, gnuplot, octave-optim, Python gmsh
-and h5py).
+once per container with `bash tools/install_toolchain.sh` (Octave, gnuplot, octave-optim, Python gmsh,
+h5py, numpy and scipy).
 
 ## Run
 
@@ -39,10 +39,11 @@ MWEC_REGRESSION=1 TESTS_FILTER=regression octave --no-gui --quiet tests/run_test
 |---|---|
 | `octave_shims/` | Replacements for MATLAB functions Octave 8.4 lacks (`fmincon` over `sqp`, `optimoptions`, `contains`, `discretize`, `datetime`, `issorted`, `java` (SHA-256 only), `double`/`logical` (`.empty` form), `startsWith`, `endsWith`). See its README. |
 | `shim/` | Tests of the shims (`test_fmincon_shim.m`, `test_misc_shims.m`). |
-| `geometry/` | Geometry tests against the independent reference (`test_c1_reference_sections.m`). |
-| `reference/` | `c1_reference.py`: evaluator of `Input/C1.ms2` written from the deck text; run on request by the geometry test. |
+| `geometry/` | Geometry tests against the independent reference (`test_c1_reference_sections.m`, `test_c1_reference_profile.m`). |
+| `reference/` | `c1_reference.py`: evaluator of `Input/C1.ms2` written from the deck text: section area and inertias per height, the profile with outward normals, and the normal-offset half-width per height and wall thickness. |
+| `step/` | `test_step_check.m` and `make_step_fixtures.py`: checks `step_check.py` on gmsh-written solids with closed-form volumes. `tests/step_check.py` reports a STEP file (declared unit, solid count, open edges, OpenCASCADE and mesh-divergence volume, bounding box) and fails on wrong `--expect-*` values. |
 | `regression/` | `test_pipeline_baseline.m`: reruns the Octave pipeline and requires the numbers recorded in `baseline/` (see Pipeline under Octave). Runs only with `MWEC_REGRESSION=1`. |
-| `baseline/` | `octave_v1_baseline.json` (full preset, both modes), `octave_v1_baseline_fast.json` (fast preset, modular precast) and `matlab_v1_reference.json` (the MATLAB v1.0 results read from `Output/C1_*_results.mat`); `test_baseline_vs_matlab.m` prints the recorded Octave values next to the MATLAB ones from these files, without a pipeline run. |
+| `baseline/` | `octave_v1_baseline.json` (full preset, both modes), `octave_v1_baseline_fast.json` (fast preset, modular precast) and `matlab_v1_reference.json` (the MATLAB v1.0 results read from `Output/C1_*_results.mat`); `test_baseline_vs_matlab.m` prints the recorded Octave values next to the MATLAB ones from these files, without a pipeline run. The MATLAB file also holds the Stage-2 design (`results.Final3D`) per mode. |
 | `fixtures/` | `C1_wamit_cache_v5.mat`: the BEM cache converted to a format Octave can read. |
 
 `tools/` holds the scripts that make the baseline and fixture files: `convert_v73_to_v5.py`,
@@ -59,10 +60,9 @@ cannot read the v7.3 BEM cache, hence the converted copy in `fixtures/`. The `fm
 numbers differ (Stage 1 and Stage 2 end in different local optima); the baselines pin the Octave
 numbers for regression and `matlab_v1_reference.json` holds the MATLAB v1.0 values for comparison.
 
-Known fidelity defect, fixed by a later task (T0e): for modular precast, Octave's Stage 1 picks another
-draft node (`vertical_shift` 0.7786 against MATLAB 1.075) and Stage 2 stops with exitflag -2 at
-`vertical_shift` 0.409 (MATLAB: 0.983, exitflag 1). The final numbers agree with MATLAB only because
-today's Stage 3 re-optimises from scratch and ignores the Stage-2 densities.
+Known fidelity defect, fixed by task T0e: for modular precast Octave's Stage 1 picks another draft node
+(`vertical_shift` 0.7786, MATLAB 1.075) and Stage 2 stops with exitflag -2 at 0.409 (MATLAB 0.983,
+exitflag 1); the final numbers agree with MATLAB only because today's Stage 3 re-optimises from scratch.
 
 Two presets, one baseline file each, one JSON member per line:
 

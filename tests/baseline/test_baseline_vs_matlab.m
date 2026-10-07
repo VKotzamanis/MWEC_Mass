@@ -8,6 +8,14 @@ function test_baseline_vs_matlab()
     scalars = {'vertical_shift', 'draft', 'mass_total', 'CG_total_z', 'GM_L', ...
                'T_heave_coupled', 'T_pitch_coupled', 'stage2_exitflag'};
     stage3_keys = {'z_ballast', 'exitflag', 'feasible'};
+    for mode = {'modular_precast', 'thin_shell'}
+        s2 = matlab_ref.(mode{1}).stage2;
+        fprintf('%s, MATLAB v1.0 Stage-2 design (results.Final3D), the reference for Stage 3:\n', mode{1});
+        for name = fieldnames(s2)'
+            fprintf('  %-22s %16.10g\n', name{1}, s2.(name{1}));
+        end
+        fprintf('\n');
+    end
     for f = 1:size(files, 1)
         recorded = jsondecode(fileread(fullfile(root, 'tests', 'baseline', files{f, 1})));
         for mode = {'modular_precast', 'thin_shell'}

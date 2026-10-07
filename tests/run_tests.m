@@ -10,9 +10,8 @@
 tests_dir = fileparts(mfilename('fullpath'));
 repo_root = fileparts(tests_dir);
 warning('off', 'Octave:shadowed-function');
-addpath(fullfile(tests_dir, 'octave_shims'));
-addpath(fullfile(repo_root, 'src'));
-addpath(repo_root);
+% One call so that the shims come first, then src, then the repo root (addpath prepends).
+addpath(fullfile(tests_dir, 'octave_shims'), fullfile(repo_root, 'src'), repo_root);
 
 files = {};
 pending = {tests_dir};
