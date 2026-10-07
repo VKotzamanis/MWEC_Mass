@@ -40,7 +40,7 @@ ev.objective = sum(((x3 - x2) ./ x2).^2);
 ev.ceq = [ev.check.equalities.residual]';
 end
 
-function set = inner_set(ctx, t, adaptive)
+function fitted = inner_set(ctx, t, adaptive)
 key = num2hex(t);
 if adaptive
     store = ctx.adaptive_sets;
@@ -48,14 +48,14 @@ else
     store = ctx.sets;
 end
 if isKey(store, key)
-    set = store(key);
+    fitted = store(key);
     return
 end
 opts = struct('t_min', ctx.t_min);
 if ~adaptive
     opts.knots_from = ctx.state('ref');
 end
-set = mwecmass.solid.offset_surface(ctx.config.ms2_model, ctx.config.boundary_cache, ctx.geo, t, ...
+fitted = mwecmass.solid.offset_surface(ctx.config.ms2_model, ctx.config.boundary_cache, ctx.geo, t, ...
     ctx.geo.z_range, opts);
-store(key) = set; %#ok<NASGU> containers.Map is a handle: the assignment fills the cache
+store(key) = fitted; %#ok<NASGU> containers.Map is a handle: the assignment fills the cache
 end

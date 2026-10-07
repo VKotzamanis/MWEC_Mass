@@ -1,11 +1,15 @@
 function test_thin_shell_stage3()
 %TEST_THIN_SHELL_STAGE3  Thin-shell Stage 3 (contract F14) on the cylinder fixture.
 %   Runs mwecmass.realise.thin_shell.run on the SK stand-ins of F1-F7, F9, F10 (the real functions
-%   win once merged; this is the join test) for three Stage-2 solutions: one built from a
+%   win once merged; this is the join test) for these Stage-2 solutions: one built from a
 %   thin-shell design (draft kept; run with two acceptance bands), one with an unreachable GM
-%   (closest fail at the Stage-2 draft) and one whose displaced mass at the Stage-2 draft is below
-%   the lightest buildable design (draft released). The figure and STEP calls run against test doubles that record them.
-%   The closed forms of sti_closed_form (prisms) are the independent oracle of the hull volume.
+%   (closest fail at the Stage-2 draft), one whose displaced mass at the Stage-2 draft is below
+%   the lightest buildable design (draft released), one whose ballast spills past module 1, one
+%   that ends the flotation curve with z_ballast at the hull bottom (below the inner z_lo), and one
+%   that no draft within the bounds floats (closest fail with the draft released). The figure and
+%   STEP calls run against test doubles that record them.
+%   The closed forms of sti_closed_form (prisms) are the independent oracle of the hull volume;
+%   the prism formulas of the cylinder (written out below) are the oracle of the no-float case.
 
 root = fileparts(fileparts(fileparts(mfilename('fullpath'))));
 setup(root);
@@ -45,19 +49,37 @@ rho2 = [r_design.modules.rho_eff]';
 % Case 1 runs twice: with the author's mass_acceptable_pct (10 %) and with 20 %, a test input that
 % exercises the accepted branch (the strip model's T_pitch differs from the design's by more
 % than 10 % here).
-cases = struct('label', {}, 'vs', {}, 'rho2', {}, 'gm_scale', {}, 'pct', {}, 'escalation', {});
+% Cases 5 and 6 use a light shell and a denser ballast (rho_air < rho_shell <= rho_ballast), so
+% flotation needs ballast above module 1 (case 5) or no ballast at a thick shell (case 6).
+steel = [7500, 7500];
+light = [1100, 1500];
+wide = [-0.9 2.9];
+cases = struct('label', {}, 'vs', {}, 'rho2', {}, 'gm_scale', {}, 'pct', {}, 'escalation', {}, ...
+    'dens', {}, 'bounds', {});
 cases(1) = struct('label', 'Stage 2 from a thin-shell design', 'vs', vs, 'rho2', rho2, ...
-    'gm_scale', 1, 'pct', 10, 'escalation', 'fixed_draft');
+    'gm_scale', 1, 'pct', 10, 'escalation', 'fixed_draft', 'dens', steel, 'bounds', wide);
 cases(2) = struct('label', 'Stage 2 from a thin-shell design, 20 % band', 'vs', vs, 'rho2', rho2, ...
-    'gm_scale', 1, 'pct', 20, 'escalation', 'fixed_draft');
+    'gm_scale', 1, 'pct', 20, 'escalation', 'fixed_draft', 'dens', steel, 'bounds', wide);
 cases(3) = struct('label', 'unreachable GM (5 x GM_Stage2)', 'vs', vs, 'rho2', rho2, ...
-    'gm_scale', 5, 'pct', 10, 'escalation', 'fixed_draft');
+    'gm_scale', 5, 'pct', 10, 'escalation', 'fixed_draft', 'dens', steel, 'bounds', wide);
 cases(4) = struct('label', 'mass unreachable at the Stage-2 draft', 'vs', 2.4, ...
-    'rho2', [NaN; 50; 50; 50], 'gm_scale', 1, 'pct', 10, 'escalation', 'draft_free');
+    'rho2', [NaN; 50; 50; 50], 'gm_scale', 1, 'pct', 10, 'escalation', 'draft_free', ...
+    'dens', steel, 'bounds', wide);
+cases(5) = struct('label', 'ballast spilled past module 1', 'vs', 0, 'rho2', [NaN; 900; 100; 50], ...
+    'gm_scale', 1, 'pct', 10, 'escalation', 'fixed_draft', 'dens', light, 'bounds', wide);
+cases(6) = struct('label', 'end of the flotation curve (z_ballast at the hull bottom)', 'vs', -0.9, ...
+    'rho2', [NaN; 50; 50; 50], 'gm_scale', 0.05, 'pct', 10, 'escalation', 'fixed_draft', ...
+    'dens', light, 'bounds', wide);
+cases(7) = struct('label', 'no draft within the bounds floats', 'vs', 2.4, 'rho2', [NaN; 50; 50; 50], ...
+    'gm_scale', 1, 'pct', 10, 'escalation', 'draft_free', 'dens', steel, 'bounds', [2.0 2.9]);
 
 for c = 1:numel(cases)
     cs = cases(c);
     fprintf('\n== %s\n', cs.label);
+    config.rho_shell = cs.dens(1);
+    config.rho_ballast = cs.dens(2);
+    config.vertical_shift_bounds = cs.bounds;
+    rho = struct('ballast', config.rho_ballast, 'shell', config.rho_shell, 'air', config.rho_air);
     [f3, ~] = sti_stage2(config, cs.vs, cs.rho2);
     f3.GM_L = cs.gm_scale * f3.GM_L;
     rho_x = f3.densities_at_nodes;
@@ -141,6 +163,40 @@ for c = 1:numel(cases)
             check(fl.pass, 'the closest design must keep mass balance when it can');
         case 4
             check(r.vs ~= cs.vs, 'draft not released');
+        case 5
+            e = config.strip_edges;
+            m1 = r.modules(1);
+            check(fl.pass, 'flotation not held with ballast spilled');
+            check(zb > e(2) && zb < e(3), 'z_ballast %.6f not in module 2', zb);
+            check(isnan(m1.t) && m1.h_ballast == e(2) - e(1) && m1.V_ballast == m1.V && ...
+                m1.V_shell == 0 && m1.V_air == 0, 'module 1 below z_ballast is not all ballast');
+            check(r.modules(2).h_ballast == zb - e(2) && r.modules(3).h_ballast == 0, 'h_ballast');
+        case 6
+            inner = mwecmass.solid.offset_surface(config.ms2_model, [], geo, t(1), geo.z_range, ...
+                struct('t_min', config.steel_t_min));
+            fprintf('inner z_lo %.6f m\n', inner.z_lo);
+            check(zb == fx.z(1) && zb <= inner.z_lo, 'z_ballast %.6f is not the hull bottom', zb);
+            check(r.solver.exitflag == 0 && fl.pass, 'curve end: exitflag %d, flotation %g', ...
+                r.solver.exitflag, fl.residual);
+            check(all([r.modules.V_ballast] == 0), 'ballast volume below the hull bottom');
+        case 7
+            % too heavy at every draft in the bounds: the smallest flotation violation is the
+            % lightest design (t_min, no ballast) at the deepest allowed draft (vs = 2.0)
+            d = config.steel_t_min + eps_fit / 2;
+            R = fx.R;
+            H = fx.z(2) - fx.z(1);
+            M_lo = rho.shell * pi * R^2 * H - (rho.shell - rho.air) * pi * (R - d)^2 * (H - 2 * d);
+            V_sub = pi * R^2 * (-cs.bounds(1) - fx.z(1));
+            r_cf = M_lo / (config.RHO_WATER * V_sub) - 1;
+            % M_lo is the difference of two terms of size rho_shell V_hull; their rounding,
+            % relative to M_lo, bounds the error of the residual (a few roundings each)
+            bound = 16 * eps * rho.shell * V_hull / M_lo * (1 + r_cf);
+            fprintf('flotation residual %.15g, closed form %.15g, difference %.3g (bound %.3g)\n', ...
+                fl.residual, r_cf, fl.residual - r_cf, bound);
+            check(strcmp(r.status, 'failed') && ~fl.pass, 'no-float case must fail on flotation');
+            check(r.vs == cs.bounds(1) && t(1) == config.steel_t_min && zb == fx.z(1), ...
+                'closest design (%g, %g, %g) is not the deepest draft with the lightest build', r.vs, t(1), zb);
+            check(abs(fl.residual - r_cf) <= bound, 'flotation residual differs from the closed form');
     end
 end
 end

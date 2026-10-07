@@ -28,8 +28,11 @@ function realised = solve(config, x_opt, final3d, fids)
 %   under both equalities (solve_draft_free). The mass_acceptable_pct check on Z_CG, GM, T_heave
 %   and T_pitch then decides accepted or failed. Closest fail: when the equalities hold at the
 %   step's result it is the design; otherwise the evaluated design with the smallest equality
-%   violation, designs that hold flotation first (mass balance holds in every reported state
-%   when it can; AGENTS section 3 item 32).
+%   violation (violation_rank): designs that hold flotation within tol_eq first, ranked by the GM
+%   residual; then the others ranked by the flotation residual and, at equal flotation residual,
+%   by the GM residual. The draft is released to restore mass balance, which therefore comes
+%   first (AGENTS section 3 items 31, 32). solver (S8) describes the step's own result; when the
+%   closest design replaces it, a report line names the replacement.
 %
 %   Within a step the inner set is refitted on fixed knot vectors; the reported design uses the
 %   adaptive fit at its own t, and a changed knot structure restarts the step there (contract
@@ -123,6 +126,9 @@ if any(~(abs(ev.ceq) <= tol_eq))
         ev_best = mwecmass.realise.thin_shell.evaluate_design_point(ctx, p(1), p(2), p(3), true);
         if ranks_before(violation_rank(ev_best.ceq, tol_eq), violation_rank(ev.ceq, tol_eq))
             ev = ev_best;
+            emit(['      Closest evaluated design replaces the step''s result: vs %.6f m, t %.6f m, ' ...
+                'z_ballast %.6f m; flotation residual %.6g, GM residual %.6g\n'], ev.design.vs, ...
+                ev.design.t(1), ev.design.z_ballast, ev.ceq(1), ev.ceq(2));
         end
     end
 end
@@ -153,6 +159,7 @@ while true
     remove(ctx.state('points'), keys(ctx.state('points')));
     ctx.sets(num2hex(p(2))) = ev.inner;
 end
+% solver fields of S8: the step's own result, also when the closest design replaces it
 info = struct('step', step, 'exitflag', exitflag, 'iterations', size(ctx.state('history'), 1) - n0, ...
     'fval', ev.objective, 'max_eq_violation', max(abs(ev.ceq)));
 emit('      Step %s: exitflag %d, %d design evaluations; t %.6f m, z_ballast %.6f m, vs %.6f m\n', ...
@@ -202,7 +209,8 @@ if isempty(p_prev)
     M_hi = mass_of(ctx, [ctx.stage2.vs, t0, zr(2)]);
     f_hi = @(v) cfg.RHO_WATER * displaced_volume(ctx, v) - M_hi;
     f_lo = @(v) cfg.RHO_WATER * displaced_volume(ctx, v) - M_lo;
-    % lowest draft at which rho_w V_sub <= M_hi, highest at which rho_w V_sub >= M_lo
+    % smallest vs (deepest draft) at which rho_w V_sub <= M_hi; largest vs (shallowest draft) at
+    % which rho_w V_sub >= M_lo
     if f_hi(b(1)) <= 0
         vs_a = b(1);
     elseif f_hi(b(2)) > 0
@@ -219,10 +227,14 @@ if isempty(p_prev)
     end
     exitflag = 0;
     if vs_a > vs_b
-        % no draft within the bounds floats a design at t0: the bound nearer to flotation
-        r = [flotation_of(ctx, [b(1), t0, zr(2)]), flotation_of(ctx, [b(2), t0, zr(1)])];
+        % no draft within the bounds floats a design at t0. The corners nearest to flotation: the
+        % deepest draft with the lightest design (t_min, z_min) when the hull is too heavy
+        % everywhere, the shallowest draft with the heaviest design (z_max, where the mass no
+        % longer depends on t) when it is too light everywhere
+        corners = [b(1), ctx.t_min, zr(1); b(2), t0, zr(2)];
+        r = [flotation_of(ctx, corners(1, :)), flotation_of(ctx, corners(2, :))];
         [~, k] = min(abs(r));
-        p = [b(k), t0, zr(3 - k)];
+        p = corners(k, :);
         return
     end
     G = @(vs) gm_of(ctx, [vs, t0, ballast_for_flotation(ctx, vs, t0)]);
@@ -355,9 +367,9 @@ if isKey(points, key)
     return
 end
 try
-    full = mwecmass.realise.thin_shell.evaluate_design_point(ctx, p(1), p(2), p(3), false);
-    ev = struct('objective', full.objective, 'ceq', full.ceq, 'mass', full.props.mass_total, ...
-        'V_sub', full.props.V_sub);
+    ev_full = mwecmass.realise.thin_shell.evaluate_design_point(ctx, p(1), p(2), p(3), false);
+    ev = struct('objective', ev_full.objective, 'ceq', ev_full.ceq, 'mass', ev_full.props.mass_total, ...
+        'V_sub', ev_full.props.V_sub);
 catch err
     if ~strncmp(err.identifier, 'mwecmass:solid:', numel('mwecmass:solid:'))
         rethrow(err);
@@ -384,20 +396,22 @@ p = hist(order(1), 1:3);
 end
 
 function r = violation_rank(ceq, tol_eq)
-% [tier, size], ordered lexicographically: designs holding flotation within tol_eq (tier 0,
-% sized by the GM residual) come before the others (tier 1, sized by the Euclidean norm of both
-% residuals), so mass balance holds in every reported state when it can.
+% [tier, first, second], ordered lexicographically: designs holding flotation within tol_eq
+% (tier 0, ranked by |GM residual|) come before the others (tier 1, ranked by |flotation
+% residual| first and |GM residual| second). Mass balance comes first because the draft is
+% released only to restore it (AGENTS section 3 items 31, 32).
 if ~all(isfinite(ceq))
-    r = [Inf, Inf];
+    r = [Inf, Inf, Inf];
 elseif abs(ceq(1)) <= tol_eq
-    r = [0, abs(ceq(2))];
+    r = [0, abs(ceq(2)), 0];
 else
-    r = [1, norm(ceq)];
+    r = [1, abs(ceq(1)), abs(ceq(2))];
 end
 end
 
 function yes = ranks_before(a, b)
-yes = a(1) < b(1) || (a(1) == b(1) && a(2) < b(2));
+k = find(a ~= b, 1);
+yes = ~isempty(k) && a(k) < b(k);
 end
 
 function same = same_knots(a, b)
