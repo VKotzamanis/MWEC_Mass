@@ -13,8 +13,6 @@ function plot_optimised_cross_section(props_3d, config, x_opt, realised)
     end
     style = mwecmass.output.figures.presentation_style(config);
     try
-        % Single panel: the second tile used to hold a numeric "properties card" duplicating the
-        % console report; the numbers are written to Output/<type>/final_results.log instead.
         fig = mwecmass.output.figures.new_figure(style, 'tall_single');
         t = tiledlayout(fig, 1, 1);
 
