@@ -37,8 +37,7 @@ function realised = solve(config, x_opt, final3d, fids)
 %   Within a step the inner set is refitted on fixed knot vectors; the reported design uses the
 %   adaptive fit at its own t, and a changed knot structure restarts the step there (contract
 %   section 7 item 4). solver.iterations counts the design evaluations of the step. Every search
-%   starts at t_min, the one thickness the user sets (AGENTS section 3 item 19: t_init = t_min);
-%   config.steel_t_init is not read.
+%   starts at t_min, the one thickness the user sets (AGENTS section 3 item 19: t_init = t_min).
 
 if nargin < 4 || isempty(fids)
     fids = 1;
