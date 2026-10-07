@@ -1,6 +1,6 @@
 # HANDOFF — MWEC_Mass exact-geometry refactor
 
-Updated 2026-10-07 14:45 UTC on `claude/lucid-cray-7o9442`. Process file for agents: the
+Updated 2026-10-07 15:12 UTC on `claude/lucid-cray-7o9442`. Process file for agents: the
 orchestrator updates it at every milestone and at least every 100k tokens; delete it in T12.
 
 ## 1. Goal
@@ -33,7 +33,7 @@ Main `claude/lucid-cray-7o9442` holds the general-kernel amendment (`e7e9114`) a
 | T5 | UHPC Stage 3 a: split, build, check, store | U | resumed (`wf_1b65ba81-885`): fix round 4 findings + F11 folder, rounds 5–6 | 7, 8, 8, 8 | task/T5 `eaf4c16` |
 | T6 | UHPC Stage 3 b: optimisation, spill, closest fail | U | after T5 in `wf_1b65ba81-885` (t_max,i per module from F2b) | — | — |
 | T7 | thin-shell rebuild | S | resumed (`wf_0aa3006e-39b`): two deferred line ranges, rounds 5–6 | 7, 7, 7, 8 | task/T7 `bbee405` |
-| T8 | figures from the realised solid | O | rounds 7–8 (`wf_04b5da50-26a`): role 'wall' → 'shell'; gap where a void's y = 0 interval count changes | r1–r4 8, r5–r6 6 | task/T8 `63810a6` |
+| T8 | figures from the realised solid | O | resumed with Opus high (`wf_11198ef4-0cf`), rounds 9–10: void outlines with holes (material island), resolution limit stated, U-shaped mock, stray file | 8, 8, 8, 8, 6, 6, 6, 6 | task/T8 `b0a9c9f` |
 | T10 | Stage-3 STEP exports | O | accepted, waits for J2 | 9 (3) | `07856a2` |
 | T0d | geometry cache of `build_config` | P | round 2 grading | r1 8 | task/T0d `158d77d` |
 | T4a | Stage-2 changes (delete `c_mono`, `c_mass_min`; bottom-filled start; bounds) | P | queued after T0d | — | — |
