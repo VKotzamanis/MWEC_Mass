@@ -50,7 +50,7 @@ call a shell a wall.
    written STEP files). Commit and push after every task; the container is ephemeral.
 9. Do not push the `STEP_Producer` zip the owner uploaded. It stays outside the repository.
 10. **Names say what the material is.** The solid region at the bottom is the *ballast*:
-    its top is `z_ballast` everywhere (code, `.mat` fields, docs). Air is `rho_air` in both modes;
+    `z_fill` becomes `z_ballast` everywhere (code, `.mat` fields, docs). Air is `rho_air` in both modes;
     the thin-shell solid ballast density is `rho_ballast`; UHPC quantities carry `uhpc` names. No
     variable may carry the name of one material and the value of another (rename table in the plan,
     task T0b; old `.mat` field names map to the new ones in `docs/RESULT_SCHEMA.md`).
@@ -193,7 +193,9 @@ Figures: `WEC_Constructability_XZ`, `WEC_Constructability_Strips` (precast), `St
 11. Rebuild the thin-shell mode on the exact kernel without copying the UHPC logic.
 12. Stage 3 writes STEP files: UHPC — one per module plus one fused solid of all modules; steel —
     the ballast solid, the shell as a 2D surface, and (if possible) one file with both.
-13. The ballast level is `z_ballast` and no density name carries another material's value, in code and docs.
+13. Rename `z_fill` → `z_ballast` and remove the density naming trap, in code and docs (done in T0b;
+    the old names remain only where v1.0 data are read or recorded: `tools/`, `tests/baseline/*.json`,
+    `Output/`, `docs/plans/`, and the rename statements in this file).
 14. Thin shell is a separate pipeline:
     1. Stage-2 densities start from (are floored by) a thin-shell minimum shell thickness that the
        user sets in the input file (value fixed later at 25.4 mm, item 19).
