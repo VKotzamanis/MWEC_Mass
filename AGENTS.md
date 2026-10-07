@@ -272,12 +272,12 @@ Figures: `WEC_Constructability_XZ`, `WEC_Constructability_Strips` (precast), `St
 34. Delete the UHPC Stage-3 pre-check (agent's decision, owner informed). It uses invented factors
     (0.95, 1.05), aborts instead of applying the closest-fail rule (item 7), and is redundant once
     the Stage-2 floors from the kernel exist. Evidence: I23.
-
----
 35. Run time (owner, 2026-10-07). In Octave, `build_config` alone takes 34.5 min for C1, mostly
     name lookups of parser entities. Owner: "Then make it SAVE that and reload it" and, on
     resolving each curve and surface once instead of on every point, "yes definetely do that."
     Plan tasks T0c (parser) and T0d (geometry cache); both leave every number identical.
+
+---
 
 ## 4. Issues found (evidence for C1 unless stated)
 
