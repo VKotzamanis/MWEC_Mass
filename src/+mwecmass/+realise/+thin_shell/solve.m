@@ -4,8 +4,8 @@ function realised = solve(config, x_opt, final3d, fids)
 %   realised = mwecmass.realise.thin_shell.solve(config, x_opt, final3d, fids)
 %
 %   config: build_config output with hull_solid (S1b), ms2_model, boundary_cache, strip_edges,
-%   rho_shell, rho_ballast, rho_air, steel_t_min, steel_t_init, vertical_shift_bounds,
-%   mass_acceptable_pct, RHO_WATER, G and the hydrodynamic cache fields. x_opt = [vs; rho_1..N]
+%   rho_shell, rho_ballast, rho_air, steel_t_min, vertical_shift_bounds, mass_acceptable_pct,
+%   RHO_WATER, G and the hydrodynamic cache fields. x_opt = [vs; rho_1..N]
 %   and final3d (results.Final3D) are the Stage-2 solution. fids: report destinations (default 1).
 %   realised: S8 (results.stage3) of the realised design, or of the closest design when Stage 3
 %   fails; never the Stage-2 properties.
@@ -36,15 +36,16 @@ function realised = solve(config, x_opt, final3d, fids)
 %
 %   Within a step the inner set is refitted on fixed knot vectors; the reported design uses the
 %   adaptive fit at its own t, and a changed knot structure restarts the step there (contract
-%   section 7 item 4). solver.iterations counts the design evaluations of the step.
+%   section 7 item 4). solver.iterations counts the design evaluations of the step. Every search
+%   starts at t_min, the one thickness the user sets (AGENTS section 3 item 19: t_init = t_min);
+%   config.steel_t_init is not read.
 
 if nargin < 4 || isempty(fids)
     fids = 1;
 end
 t_start = tic;
 required = {'hull_solid', 'ms2_model', 'boundary_cache', 'strip_edges', 'rho_shell', 'rho_ballast', ...
-    'rho_air', 'steel_t_min', 'steel_t_init', 'vertical_shift_bounds', 'mass_acceptable_pct', ...
-    'RHO_WATER', 'G'};
+    'rho_air', 'steel_t_min', 'vertical_shift_bounds', 'mass_acceptable_pct', 'RHO_WATER', 'G'};
 for k = 1:numel(required)
     if ~isfield(config, required{k}) || isempty(config.(required{k}))
         error('mwecmass:realise:MissingConfig', 'thin_shell.solve: config.%s is missing or empty.', required{k});
@@ -98,10 +99,9 @@ emit('      t in [%.5f, %.5f] m: t_min (input), t_max = d_close - eps_fit/2, d_c
 emit('      Stage 2: vs %.4f m, M %.1f kg, Z_CG %.4f m, GM %.4f m, T_heave %.4f s, T_pitch %.4f s (coupled)\n', ...
     stage2.vs, stage2.mass, stage2.Z_CG, stage2.GM, stage2.T_heave, stage2.T_pitch);
 
-t0 = min(max(config.steel_t_init, t_min), t_max);
-ev0 = mwecmass.realise.thin_shell.evaluate_design_point(ctx, stage2.vs, t0, z_min, true);
+ev0 = mwecmass.realise.thin_shell.evaluate_design_point(ctx, stage2.vs, t_min, z_min, true);
 ctx.state('ref') = ev0.inner;
-ctx.sets(num2hex(t0)) = ev0.inner;
+ctx.sets(num2hex(t_min)) = ev0.inner;
 
 % mass range at the Stage-2 draft
 ev_lo = point(ctx, [stage2.vs, t_min, z_min]);
@@ -116,7 +116,7 @@ if reachable
     solve_once = @(p) solve_fixed_draft(ctx, stage2.vs);
 else
     step = 'draft_free';
-    solve_once = @(p) solve_draft_free(ctx, t0, p);
+    solve_once = @(p) solve_draft_free(ctx, p);
 end
 [ev, solver] = run_step(ctx, step, solve_once, emit);
 
@@ -139,7 +139,7 @@ end
 
 % ---------------------------------------------------------------- escalation steps
 
-function [ev, info] = run_step(ctx, step, solve_once, emit)
+function [ev, solver] = run_step(ctx, step, solve_once, emit)
 % Runs one escalation step, then rebuilds its result with the adaptive inner set at the final t;
 % a changed knot structure restarts the step on the new knots.
 seen = {};
@@ -160,10 +160,10 @@ while true
     ctx.sets(num2hex(p(2))) = ev.inner;
 end
 % solver fields of S8: the step's own result, also when the closest design replaces it
-info = struct('step', step, 'exitflag', exitflag, 'iterations', size(ctx.state('history'), 1) - n0, ...
+solver = struct('step', step, 'exitflag', exitflag, 'iterations', size(ctx.state('history'), 1) - n0, ...
     'fval', ev.objective, 'max_eq_violation', max(abs(ev.ceq)));
 emit('      Step %s: exitflag %d, %d design evaluations; t %.6f m, z_ballast %.6f m, vs %.6f m\n', ...
-    step, exitflag, info.iterations, p(2), p(3), p(1));
+    step, exitflag, solver.iterations, p(2), p(3), p(1));
 end
 
 function [p, exitflag] = solve_fixed_draft(ctx, vs)
@@ -195,18 +195,22 @@ end
 p = [vs, t, ballast_for_flotation(ctx, vs, t)];
 end
 
-function [p, exitflag] = solve_draft_free(ctx, t0, p_prev)
-% Draft released: first a design that floats and meets GM = GM_Stage2 at t0, searched along the
-% drafts where flotation can be met at t0 (rho_w V_sub falls as vs rises, so these drafts form
-% one interval); then fmincon over (vs, t, z_ballast) with the objective and both equalities
-% from there. exitflag: fmincon's, or that of the first search (1: root, 0: closest end) when
-% fmincon cannot start because the objective is not finite there.
+function [p, exitflag] = solve_draft_free(ctx, p_prev)
+% Draft released: first a design that floats and meets GM = GM_Stage2 at t_min, searched along
+% the drafts where flotation can be met at t_min; then fmincon over (vs, t, z_ballast) with the
+% objective and both equalities from there. Every buildable mass lies in [M_lo, M_hi], the masses
+% of the lightest design (t_min, z_min) and of the full-ballast one (z_max, where the mass no
+% longer depends on t), and t_min floats every mass of that range (through z_ballast); rho_w V_sub
+% falls as vs rises, so the drafts that float some buildable design form one interval, and at
+% t_min each of them floats one. exitflag: fmincon's, or that of the first search (1: root,
+% 0: closest end) when fmincon cannot start because the objective is not finite there.
 zr = ctx.geo.z_range;
 cfg = ctx.config;
 b = cfg.vertical_shift_bounds;
+t_min = ctx.t_min;
 if isempty(p_prev)
-    M_lo = mass_of(ctx, [ctx.stage2.vs, t0, zr(1)]);
-    M_hi = mass_of(ctx, [ctx.stage2.vs, t0, zr(2)]);
+    M_lo = mass_of(ctx, [ctx.stage2.vs, t_min, zr(1)]);
+    M_hi = mass_of(ctx, [ctx.stage2.vs, t_min, zr(2)]);
     f_hi = @(v) cfg.RHO_WATER * displaced_volume(ctx, v) - M_hi;
     f_lo = @(v) cfg.RHO_WATER * displaced_volume(ctx, v) - M_lo;
     % smallest vs (deepest draft) at which rho_w V_sub <= M_hi; largest vs (shallowest draft) at
@@ -227,17 +231,17 @@ if isempty(p_prev)
     end
     exitflag = 0;
     if vs_a > vs_b
-        % no draft within the bounds floats a design at t0. The corners nearest to flotation: the
-        % deepest draft with the lightest design (t_min, z_min) when the hull is too heavy
-        % everywhere, the shallowest draft with the heaviest design (z_max, where the mass no
-        % longer depends on t) when it is too light everywhere
-        corners = [b(1), ctx.t_min, zr(1); b(2), t0, zr(2)];
+        % no draft within the bounds floats any buildable design. The corners nearest to
+        % flotation: the deepest draft with the lightest design when the hull is too heavy
+        % everywhere, the shallowest draft with the full-ballast design when it is too light
+        % everywhere
+        corners = [b(1), t_min, zr(1); b(2), t_min, zr(2)];
         r = [flotation_of(ctx, corners(1, :)), flotation_of(ctx, corners(2, :))];
         [~, k] = min(abs(r));
         p = corners(k, :);
         return
     end
-    G = @(vs) gm_of(ctx, [vs, t0, ballast_for_flotation(ctx, vs, t0)]);
+    G = @(vs) gm_of(ctx, [vs, t_min, ballast_for_flotation(ctx, vs, t_min)]);
     G_a = G(vs_a);
     G_b = G(vs_b);
     if sign(G_a) ~= sign(G_b)
@@ -248,7 +252,7 @@ if isempty(p_prev)
     else
         vs = vs_b;
     end
-    p = [vs, t0, ballast_for_flotation(ctx, vs, t0)];
+    p = [vs, t_min, ballast_for_flotation(ctx, vs, t_min)];
 else
     p = p_prev;
     exitflag = 0;
@@ -259,9 +263,9 @@ end
 % SQP starts from an identity Hessian, so the variables enter in units of their own size: t in
 % t_min, z_ballast and vs in hull heights.
 h = zr(2) - zr(1);
-scale = [h; ctx.t_min; h];
+scale = [h; t_min; h];
 map = @(x) scale' .* x(:)';
-lb = [b(1); ctx.t_min; zr(1)];
+lb = [b(1); t_min; zr(1)];
 ub = [b(2); ctx.t_max; zr(2)];
 opts = optimoptions('fmincon', 'Algorithm', 'sqp', 'Display', 'off', 'StepTolerance', 1e-8, ...
     'OptimalityTolerance', 1e-6, 'ConstraintTolerance', ctx.tol_eq, 'MaxIterations', 200, ...
@@ -358,8 +362,9 @@ end
 
 function ev = point(ctx, p)
 % One kernel evaluation per design point, shared by every search; every evaluated design is
-% recorded for the closest-fail choice. A kernel error (e.g. VoidClosed) marks the point as not
-% realisable.
+% recorded for the closest-fail choice. VoidClosed (t at or above t_max) is the one kernel error
+% that counts as a failed evaluation (contract section 8): the point is not realisable. Every
+% other error stops the solve.
 points = ctx.state('points');
 key = [num2hex(p(1)), num2hex(p(2)), num2hex(p(3))];
 if isKey(points, key)
@@ -371,7 +376,7 @@ try
     ev = struct('objective', ev_full.objective, 'ceq', ev_full.ceq, 'mass', ev_full.props.mass_total, ...
         'V_sub', ev_full.props.V_sub);
 catch err
-    if ~strncmp(err.identifier, 'mwecmass:solid:', numel('mwecmass:solid:'))
+    if ~strcmp(err.identifier, 'mwecmass:solid:VoidClosed')
         rethrow(err);
     end
     ev = struct('objective', NaN, 'ceq', [NaN; NaN], 'mass', NaN, 'V_sub', NaN);
@@ -380,19 +385,19 @@ points(key) = ev; %#ok<NASGU> containers.Map is a handle
 ctx.state('history') = [ctx.state('history'); p, ev.objective, abs(ev.ceq')];
 end
 
-function p = closest(hist, tol_eq)
+function p = closest(evaluated, tol_eq)
 % The evaluated design with the smallest equality violation (violation_rank); ties: the smaller
 % objective.
 p = [];
-ok = all(isfinite(hist(:, 5:6)), 2);
-hist = hist(ok, :);
-if isempty(hist)
+ok = all(isfinite(evaluated(:, 5:6)), 2);
+evaluated = evaluated(ok, :);
+if isempty(evaluated)
     return
 end
-rank = cell2mat(arrayfun(@(k) violation_rank(hist(k, 5:6)', tol_eq), (1:size(hist, 1))', ...
+ranks = cell2mat(arrayfun(@(k) violation_rank(evaluated(k, 5:6)', tol_eq), (1:size(evaluated, 1))', ...
     'UniformOutput', false));
-[~, order] = sortrows([rank, hist(:, 4)]);
-p = hist(order(1), 1:3);
+[~, order] = sortrows([ranks, evaluated(:, 4)]);
+p = evaluated(order(1), 1:3);
 end
 
 function r = violation_rank(ceq, tol_eq)
