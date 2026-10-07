@@ -85,7 +85,12 @@ ${JSON.stringify({ violations: g.violations, required_fixes: g.required_fixes, s
 async function runTask(t) {
   // t.resume = { last: grader verdict, r0: first grading round } continues a task from its last verdict
   let impl, r0 = 1, rounds = 4
-  if (t.resume) {
+  if (t.resume && t.resume.grade_first) {
+    // continue with grading of committed work: t.resume.impl is the implementer's last report
+    r0 = t.resume.r0
+    rounds = t.resume.rounds || 2
+    impl = t.resume.impl
+  } else if (t.resume) {
     r0 = t.resume.r0
     rounds = 2
     impl = await agent(fixPrompt(t, t.resume.last, r0 - 1), { label: `fix:${t.id}#${r0 - 1}`, phase: 'Fix', model: t.model, effort: t.effort, schema: IMPL_SCHEMA })

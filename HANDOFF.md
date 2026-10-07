@@ -1,6 +1,6 @@
 # HANDOFF — MWEC_Mass exact-geometry refactor
 
-Updated 2026-10-07 18:32 UTC on `claude/lucid-cray-7o9442`. Process file for agents: the
+Updated 2026-10-07 20:55 UTC on `claude/lucid-cray-7o9442`. Process file for agents: the
 orchestrator updates it at every milestone and at least every 100k tokens; delete it in T12.
 
 ## 1. Goal
@@ -154,19 +154,12 @@ Main `claude/lucid-cray-7o9442` = `f52e232`: general-kernel amendment, AGENTS ru
   3 interior module edges of the thin-shell cylinder stand-in. The owner had asked from the start
   for judgement by metrics; the handoff did not state it as a rule. It is now AGENTS rule 12.
 
-## 7. Paused (owner, 2026-10-07 ~16:45 UTC): "pause all processes after the runs complete and wait for the weekly reset (i will tell you to continue)"
+## 7. Resumed (owner: "continue", 20:51 UTC)
 
-Every lane was stopped after its running agent finished; nothing runs. All task branches equal GitHub.
-`docs/plans/orchestration/pause/` holds what a fresh container needs to continue: the launch inputs of
-every lane (`launch_inputs.json`, with each task's brief), the last verdicts (T4a round 1, T7 round 6),
-the implementer reports of T2a and T6, T8's acceptance, and the orchestrator's decision log.
-On the owner's "continue":
-1. Fresh container: `bash tools/install_toolchain.sh`; worktrees `git worktree add /home/user/wt/<T> task/<T>`;
-   reinstall the one-core wrapper (§3); merge-check main.
-2. Grade first (no fix step) T2a (`23ddfe9`), T6 (`3e1d450`) and T7 (`2753871`, round 7): lane script with a
-   grade-first resume (add it to `lane.js`: `resume: {grade_first: true, r0}`), briefs from `launch_inputs.json`.
-3. T4a: resume from `T4a_verdict_r1.json` (r0 = 2), then T4b.
-4. Then §8 below.
+Lanes relaunched with `mwec-lane-<k>-cont.js` (args from `docs/plans/orchestration/pause/`; `lane.js`
+now supports `resume: {grade_first, r0, rounds, impl}`): K1 T2a grading (`wf_03f5e016-d64`), U T6
+grading (`wf_fdb0a7b0-368`), S T7 round 7 grading (`wf_d466e341-871`), P T4a fix round 1 then T4b
+(`wf_9fb5bf27-d13`). When T2a is accepted: T2b ∥ T3, then J1 and the owner checkpoint.
 
 ## 8. Next steps
 
