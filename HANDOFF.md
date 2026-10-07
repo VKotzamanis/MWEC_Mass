@@ -1,6 +1,6 @@
 # HANDOFF — MWEC_Mass exact-geometry refactor
 
-Updated 2026-10-07 15:12 UTC on `claude/lucid-cray-7o9442`. Process file for agents: the
+Updated 2026-10-07 15:20 UTC on `claude/lucid-cray-7o9442`. Process file for agents: the
 orchestrator updates it at every milestone and at least every 100k tokens; delete it in T12.
 
 ## 1. Goal
@@ -35,8 +35,8 @@ Main `claude/lucid-cray-7o9442` holds the general-kernel amendment (`e7e9114`) a
 | T7 | thin-shell rebuild | S | resumed (`wf_0aa3006e-39b`): two deferred line ranges, rounds 5–6 | 7, 7, 7, 8 | task/T7 `bbee405` |
 | T8 | figures from the realised solid | O | resumed with Opus high (`wf_11198ef4-0cf`), rounds 9–10: void outlines with holes (material island), resolution limit stated, U-shaped mock, stray file | 8, 8, 8, 8, 6, 6, 6, 6 | task/T8 `b0a9c9f` |
 | T10 | Stage-3 STEP exports | O | accepted, waits for J2 | 9 (3) | `07856a2` |
-| T0d | geometry cache of `build_config` | P | round 2 grading | r1 8 | task/T0d `158d77d` |
-| T4a | Stage-2 changes (delete `c_mono`, `c_mass_min`; bottom-filled start; bounds) | P | queued after T0d | — | — |
+| T0d | geometry cache of `build_config` (C1: fresh build 421 s CPU, reload 0.44 s) | P | accepted, merge pending (push outage) | 9 (2) | `158d77d` |
+| T4a | Stage-2 changes (delete `c_mono`, `c_mass_min`; bottom-filled start; bounds) | P | implementing (Sonnet high) | — | task/T4a |
 | T4b | Stage-2 floors from the kernel (merges after J1) | P | queued after T4a | — | — |
 | SK2 | stand-ins updated to spec2 | SK2 | accepted, merge pending (GitHub push returns HTTP 500 since 15:12 UTC) | 9 (3) | `753a11e` |
 | T2a | exact-path offset, fold trim, adaptive fit | K1 | implementing: F3, F3b/F4, F1 committed; F2 (offset, trim, fit) in progress; F2b next | — | task/T2a `59aeb4f` |
@@ -133,6 +133,10 @@ Main `claude/lucid-cray-7o9442` holds the general-kernel amendment (`e7e9114`) a
   height band, the same file assigned to two tasks, KG used for Z_CG, an incomplete quick fix of the
   amendment. Verify claims on the code and the exact deck before writing them.
 - Deleting remote branches returns HTTP 403 (policy): do not retry.
+- From 15:12 UTC every `git push` (main and task branches) returned HTTP 500 while reads and the
+  GitHub API worked and githubstatus.com reported no incident. Background retry:
+  `scratchpad/push_retry.sh` (fast-forward only). HANDOFF.md went up through the GitHub API meanwhile.
+  Graders that require origin = HEAD may reject only for this; discount such rejections.
 - Reading a workflow's result from the notification text can mislead; read its `journal.jsonl`.
 - Hand edits of the dense contract by the orchestrator were rejected twice: route every contract
   change through an author agent and the grader.
