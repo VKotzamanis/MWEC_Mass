@@ -1,6 +1,6 @@
 # HANDOFF — MWEC_Mass exact-geometry refactor
 
-Updated 2026-10-07 16:40 UTC on `claude/lucid-cray-7o9442`. Process file for agents: the
+Updated 2026-10-07 17:20 UTC on `claude/lucid-cray-7o9442`. Process file for agents: the
 orchestrator updates it at every milestone and at least every 100k tokens; delete it in T12.
 
 ## 1. Goal
@@ -31,15 +31,15 @@ Main `claude/lucid-cray-7o9442` = `f52e232`: general-kernel amendment, AGENTS ru
 | T0b | renames (`z_ballast`, `rho_air`, `rho_ballast`, `uhpc`) | N | merged `b4523aa` | 9 (4) | `c64a4d0` |
 | spec2 | contract amendment: general kernel (owner) + errata | K | merged `e7e9114` | 9 (round 8; errata 9; merge 10) | `5ce48fc` |
 | T5 | UHPC Stage 3 a: split, build, check, store | U | accepted (round 5); waits for J2 | 7, 8, 8, 8, 9 | `31f470f` |
-| T6 | UHPC Stage 3 b: optimisation, spill, closest fail | U | implementing (`wf_e905b818-430`, base task/T5) | — | task/T6 |
-| T7 | thin-shell rebuild | S | resumed after restart (`wf_1ef512c2-5e3`), rounds 6–7 | 7, 7, 7, 8, 8 | task/T7 `4ae74bb` |
-| T8 | figures from the realised solid | O | restarted (`wf_69d3ee54-efc`), Opus fix of the round-8 verdict, rounds 9–10 | 8, 8, 8, 8, 6, 6, 6, 6 | task/T8 `b70b1ff` |
+| T6 | UHPC Stage 3 b: optimisation, spill, closest fail | U | implemented, not yet graded (paused) | — | task/T6 `3e1d450` |
+| T7 | thin-shell rebuild | S | round-6 findings fixed, round 7 not yet graded (paused) | 7, 7, 7, 8, 8, 8 | task/T7 `2753871` |
+| T8 | figures from the realised solid | O | accepted (round 10); waits for J2 | 8, 8, 8, 8, 6, 6, 6, 6, 7, 9 | `3b0a0be` |
 | T10 | Stage-3 STEP exports | O | accepted, waits for J2 | 9 (3) | `07856a2` |
 | T0d | geometry cache of `build_config` (C1: fresh build 421 s CPU, reload 0.44 s) | P | merged `f52e232` | 9 (2); merge 10 | `158d77d` |
-| T4a | Stage-2 changes (delete `c_mono`, `c_mass_min`; bottom-filled start; bounds) | P | implementing, restarted (`wf_6bfb8540-04d`, then T4b) | — | task/T4a `7ad75d5` |
+| T4a | Stage-2 changes (delete `c_mono`, `c_mass_min`; bottom-filled start; bounds) | P | round 1 rejected at 7, fix not done (paused; uncommitted partial edits in the worktree may be discarded) | 7 | task/T4a `4d6762b` |
 | T4b | Stage-2 floors from the kernel (merges after J1) | P | queued after T4a | — | — |
 | SK2 | stand-ins updated to spec2 | SK2 | merged `1bb06d6` | 9 (3); merge 10 | `753a11e` |
-| T2a | exact-path offset, fold trim, adaptive fit | K1 | implementing, restarted (`wf_6f9b1ce1-590`): F3, F3b/F4, F1 and part of F2 committed | — | task/T2a `c825835` |
+| T2a | exact-path offset, fold trim, adaptive fit | K1 | implemented (all of F1–F4, F2b, tests), not yet graded (paused) | — | task/T2a `23ddfe9` |
 | T2b | general path (refits, flat regions, mirrors) | K | after T2a, ∥ T3 | — | — |
 | T3 | bodies and exact properties | K | after T2a | — | — |
 | J1 | merge T2a, T2b, T3; owner checkpoint | — | pending | — | — |
@@ -154,7 +154,21 @@ Main `claude/lucid-cray-7o9442` = `f52e232`: general-kernel amendment, AGENTS ru
   3 interior module edges of the thin-shell cylinder stand-in. The owner had asked from the start
   for judgement by metrics; the handoff did not state it as a rule. It is now AGENTS rule 12.
 
-## 7. Next steps
+## 7. Paused (owner, 2026-10-07 ~16:45 UTC): "pause all processes after the runs complete and wait for the weekly reset (i will tell you to continue)"
+
+Every lane was stopped after its running agent finished; nothing runs. All task branches equal GitHub.
+`docs/plans/orchestration/pause/` holds what a fresh container needs to continue: the launch inputs of
+every lane (`launch_inputs.json`, with each task's brief), the last verdicts (T4a round 1, T7 round 6),
+the implementer reports of T2a and T6, T8's acceptance, and the orchestrator's decision log.
+On the owner's "continue":
+1. Fresh container: `bash tools/install_toolchain.sh`; worktrees `git worktree add /home/user/wt/<T> task/<T>`;
+   reinstall the one-core wrapper (§3); merge-check main.
+2. Grade first (no fix step) T2a (`23ddfe9`), T6 (`3e1d450`) and T7 (`2753871`, round 7): lane script with a
+   grade-first resume (add it to `lane.js`: `resume: {grade_first: true, r0}`), briefs from `launch_inputs.json`.
+3. T4a: resume from `T4a_verdict_r1.json` (r0 = 2), then T4b.
+4. Then §8 below.
+
+## 8. Next steps
 
 1. When T2a is accepted: launch T3 and T2b in parallel from `task/T2a` (lane script, mode parallel).
 2. As lanes return: merge T0d and T4a when accepted; T4b after J1; T5–T10 wait for J2.
