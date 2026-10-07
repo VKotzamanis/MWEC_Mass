@@ -4,7 +4,8 @@ function test_precast_stage3()
 %   through sti_inner_box); Stage 2 is sti_stage2 (closed-form prisms), not an optimiser run.
 %   After J1 the same cases run on the real kernel (join test); the hull-volume sum against the
 %   closed form is then printed only (rational faces, Gauss quadrature).
-%   Asserted: S8 layout, final_props from the realised body, volume closure (rule 11), shell and
+%   Asserted: S8 layout, final_props from the realised body, volume closure (rule 11; z_ballast
+%   inside k*, and at a module edge below the inner z_lo in case E), shell and
 %   ballast bounds, flotation held to the Stage-3 constraint tolerance 1e-6 (AGENTS OD10), the
 %   status rule, the restart of the shell root search on a changed knot structure. Root-finding
 %   residuals and Stage-2 deviations are printed.
@@ -72,6 +73,10 @@ check(fp.mass_total == r.props.mass_total && fp.mass_total ~= f3.mass_total && .
     strcmp(fp.stage3_status, 'failed'), 'closest design stored, not Stage 2');
 fprintf('box, flotation out of reach: mass %.3f kg vs displaced %.3f kg; reason: %s\n', ...
     r.props.mass_total, r.props.mass_buoyant_force, r.reason);
+% z_ballast = e(1) is a module edge and lies below the inner z_lo (contract I1 positions)
+inner_e = sti_inner_box(config.hull_solid, r.design.t(1), config.constructability_t_min);
+check(r.design.z_ballast == r.design.edges(1) && r.design.z_ballast < inner_e.z_lo, 'case E positions');
+closure(r, config, 'box, flotation out of reach');
 
 % F: the adaptive fit above t_thr carries an extra knot, so the root found on the t_min knots has
 % another knot structure and the search restarts on it (contract section 7 item 4). t_thr lies
@@ -172,21 +177,9 @@ if ~isempty(fp)
 end
 check(strcmp(r.status, 'accepted') == r.check.pass && isempty(r.reason) == r.check.pass, [label ': status rule']);
 check(abs(r.check.equalities(1).residual) <= tol_eq, [label ': flotation']);
+closure(r, config, label);
 N = numel(r.modules);
 e = r.design.edges;
-hull = sti_closed_form('hull', sti_closed_form('fixture', config.hull_solid));
-Vsum = 0;
-for i = 1:N
-    m = r.modules(i);
-    % V is the sum of the two region volumes: equal to one rounding of that sum
-    check(abs(m.V_uhpc + m.V_air - m.V) <= 2 * eps * m.V, sprintf('%s: module %d closure', label, i));
-    Vsum = Vsum + m.V;
-end
-fprintf('%s: sum of module volumes - closed-form hull volume = %.3g m^3\n', label, Vsum - hull.V);
-if ~isempty(config.hull_solid.analytic)
-    % stand-in kernel: N closed-form prism volumes summed, within N roundings of the hull volume
-    check(abs(Vsum - hull.V) <= N * eps * hull.V, [label ': module volumes sum to the hull']);
-end
 k = r.k_star;
 check(r.design.z_ballast >= e(k) && r.design.z_ballast <= e(k + 1), [label ': ballast inside k*']);
 t_min = config.constructability_t_min;
@@ -199,6 +192,24 @@ fprintf('%s: status %s, z_ballast %.6f m, t %s mm, V_uhpc - target %s m^3, flota
     r.check.equalities(1).residual);
 fprintf('%s: rel. deviations Z_CG %.4g, GM %.4g, T_heave %.4g, T_pitch %.4g; GM equality residual %.4g\n', ...
     label, r.check.metrics.rel_dev, r.check.equalities(2).residual);
+end
+
+function closure(r, config, label)
+N = numel(r.modules);
+hull = sti_closed_form('hull', sti_closed_form('fixture', config.hull_solid));
+Vsum = 0;
+for i = 1:N
+    m = r.modules(i);
+    % V is the sum of the two region volumes: equal to one rounding of that sum
+    check(abs(m.V_uhpc + m.V_air - m.V) <= 2 * eps * m.V, sprintf('%s: module %d closure', label, i));
+    fprintf('%s: module %d V_uhpc + V_air - V = %.3g m^3\n', label, i, m.V_uhpc + m.V_air - m.V);
+    Vsum = Vsum + m.V;
+end
+fprintf('%s: sum of module volumes - closed-form hull volume = %.3g m^3\n', label, Vsum - hull.V);
+if ~isempty(config.hull_solid.analytic)
+    % stand-in kernel: N closed-form prism volumes summed, within N roundings of the hull volume
+    check(abs(Vsum - hull.V) <= N * eps * hull.V, [label ': module volumes sum to the hull']);
+end
 end
 
 function setup(root)

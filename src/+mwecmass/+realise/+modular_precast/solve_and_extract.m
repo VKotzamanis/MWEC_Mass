@@ -170,10 +170,10 @@ for i = hollow
         probe.t(hollow) = t(i);
         [ev, ctx] = mwecmass.realise.modular_precast.realise_modules(ctx, probe);
         adaptive = ev.inner([ev.inner.t] == t(i));
-        if same_knots(adaptive, searched{end})
+        if mwecmass.realise.modular_precast.same_knots(adaptive, searched{end})
             break
         end
-        if any(cellfun(@(s) same_knots(adaptive, s), searched))
+        if any(cellfun(@(s) mwecmass.realise.modular_precast.same_knots(adaptive, s), searched))
             notes{end + 1} = sprintf(['module %d: the adaptive fit at t = %.6g m returns to a knot ' ...
                 'structure already searched; stored at that t'], i, t(i)); %#ok<AGROW>
             break
@@ -223,18 +223,6 @@ d = design;
 d.t(hollow) = t;
 [ev, ctx] = mwecmass.realise.modular_precast.realise_modules(ctx, d);
 vu = ev.bp.modules(i).V_uhpc;
-end
-
-function same = same_knots(a, b)
-% Same pieces and knot vectors (the structure F2 knots_from keeps).
-same = numel(a.patches) == numel(b.patches);
-for p = 1:numel(a.patches)
-    if ~same
-        return
-    end
-    same = isequal(a.patches(p).surf.degree, b.patches(p).surf.degree) && ...
-        isequal(a.patches(p).surf.knots, b.patches(p).surf.knots);
-end
 end
 
 function [z, ctx, solver, note] = ballast_for_flotation(ctx, design, k, M_target, solver)

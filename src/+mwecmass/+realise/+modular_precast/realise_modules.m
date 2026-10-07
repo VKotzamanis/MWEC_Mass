@@ -34,7 +34,7 @@ for k = 1:numel(ctx.sets)
         if isempty(ctx.knots_from)
             usable = ~s.refit;
         else
-            usable = same_knots(s, ctx.knots_from);
+            usable = mwecmass.realise.modular_precast.same_knots(s, ctx.knots_from);
         end
         if usable
             set = s;
@@ -44,15 +44,4 @@ for k = 1:numel(ctx.sets)
 end
 set = ctx.inner_fn(t, ctx.knots_from);
 ctx.sets = [ctx.sets, set];
-end
-
-function same = same_knots(a, b)
-same = numel(a.patches) == numel(b.patches);
-for p = 1:numel(a.patches)
-    if ~same
-        return
-    end
-    same = isequal(a.patches(p).surf.degree, b.patches(p).surf.degree) && ...
-        isequal(a.patches(p).surf.knots, b.patches(p).surf.knots);
-end
 end
