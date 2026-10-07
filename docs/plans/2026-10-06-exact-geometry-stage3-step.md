@@ -230,10 +230,17 @@ Files: `src/+mwecmass/+solid/outer_nurbs.m`, `offset_surface.m`, `trim_fold.m`,
   normals, with z as one parameter; outer fitted faces within ε/4 of the exact surface (contract §8
   derivation); M1–M3 judged between the faces as written. Where a face's part of a section is a
   closed loop with no seam or crease point, the face is cut along one z-monotone curve on the exact
-  surface (steepest-ascent line of z), used bitwise as both v-boundaries (self-seam); a band that
-  ends at a single highest or lowest point inside a patch ends in a pole row there. The mirror of a
+  surface (steepest-ascent line of z), used bitwise as both v-boundaries (self-seam), one curve
+  through consecutive closed-loop bands; a band that ends at a single highest or lowest point inside
+  a patch ends in a pole row there. Band ends are one set of heights for the whole hull (exact
+  patches split there by F3b), and every vertex that would lie inside a face row (the end or
+  z-extreme of a seam or crease, the end of a closed-loop cut) is joined by a cut to a vertex of the
+  face's opposite row, so every face boundary has one neighbour and is shared bitwise (contract §8
+  Cuts). Constant-z regions are S1b `flat` entries, written by F5 as plane faces. The mirror of a
   fitted face is its source's face with the control points flipped, exactly 0 in the flipped
-  coordinate on a boundary in the mirror plane (contract §8).
+  coordinate on a boundary in the mirror plane (contract §8). F1 first checks the deck and stops
+  an entity type `MS2Parser` does not evaluate (`UnsupportedEntity`) or a mirror plane other than
+  x = 0 or y = 0 (`UnsupportedMirror`), which the parser would skip or read as y = 0.
 - Slice the fitted surface at any height into an ordered closed contour.
 
 Acceptance: M1–M3 pass on a dense check grid not used for fitting (report min / max t_local, the
@@ -260,8 +267,17 @@ outer face has `fit.dev_max` ≤ ε/4 and the oracle distance at the check point
 for a shell at t = t_min (the offset folds at every convex corner) as the kernel reports them between
 the written faces (S2r); at the same check points the oracle t_local (to the exact profile) lies in
 [t − e, t + ε + e], e the largest oracle distance of the written outer faces from the exact surface
-(≤ ε/4, asserted above), and its difference from the kernel's t_local is printed per face; every face is `z_of_u` with monotone z and F3b cuts it at a module-edge height; seams pass
-the I2 bitwise test. Printed: deviations, t_local range, passes and knots per face. The same deck with
+(≤ ε/4, asserted above), and its difference from the kernel's t_local is printed per face; every
+face is `z_of_u` with monotone z and F3b cuts it at a module-edge height; seams pass the I2 bitwise
+test and the seam fields pair up (contract I2). No T-junction (contract §8 Cuts): at each of the
+highest points of the N, S and Q rims (φ = 180°, where each rim's crease branches end and no seam
+runs) and at the disk centres T and K (where the self-seams of the top and bottom disks end), every
+face whose closure contains the point has it as a corner, never inside a row, and the boundaries
+that meet there pair one to one and bitwise. The closed outer body: a test helper assembles the
+S1 faces into a T9 brep (one edge per paired boundary, its curve the shared row), which passes
+`validate_brep`, is written with `write_step` and passes `tests/step_check.py` (one closed solid,
+METRE); its volume is printed next to the closed-form volume of the solid of revolution,
+π∫r² dh = 1.68333·π = 5.2884 m³. Printed: deviations, t_local range, passes and knots per face. The same deck with
 N (0.5, 0.6) and S (1.0, 0.5) (`tilted_revolution_two_loops.ms2`) raises `SectionNotClosed`
 (verified: two loops at z = 0.738 m). The box: the real F2 set equals `sti_inner_box` (convex C0
 v-seams, trimmed along parameter lines, structure kept), compared and printed.
@@ -276,8 +292,10 @@ points inside the patch; smallest principal radius 0.253 m, so no fold at t_min.
 2026-10-07: T1 `outer_rows` (grid 60) returns one closed loop on the one patch with no seam point at
 each of 37 heights in [−0.449, 0.449] m. Asserted: two bands, [−0.45, 0] and [0, 0.45]; each face's
 part of a section is the whole loop, so each face has one self-seam (v0 and v1 the same curve
-bitwise, z-monotone, its edge once in each direction in the face's loop, `validate_brep` passes) and
-a pole row at z = ±0.45 (all control points bitwise equal); every face `z_of_u` with monotone z,
+bitwise, z-monotone, its edge once in each direction in the face's loop, `validate_brep` passes),
+the two self-seams are one chain cut (contract §8 Cuts: they meet at z = 0 in one point, the
+bottom face's top row and the top face's bottom row starting there, bitwise equal) and each face
+has a pole row at z = ±0.45 (all control points bitwise equal); every face `z_of_u` with monotone z,
 cut by F3b at z = ±0.2; oracle as above (2D distances to the profile in the meridian plane, closest
 point by Newton on the exact cubic; inner profile the 2D offset by d), `fit.dev_max` ≤ ε/4, M1–M3 at
 t = t_min with the oracle check of the previous paragraph. Printed as above.

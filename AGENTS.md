@@ -279,9 +279,11 @@ Figures: `WEC_Constructability_XZ`, `WEC_Constructability_Strips` (precast), `St
     Plan tasks T0c (parser) and T0d (geometry cache); both leave every number identical.
 36. General hulls (owner, 2026-10-07). On the proposal to build the geometry kernel for hulls like
     C1 only and stop every other hull with a named error, the owner: "No it needs to be
-    generalized." The kernel takes any `.ms2` entity type and parametrisation for hulls whose
-    horizontal section is one closed loop at every height (one body, no holes); a section of
-    several loops raises `mwecmass:solid:SectionNotClosed`. Each outer patch takes the exact path
+    generalized." The kernel takes any entity type `MS2Parser` evaluates and any parametrisation
+    for hulls whose horizontal section is one closed loop at every height (one body, no holes); a
+    section of several loops raises `mwecmass:solid:SectionNotClosed`, and a deck the parser would
+    misread (an entity type it skips, a mirror plane other than x = 0 or y = 0) stops with a named
+    error. Each outer patch takes the exact path
     (its entity converts exactly to NURBS and z is a monotone function of one parameter: all of C1)
     or the general path: faces fitted through exact points of the parametric definition with z as
     one parameter, split where z turns back and at creases, so every face is an untrimmed patch and
@@ -387,13 +389,17 @@ their mean (assumes star-shaped sections); CG_x = CG_y = 0 (declared symmetric-b
    wholly on one patch with no seam or crease point (a smooth dome, a crowned deck, a revolution
    about a non-vertical axis), the face is cut along one z-monotone curve on the exact surface (the
    steepest-ascent line of z), used bitwise as both of its v-boundaries, and a band that ends at a
-   single highest or lowest point inside a patch ends in a pole row there. The mirror of a fitted
-   face is its source's face with the control points flipped, exactly 0 in the flipped coordinate
-   on a boundary in the mirror plane. A fitted outer face stays within ε/4 of the exact surface:
-   to first order the thickness between the written faces is t + ε/2 minus the outer and the
-   inner fitting error, so M1 and M2 hold for every sign when the two errors sum to at most ε/2,
-   and the outer fit, made once per hull before any t, leaves each inner fit the same half. Inner faces whose offset keeps no structure of the outer patch
-   are fitted the same way (interface contract §8, general hulls).
+   single highest or lowest point inside a patch ends in a pole row there. Bands end at one set of
+   heights for the whole hull, and a point where a seam, crease or cut ends inside another face's
+   row is joined by a cut to a vertex of that face's opposite row, so every face boundary has one
+   neighbour and is shared bitwise (no T-junctions); a flat region is a plane face. The mirror of
+   a fitted face is its source's face with the control points flipped, exactly 0 in the flipped
+   coordinate on a boundary in the mirror plane. A fitted outer face stays within ε/4 of the exact
+   surface: to first order the thickness between the written faces is t + ε/2 minus the outer and
+   the inner fitting error, so M1 and M2 hold for every sign when the two errors sum to at most
+   ε/2, and the outer fit, made once per hull before any t, leaves each inner fit the same half.
+   Inner faces whose offset keeps no structure of the outer patch are fitted the same way
+   (interface contract §8, general hulls).
 10. **Stage-2 constraints and starts.** Constraints: flotation equality, GM ≥ `gm_min`, adjacent
     density ratio. There is no monotonic-density constraint (`c_mono`) and no minimum-mass
     constraint (`c_mass_min`). Stage 2 also runs from the bottom-filled start of §3 item 26,
