@@ -30,8 +30,9 @@ function [inner, rep] = offset_surface(model, cache, geo, t, z_range, opts)
 %   Only the outer part whose points lie within d of z_range is offset, so a set over a partial
 %   range is open at its clipped end (F5 cuts it there).
 %   M1-M3 are judged between the faces as written (inner as fitted, outer as in geo) at the check
-%   points (Gauss points and the midpoint of every knot span): t_local = distance to the outer
-%   surface; M1: t_local >= t_min; M2: t <= t_local <= t + eps_fit; M3: rows of one z with
+%   points (Gauss points and the midpoint of every knot span) and, on fitted profiles, at the
+%   local extremes of t_local between them (S2r t_local_min/max include these): t_local =
+%   distance to the outer surface; M1: t_local >= t_min; M2: t <= t_local <= t + eps_fit; M3: rows of one z with
 %   monotone heights, every non-pole boundary shared with one neighbour (same curve), and every
 %   horizontal section of the inner set one simple closed loop inside the outer section.
 %   A fitted profile that reaches the refinement cap raises mwecmass:solid:FitNotConverged.
