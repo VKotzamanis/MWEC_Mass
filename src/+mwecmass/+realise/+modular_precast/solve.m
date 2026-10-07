@@ -188,6 +188,9 @@ while true
     if max(abs(v(2:end))) > P.tol_eq
         x = best_of_step(store, name, x, max(abs(v(2:end))), v(1));
     end
+    if ~all(isfinite(x))
+        x = x0;
+    end
     ctx = store('ctx');
     ctx.knots_from = [];
     store('ctx') = ctx;
@@ -241,6 +244,12 @@ seen = store('seen');
 key = sprintf('%.17g,', x);
 if isKey(seen, key)
     v = seen(key);
+    return
+end
+if ~all(isfinite(x))
+    % a solver that lost its gradient can propose a non-finite point: a failed evaluation
+    v = Inf(3, 1);
+    store('failed') = [store('failed'), {'the solver proposed a non-finite point'}];
     return
 end
 try
