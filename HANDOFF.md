@@ -1,6 +1,6 @@
 # HANDOFF — MWEC_Mass exact-geometry refactor
 
-Updated 2026-10-07 21:12 UTC on `claude/lucid-cray-7o9442`. Process file for agents: the
+Updated 2026-10-07 21:40 UTC on `claude/lucid-cray-7o9442`. Process file for agents: the
 orchestrator updates it at every milestone and at least every 100k tokens; delete it in T12.
 
 ## 1. Goal
@@ -32,16 +32,16 @@ Main `claude/lucid-cray-7o9442` = `f52e232`: general-kernel amendment, AGENTS ru
 | spec2 | contract amendment: general kernel (owner) + errata | K | merged `e7e9114` | 9 (round 8; errata 9; merge 10) | `5ce48fc` |
 | T5 | UHPC Stage 3 a: split, build, check, store | U | accepted (round 5); waits for J2 | 7, 8, 8, 8, 9 | `31f470f` |
 | T6 | UHPC Stage 3 b: optimisation, spill, closest fail | U | implemented, not yet graded (paused) | — | task/T6 `3e1d450` |
-| T7 | thin-shell rebuild | S | round-6 findings fixed, round 7 not yet graded (paused) | 7, 7, 7, 8, 8, 8 | task/T7 `2753871` |
+| T7 | thin-shell rebuild | S | round 7: 8, minor findings only → fix + quick check (`wf_e28ebbef-e94`) | 7, 7, 7, 8, 8, 8, 8 | task/T7 `2753871` |
 | T8 | figures from the realised solid | O | accepted (round 10); waits for J2 | 8, 8, 8, 8, 6, 6, 6, 6, 7, 9 | `3b0a0be` |
 | T10 | Stage-3 STEP exports | O | accepted, waits for J2 | 9 (3) | `07856a2` |
 | T0d | geometry cache of `build_config` (C1: fresh build 421 s CPU, reload 0.44 s) | P | merged `f52e232` | 9 (2); merge 10 | `158d77d` |
 | T4a | Stage-2 changes (delete `c_mono`, `c_mass_min`; bottom-filled start; bounds) | P | round 1 rejected at 7, fix not done (paused; uncommitted partial edits in the worktree may be discarded) | 7 | task/T4a `4d6762b` |
 | T4b | Stage-2 floors from the kernel (merges after J1) | P | queued after T4a | — | — |
 | SK2 | stand-ins updated to spec2 | SK2 | merged `1bb06d6` | 9 (3); merge 10 | `753a11e` |
-| T2a | exact-path offset, fold trim, adaptive fit | K1 | implemented (all of F1–F4, F2b, tests), not yet graded (paused) | — | task/T2a `23ddfe9` |
+| T2a | exact-path offset, fold trim, adaptive fit | K1 | round 1 rejected at 5 (general decks crash, decimal arcs, fold on exact decks, rounding bounds); C1 results correct; fixing (`wf_f1cd8be0-af1`) | 5 | task/T2a `23ddfe9` |
 | T2b | general path (refits, flat regions, mirrors) | K | after T2a, ∥ T3 | — | — |
-| T3 | bodies and exact properties | K | after T2a | — | — |
+| T3 | bodies and exact properties | K3 | implementing in parallel with the T2a fix, base task/T2a, merges T2a's fixes (`wf_5f898e2c-a8c`) | — | task/T3 |
 | J1 | merge T2a, T2b, T3; owner checkpoint | — | pending | — | — |
 | J2 | merge T5, T6, T7, T8, T10 (in order); first whole-pipeline runs; owner checkpoints after T6, T10 | — | pending | — | — |
 | G | T11 cleanup → T12 docs → T13 final review | — | pending | — | — |
@@ -113,6 +113,11 @@ Main `claude/lucid-cray-7o9442` = `f52e232`: general-kernel amendment, AGENTS ru
   Kernel errors (VoidClosed, JointNotNested, FitNotConverged) are failed evaluations in T6. F6
   integral caching is internal to T3 (F5/F6 signatures unchanged). A module whose t_min shell
   exceeds its split is reported in the Stage-3 log (no S8 field).
+- T2a round-1 decisions (21:35 UTC; contract errata at J1): standin_kit failures caused only by
+  shadowing are outside T2a/T2b/T3 gates (J1 adapts them); fold trimming tested on folding decks, C1
+  tests VoidClosed at d ≥ 0.1; patch end rows take the parser's exact heights (C1 keel −3.25); F2
+  offsets the F1 NURBS as written; F1 owns rules 1a/1b, fit_z_faces makes mirrors; rounding: bitwise
+  where construction allows, else a bound derived from magnitudes and operation count.
 - SK2 spec issues for J1/T3 (contract errata with the batch above): whether a void end (constant-z
   end piece of an inner set) counts as a flat part for F6b `side` (stand-in: yes); name the error
   for a bad `side` (stand-in `mwecmass:solid:BadSide`); a row cut at a plane takes that height
