@@ -8,7 +8,10 @@ function summary = baseline_run(mode, keep_log, overrides)
 %   src/, the deck, the cache and validation/ in a temporary folder; Output/ of the repository is
 %   never touched. Every figure, log and diagnostic switch in out.save is false; only the results
 %   MAT-file is written, into the temporary folder, and read back for the numbers. The temporary
-%   folder is removed afterwards. keep_log (default false) prints the pipeline console text.
+%   folder is removed once the numbers are read, and on the error path before the error is rethrown.
+%   keep_log (default false) records the pipeline console in a diary inside the temporary folder
+%   and prints its last 40 lines on error; true records nothing. The console text appears on screen
+%   in both cases.
 %   overrides is a cell array of {'dotted.path.in.in', value; ...} applied to the input struct, or
 %   the name of a preset: 'full' (the default) keeps the author inputs, 'fast' also coarsens the
 %   z-grids (n_z_levels 40, n_z_grid 60) so that a rerun takes less time. The applied overrides
@@ -28,49 +31,49 @@ function summary = baseline_run(mode, keep_log, overrides)
 
   tmp = tempname();
   mkdir(tmp);
-  mkdir(fullfile(tmp, 'Input'));
-  mkdir(fullfile(tmp, 'Output'));
-  copyfile(fullfile(repo, 'src'), fullfile(tmp, 'src'));
-  copyfile(fullfile(repo, 'validation'), fullfile(tmp, 'validation'));
-  copyfile(fullfile(repo, 'Input', 'C1.ms2'), fullfile(tmp, 'Input', 'C1.ms2'));
-  copyfile(cache_v5, fullfile(tmp, 'Input', 'C1_wamit_cache.mat'));
-
   old_path = path();
   start_dir = pwd();
-  cleanup = onCleanup(@() restore(old_path, start_dir, tmp));
-  rmpath(fullfile(repo, 'src'));
-  addpath(fullfile(tmp, 'src'));
-  addpath(repo);
-  clear functions;
-
-  in = WEC_User_Input();
-  if nargin < 3, overrides = 'full'; end
-  if ischar(overrides), overrides = preset_overrides(mode, overrides); end
-  in.materials.realisation_type = mode;
-  for k = 1:size(overrides, 1)
-    parts = strsplit(overrides{k, 1}, '.');
-    in = setfield(in, parts{:}, overrides{k, 2}); %#ok<SFLD>
-  end
-  out = WEC_Output_Options();
-  out.save = set_all(out.save, false);
-  out.save.results_mat = true;
-  out.console_echo = false;
-
   log_file = fullfile(tmp, 'console.txt');
-  if ~keep_log, diary(log_file); diary on; end
   try
+    mkdir(fullfile(tmp, 'Input'));
+    mkdir(fullfile(tmp, 'Output'));
+    copyfile(fullfile(repo, 'src'), fullfile(tmp, 'src'));
+    copyfile(fullfile(repo, 'validation'), fullfile(tmp, 'validation'));
+    copyfile(fullfile(repo, 'Input', 'C1.ms2'), fullfile(tmp, 'Input', 'C1.ms2'));
+    copyfile(cache_v5, fullfile(tmp, 'Input', 'C1_wamit_cache.mat'));
+
+    rmpath(fullfile(repo, 'src'));
+    addpath(fullfile(tmp, 'src'));
+    addpath(repo);
+    clear functions;
+
+    in = WEC_User_Input();
+    if nargin < 3, overrides = 'full'; end
+    if ischar(overrides), overrides = preset_overrides(mode, overrides); end
+    in.materials.realisation_type = mode;
+    for k = 1:size(overrides, 1)
+      parts = strsplit(overrides{k, 1}, '.');
+      in = setfield(in, parts{:}, overrides{k, 2}); %#ok<SFLD>
+    end
+    out = WEC_Output_Options();
+    out.save = set_all(out.save, false);
+    out.save.results_mat = true;
+    out.console_echo = false;
+
+    if ~keep_log, diary(log_file); diary on; end
     mwecmass.driver.run(in, out);
+    diary off;
+    loaded = load(fullfile(tmp, 'Output', ['C1_' mode '_results.mat']));
   catch err
-    if ~keep_log
-      diary off;
+    diary off;
+    if ~keep_log && exist(log_file, 'file')
       fprintf('---- last pipeline console lines before the error ----\n');
       fprintf('%s\n', tail_of(log_file, 40));
     end
+    restore(old_path, start_dir, tmp);
     rethrow(err);
   end
-  if ~keep_log, diary off; end
-
-  loaded = load(fullfile(tmp, 'Output', ['C1_' mode '_results.mat']));
+  restore(old_path, start_dir, tmp);
   summary = summarise(mode, loaded.results, loaded.final_props);
   summary.input_overrides = struct();
   for k = 1:size(overrides, 1)
@@ -103,8 +106,13 @@ function restore(old_path, start_dir, tmp)
   path(old_path);
   cd(start_dir);
   clear functions;
-  confirm_recursive_rmdir(false, 'local');
-  rmdir(tmp, 's');
+  if exist(tmp, 'dir')
+    confirm_recursive_rmdir(false, 'local');
+    [ok, msg] = rmdir(tmp, 's');
+    if ~ok
+      warning('baseline_run:cleanup', 'Could not remove %s: %s', tmp, msg);
+    end
+  end
 end
 
 function s = set_all(s, value)

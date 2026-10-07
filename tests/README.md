@@ -41,9 +41,9 @@ MWEC_REGRESSION=1 TESTS_FILTER=regression octave --no-gui --quiet tests/run_test
 | `shim/` | Tests of the shims (`test_fmincon_shim.m`, `test_misc_shims.m`). |
 | `geometry/` | Geometry tests against the independent reference (`test_c1_reference_sections.m`, `test_c1_reference_profile.m`). |
 | `reference/` | `c1_reference.py`: evaluator of `Input/C1.ms2` written from the deck text: section area and inertias per height, the profile with outward normals, and the normal-offset half-width per height and wall thickness. |
-| `step/` | `test_step_check.m` and `make_step_fixtures.py`: checks `step_check.py` on gmsh-written solids with closed-form volumes. `tests/step_check.py` reports a STEP file (declared unit, solid count, open edges, OpenCASCADE and mesh-divergence volume, bounding box) and fails on wrong `--expect-*` values. |
 | `regression/` | `test_pipeline_baseline.m`: reruns the Octave pipeline and requires the numbers recorded in `baseline/` (see Pipeline under Octave). Runs only with `MWEC_REGRESSION=1`. |
 | `baseline/` | `octave_v1_baseline.json` (full preset, both modes), `octave_v1_baseline_fast.json` (fast preset, modular precast) and `matlab_v1_reference.json` (the MATLAB v1.0 results read from `Output/C1_*_results.mat`); `test_baseline_vs_matlab.m` prints the recorded Octave values next to the MATLAB ones from these files, without a pipeline run. The MATLAB file also holds the Stage-2 design (`results.Final3D`) per mode. |
+| `step/`, `step_check.py` | Not part of this task: they come from T9 (STEP file checks). |
 | `fixtures/` | `C1_wamit_cache_v5.mat`: the BEM cache converted to a format Octave can read. |
 
 `tools/` holds the scripts that make the baseline and fixture files: `convert_v73_to_v5.py`,
