@@ -14,6 +14,7 @@ in.constants.wamit_L   = 1.0;       % m, WAMIT reference length.
 
 %% ------------------------------------------------------------ input files -----------------
 in.files.ms2_file = 'C1.ms2';       % filename, hull geometry deck, resolved under Input/.
+in.files.geometry_cache_dir = 'Output/cache';  % folder, saved geometry products; relative to the repository root, empty = off.
 
 %% ------------------------------------------------------------ geometry discretisation -----
 in.geometry.panel_size  = 0.1;      % m, target mean BEM panel edge length.
