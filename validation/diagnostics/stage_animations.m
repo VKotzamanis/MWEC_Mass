@@ -126,7 +126,7 @@ function gif1_stage1(r, cfg, prof, st, outdir)
         ax = nexttile(tl,6); hold(ax,'on');
         xb = [min(sw.vs) max(sw.vs)];
         band(ax, xb, cfg.T_heave_range, st.fill_palette.waterline, 'T_2 band');
-        band(ax, xb, cfg.T_pitch_range, st.fill_palette.ballast_level,     'T_3 band');
+        band(ax, xb, cfg.T_pitch_range, st.fill_palette.ballast_level,  'T_3 band');
         plot(ax, sw.vs, Th,'o-','Color',st.fill_palette.waterline,'LineWidth',st.line_width.main, ...
              'MarkerSize',5,'DisplayName','T_2 heave');
         plot(ax, sw.vs, Tp,'d-','Color',st.fill_palette.ballast_level,'LineWidth',st.line_width.main, ...
@@ -221,7 +221,7 @@ function gif2_stage2(r, cfg, prof, st, outdir)
 
         ax = nexttile(tl,9); hold(ax,'on');
         band(ax,[-0.5 n-0.5], cfg.T_heave_range, st.fill_palette.waterline,'T_2 band');
-        band(ax,[-0.5 n-0.5], cfg.T_pitch_range, st.fill_palette.ballast_level,    'T_3 band');
+        band(ax,[-0.5 n-0.5], cfg.T_pitch_range, st.fill_palette.ballast_level, 'T_3 band');
         plot(ax,0:k-1,Th(1:k),'o-','Color',st.fill_palette.waterline,'LineWidth',st.line_width.main, ...
              'MarkerSize',4,'DisplayName','T_2');
         plot(ax,0:k-1,Tp(1:k),'d-','Color',st.fill_palette.ballast_level,'LineWidth',st.line_width.main, ...
@@ -351,7 +351,7 @@ function gif2b_stage2_uhpc(r, cfg, prof, st, outdir)
 
         ax = nexttile(tl,9); hold(ax,'on');
         band(ax,[-0.5 n-0.5], cfg.T_heave_range, st.fill_palette.waterline,'T_2 band');
-        band(ax,[-0.5 n-0.5], cfg.T_pitch_range, st.fill_palette.ballast_level,    'T_3 band');
+        band(ax,[-0.5 n-0.5], cfg.T_pitch_range, st.fill_palette.ballast_level, 'T_3 band');
         plot(ax,0:k-1,Th(1:k),'o-','Color',st.fill_palette.waterline,'LineWidth',st.line_width.main, ...
              'MarkerSize',4,'DisplayName','T_2');
         plot(ax,0:k-1,Tp(1:k),'d-','Color',st.fill_palette.ballast_level,'LineWidth',st.line_width.main, ...
@@ -734,14 +734,14 @@ function draw_uhpc_from_fraction(ax, prof, P_in_body, vs, cfg, f, ~, ~, ...
                     'DisplayName','Wall boundary');
         mwecmass.output.figures.style_line(h.wb, st, 'boundary');
     end
-    h.wall  = patch(ax,nan,nan,st.fill_palette.solid_material,'DisplayName','UHPC Solid Wall');
+    h.wall    = patch(ax,nan,nan,st.fill_palette.solid_material,'DisplayName','UHPC Solid Wall');
     h.ballast = patch(ax,nan,nan,st.fill_palette.ballast_material,'DisplayName','UHPC Solid Ballast');
-    h.shell = patch(ax,nan,nan,st.fill_palette.jacket_material, ...
-                    'DisplayName',get_or(opts,'shell_name','UHPC Shell'));
-    h.void  = patch(ax,nan,nan,st.fill_palette.void,'EdgeColor',st.fill_palette.inner_boundary, ...
-                    'LineStyle','--','DisplayName', ...
-                    mwecmass.internal.ternary(strcmpi(void_word,'Void'),'Void (Air)',void_word));
-    h.air   = h.void;                       % alias, so 'air' selects the same handle
+    h.shell   = patch(ax,nan,nan,st.fill_palette.jacket_material, ...
+                      'DisplayName',get_or(opts,'shell_name','UHPC Shell'));
+    h.void    = patch(ax,nan,nan,st.fill_palette.void,'EdgeColor',st.fill_palette.inner_boundary, ...
+                      'LineStyle','--','DisplayName', ...
+                      mwecmass.internal.ternary(strcmpi(void_word,'Void'),'Void (Air)',void_word));
+    h.air     = h.void;                     % alias, so 'air' selects the same handle
 
     xlim(ax,xr);  ylim(ax,zr);
     if ~isempty(get_or(opts,'xtick',[])), xticks(ax, opts.xtick); end
@@ -853,7 +853,7 @@ function gif3_stage3(r, cfg, prof, st, outdir)
         ax = nexttile(tl,6); hold(ax,'on');
         xb = [-0.4 max(h.iter)+0.4];
         band(ax, xb, cfg.T_heave_range, st.fill_palette.waterline,'T_2 band');
-        band(ax, xb, cfg.T_pitch_range, st.fill_palette.ballast_level,    'T_3 band');
+        band(ax, xb, cfg.T_pitch_range, st.fill_palette.ballast_level, 'T_3 band');
         plot(ax,h.iter(idx(1:j)),h.T_heave(idx(1:j)),'o-','Color',st.fill_palette.waterline, ...
              'LineWidth',st.line_width.main,'MarkerSize',4.5,'DisplayName','T_2');
         plot(ax,h.iter(idx(1:j)),h.T_pitch(idx(1:j)),'d-','Color',st.fill_palette.ballast_level, ...
@@ -1013,7 +1013,7 @@ function draw_uhpc_section(ax, prof, vs, zbal, cfg, g, is_sol, t_strip, Vu, Vv, 
     px = prof(:,1);  pz = prof(:,2) + vs;
 
     zg = g.z(:);  Ao = g.A_outer(:);  Ai = g.A_inner(:);
-    Ai(zg <= zbal) = 0;                       % z_ballast rule used by integrate_split
+    Ai(zg <= zbal) = 0;                     % z_ballast rule used by integrate_split
 
     % per-strip volumes for the STEP-B area target, and for the labels
     Vu_i = zeros(Ns,1);  Vv_i = zeros(Ns,1);  solid_i = false(Ns,1);

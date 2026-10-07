@@ -47,12 +47,12 @@ function [V_env, V_mat, V_void, V_ballast, V_shell] = strip_partition_volumes( .
         'mwecmass:thin_shell:strip_partition_volumes:NonMonotonicGrid', ...
         'z_grid must be strictly increasing.');
 
-    N       = numel(se) - 1;
-    V_env   = zeros(N, 1);
-    V_mat   = zeros(N, 1);
-    V_void  = zeros(N, 1);
-    V_ballast  = zeros(N, 1);   % below-z_ballast solid volume (V_mat's below-z_ballast term)
-    V_shell = zeros(N, 1);   % above-z_ballast solid volume (V_mat's above-z_ballast term)
+    N         = numel(se) - 1;
+    V_env     = zeros(N, 1);
+    V_mat     = zeros(N, 1);
+    V_void    = zeros(N, 1);
+    V_ballast = zeros(N, 1); % below-z_ballast solid volume (V_mat's below-z_ballast term)
+    V_shell   = zeros(N, 1); % above-z_ballast solid volume (V_mat's above-z_ballast term)
 
     for i = 1:N
         z_lo = se(i);
@@ -63,7 +63,7 @@ function [V_env, V_mat, V_void, V_ballast, V_shell] = strip_partition_volumes( .
 
         bp = [z_lo; z_hi; z_grid(z_grid > z_lo & z_grid < z_hi)];
         if z_ballast > z_lo && z_ballast < z_hi
-            bp = [bp; z_ballast];      %#ok<AGROW>  N is small
+            bp = [bp; z_ballast];   %#ok<AGROW>  N is small
         end
         bp = unique(sort(bp));
         if numel(bp) < 2
@@ -104,8 +104,8 @@ function [V_env, V_mat, V_void, V_ballast, V_shell] = strip_partition_volumes( .
         below = bp <= z_ballast;
         above = bp >= z_ballast;
         if sum(below) >= 2
-            V_below_i = trapz(bp(below), Ao(below));
-            V_mat(i)  = V_mat(i) + V_below_i;
+            V_below_i    = trapz(bp(below), Ao(below));
+            V_mat(i)     = V_mat(i) + V_below_i;
             V_ballast(i) = V_ballast(i) + V_below_i;   % same term, also kept split
         end
         if sum(above) >= 2

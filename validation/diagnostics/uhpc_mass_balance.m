@@ -27,15 +27,15 @@ function uhpc_mass_balance(result_file, output_folder)
     zmin     = cfg.hull_z_min;
     zmax     = cfg.hull_z_max;
 
-    zg  = ct.z_grid(:);                   % [m] body frame
-    Ao  = ct.A_outer_grid(:);             % [m^2]
-    Ai  = ct.A_inner_grid(:);             % [m^2]
-    Aj  = max(0, Ao - Ai);                % [m^2] jacket annulus
-    zbal  = ct.z_ballast;                      % [m]
-    vs  = ct.vertical_shift;              % [m]
-    zwl = -vs;                            % [m] waterline, body frame
-    se  = ct.strip_edges(:);
-    Ns  = numel(se) - 1;
+    zg   = ct.z_grid(:);                  % [m] body frame
+    Ao   = ct.A_outer_grid(:);            % [m^2]
+    Ai   = ct.A_inner_grid(:);            % [m^2]
+    Aj   = max(0, Ao - Ai);               % [m^2] jacket annulus
+    zbal = ct.z_ballast;                  % [m]
+    vs   = ct.vertical_shift;             % [m]
+    zwl  = -vs;                           % [m] waterline, body frame
+    se   = ct.strip_edges(:);
+    Ns   = numel(se) - 1;
     wIdx = ct.wall_strip_idx;
 
     % EFFECTIVE material split, respecting the z_ballast rule that integrate_split
@@ -99,7 +99,7 @@ function uhpc_mass_balance(result_file, output_folder)
     plot(ax, Ai, zg, ':', 'Color', [0.45 0.45 0.45], 'LineWidth', 1.1, ...
          'DisplayName', 'A_{inner}(z)  (geometry only)');
 
-    yline(ax, zbal,  '-',  'Color', [0.85 0.35 0.10], 'LineWidth', 1.8, ...
+    yline(ax, zbal, '-', 'Color', [0.85 0.35 0.10], 'LineWidth', 1.8, ...
           'Label', sprintf('z_{ballast} = %.3f m', zbal), 'FontSize', 9, ...
           'LabelHorizontalAlignment', 'right', 'DisplayName', 'z_{ballast}');
     yline(ax, zwl, '--', 'Color', C_wl, 'LineWidth', 1.8, ...
@@ -124,7 +124,7 @@ function uhpc_mass_balance(result_file, output_folder)
     ax = nexttile(tl, 3); hold(ax, 'on'); grid(ax, 'on'); box(ax, 'on');
 
     % A_mat / A_vd already carry the z_ballast rule (computed once, above).
-    dM_dz  = rho_uhpc*A_mat + rho_air*A_vd;                     % [kg/m]
+    dM_dz  = rho_uhpc*A_mat + rho_air*A_vd;                      % [kg/m]
     M_cum  = cumtrapz(zg, dM_dz);                                % [kg]
 
     Vsub_c = max(0, interp1(cfg.Aw_table_z, cfg.V_sub_table, zg, 'linear', 0));
@@ -135,7 +135,7 @@ function uhpc_mass_balance(result_file, output_folder)
     plot(ax, Mb_cum/1e3, zg, '-', 'Color', C_wl, 'LineWidth', 1.6, ...
          'DisplayName', 'cumulative displaced mass  \rho_w V_{sub}(z)');
     yline(ax, zwl, '--', 'Color', C_wl, 'LineWidth', 1.5, 'HandleVisibility','off');
-    yline(ax, zbal,  '-',  'Color', [0.85 0.35 0.10], 'LineWidth', 1.5, 'HandleVisibility','off');
+    yline(ax, zbal, '-', 'Color', [0.85 0.35 0.10], 'LineWidth', 1.5, 'HandleVisibility','off');
     plot(ax, ct.M_total/1e3, zwl, 'o', 'MarkerSize', 9, 'LineWidth', 1.8, ...
          'MarkerFaceColor', 'w', 'Color', [0.75 0.25 0.15], ...
          'DisplayName', 'balance point at the waterline');

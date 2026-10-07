@@ -13,34 +13,34 @@ function out = evaluate_design_point(vs, t_steel, z_ballast, grids, ctx)  %#ok<I
 
     % V_ballast is the solid region below z_ballast; V_shell is the jacket above it.
     % V_steel and its integrals remain aggregate solid-region quantities.
-    V_ballast  = R.V_below_outer;
-    V_shell = R.V_above_jacket;
-    V_steel = V_ballast + V_shell;
-    V_air   = R.V_above_inner;
+    V_ballast = R.V_below_outer;
+    V_shell   = R.V_above_jacket;
+    V_steel   = V_ballast + V_shell;
+    V_air     = R.V_above_inner;
 
-    int_z_x_A_ballast  = R.int_zA_below_outer;
-    int_z_x_A_shell = R.int_zA_above_jacket;
-    int_z_x_A_steel = int_z_x_A_ballast + int_z_x_A_shell;
-    int_z_x_A_air   = R.int_zA_above_inner;
+    int_z_x_A_ballast = R.int_zA_below_outer;
+    int_z_x_A_shell   = R.int_zA_above_jacket;
+    int_z_x_A_steel   = int_z_x_A_ballast + int_z_x_A_shell;
+    int_z_x_A_air     = R.int_zA_above_inner;
 
-    int_x2_ballast  = R.int_Ix_below_outer;
-    int_x2_shell = R.int_Ix_above_jacket;
-    int_x2_steel = int_x2_ballast + int_x2_shell;
-    int_x2_air   = R.int_Ix_above_inner;
+    int_x2_ballast = R.int_Ix_below_outer;
+    int_x2_shell   = R.int_Ix_above_jacket;
+    int_x2_steel   = int_x2_ballast + int_x2_shell;
+    int_x2_air     = R.int_Ix_above_inner;
 
-    int_y2_ballast  = R.int_Iy_below_outer;
-    int_y2_shell = R.int_Iy_above_jacket;
-    int_y2_steel = int_y2_ballast + int_y2_shell;
-    int_y2_air   = R.int_Iy_above_inner;
+    int_y2_ballast = R.int_Iy_below_outer;
+    int_y2_shell   = R.int_Iy_above_jacket;
+    int_y2_steel   = int_y2_ballast + int_y2_shell;
+    int_y2_air     = R.int_Iy_above_inner;
 
-    int_z2_A_ballast  = R.int_z2A_below_outer;
-    int_z2_A_shell = R.int_z2A_above_jacket;
-    int_z2_A_steel = int_z2_A_ballast + int_z2_A_shell;
-    int_z2_A_air   = R.int_z2A_above_inner;
+    int_z2_A_ballast = R.int_z2A_below_outer;
+    int_z2_A_shell   = R.int_z2A_above_jacket;
+    int_z2_A_steel   = int_z2_A_ballast + int_z2_A_shell;
+    int_z2_A_air     = R.int_z2A_above_inner;
 
     % Compute the per-region masses for the two-density material model.
-    M_shell_region = ctx.rho_shell * V_shell;
-    M_ballast_region  = ctx.rho_ballast  * V_ballast;
+    M_shell_region   = ctx.rho_shell   * V_shell;
+    M_ballast_region = ctx.rho_ballast * V_ballast;
 
     % Keep the aggregate operation order for the equal-density default; the
     % difference term supplies the ballast-region correction for two densities.
@@ -48,15 +48,15 @@ function out = evaluate_design_point(vs, t_steel, z_ballast, grids, ctx)  %#ok<I
     M_air   = ctx.rho_air   * V_air;
     M_total = M_steel + M_air;
 
-    out.V_steel = V_steel;
-    out.V_air   = V_air;
-    out.V_shell = V_shell;
-    out.V_ballast  = V_ballast;
-    out.M_steel = M_steel;
-    out.M_air   = M_air;
-    out.M_shell = M_shell_region;
-    out.M_ballast  = M_ballast_region;
-    out.M_total = M_total;
+    out.V_steel   = V_steel;
+    out.V_air     = V_air;
+    out.V_shell   = V_shell;
+    out.V_ballast = V_ballast;
+    out.M_steel   = M_steel;
+    out.M_air     = M_air;
+    out.M_shell   = M_shell_region;
+    out.M_ballast = M_ballast_region;
+    out.M_total   = M_total;
 
     if M_total <= 0
         out.feasible = false;
@@ -130,7 +130,7 @@ function out = evaluate_design_point(vs, t_steel, z_ballast, grids, ctx)  %#ok<I
     else
         out.z_cg_steel = solid_first_moment / M_steel;
     end
-    out.z_cg_ballast        = z_cg_ballast;
+    out.z_cg_ballast     = z_cg_ballast;
     out.z_cg_shell       = z_cg_shell;
     out.z_cg_air         = z_cg_air;
     out.CG_z_body        = CG_z_body;

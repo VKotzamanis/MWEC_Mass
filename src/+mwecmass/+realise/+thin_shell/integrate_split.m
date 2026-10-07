@@ -47,7 +47,7 @@ function R = integrate_split(grids, z_ballast)
         Ixx_i_below = [Ixx_i(below_mask); Ixx_i_zf];  %#ok<NASGU>
         Ixx_j_below = [Ixx_j(below_mask); Ixx_j_zf];  %#ok<NASGU>
 
-        z_above   = [z_ballast;     z_above];
+        z_above   = [z_ballast;  z_above];
         A_o_above = [A_o_zf;     A_o(above_mask)];  %#ok<NASGU>
         A_i_above = [A_i_zf;     A_i(above_mask)];
         A_j_above = [A_j_zf;     A_j(above_mask)];

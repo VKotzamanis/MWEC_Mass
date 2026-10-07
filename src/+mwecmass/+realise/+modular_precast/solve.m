@@ -133,10 +133,10 @@ function solve_data = solve(config, x_opt_3d, final_props, opts)
             [V_uniq, ia_uniq] = unique(cumV(interior), 'stable');
             z_int = grids_seed.z(interior);
             z_ballast_seed = interp1(V_uniq, z_int(ia_uniq), ...
-                                  V_inner_below_target, 'linear', 'extrap');
+                                     V_inner_below_target, 'linear', 'extrap');
         end
         z_ballast_seed = max(hull_z_min + 1e-3, ...
-                          min(hull_z_max - 1e-3, z_ballast_seed));
+                             min(hull_z_max - 1e-3, z_ballast_seed));
     end
     fprintf('      Warm-start z_ballast seed: %.4f m (analytic, M_buoy=%.0f kg)\n', ...
             z_ballast_seed, M_buoy_target);
@@ -144,7 +144,7 @@ function solve_data = solve(config, x_opt_3d, final_props, opts)
     %% Nested-solver context
     ctx = struct();
     ctx.config           = config;
-    ctx.rho_uhpc        = rho_uhpc;
+    ctx.rho_uhpc         = rho_uhpc;
     ctx.rho_air          = rho_air;
     ctx.max_slope_factor = max_slope_factor;
     ctx.n_z_grid         = n_z_grid;
@@ -165,7 +165,7 @@ function solve_data = solve(config, x_opt_3d, final_props, opts)
     % DVs: x = [vs; z_ballast; t_offset_strip(nw_idx)]
     lb = [vs_lb;     hull_z_min + 1e-3;     t_min        * ones(N_nw, 1)];
     ub = [vs_ub;     hull_z_max - 1e-3;     0.95 * t_max * ones(N_nw, 1)];
-    x0 = [vs_opt;    z_ballast_seed;           t_init       * ones(N_nw, 1)];
+    x0 = [vs_opt;    z_ballast_seed;        t_init       * ones(N_nw, 1)];
     x0 = max(lb, min(ub, x0));
 
     %% DESIGN-TRAJECTORY LOGGING
@@ -173,7 +173,7 @@ function solve_data = solve(config, x_opt_3d, final_props, opts)
     iter_hist = struct( ...
         'iter',        [], ...   % fmincon iteration index
         'vs',          [], ...   % vertical shift            [m]
-        'z_ballast',      [], ...   % UHPC/void transition      [m]
+        'z_ballast',   [], ...   % UHPC/void transition      [m]
         'draft',       [], ...   % |hull_z_min + vs|         [m]
         't_strip',     [], ...   % N_strips x n_iter, Inf = solid [m]
         'M_total',     [], ...   % realised mass             [kg]
@@ -181,7 +181,7 @@ function solve_data = solve(config, x_opt_3d, final_props, opts)
         'GM',          [], ...   % metacentric height        [m]
         'T_heave',     [], ...   % uncoupled heave period    [s]
         'T_pitch',     [], ...   % uncoupled pitch period    [s]
-        'V_uhpc',     [], ...   % UHPC volume               [m^3]
+        'V_uhpc',      [], ...   % UHPC volume               [m^3]
         'V_air',       [], ...   % void volume               [m^3]
         'CG_z_world',  [], ...   % CG elevation, world frame [m]
         'phi',         [], ...   % objective value           [-]
@@ -249,26 +249,26 @@ function solve_data = solve(config, x_opt_3d, final_props, opts)
 
     %% Package output (steel_data shape + per-strip extras)
     solve_data = struct();
-    solve_data.t_uhpc          = mean(t_nw_star);   % representative global value
-    solve_data.z_ballast           = zb_star;
+    solve_data.t_uhpc           = mean(t_nw_star);   % representative global value
+    solve_data.z_ballast        = zb_star;
     solve_data.draft            = realised.draft;
     solve_data.vertical_shift   = vs_star;
     solve_data.draft_optimiser  = draft_opt;
     solve_data.vs_optimiser     = vs_opt;
-    solve_data.rho_uhpc        = rho_uhpc;
+    solve_data.rho_uhpc         = rho_uhpc;
     solve_data.rho_air          = rho_air;
     solve_data.t_max            = t_max;
     solve_data.t_min            = t_min;
     solve_data.t_min_active     = t_min_active;
 
-    solve_data.V_uhpc = realised.V_uhpc;
+    solve_data.V_uhpc  = realised.V_uhpc;
     solve_data.V_air   = realised.V_air;
     solve_data.V_hull  = realised.V_uhpc + realised.V_air;
-    solve_data.M_uhpc = realised.M_uhpc;
+    solve_data.M_uhpc  = realised.M_uhpc;
     solve_data.M_air   = realised.M_air;
     solve_data.M_total = realised.M_total;
 
-    solve_data.z_cg_uhpc       = realised.z_cg_uhpc;
+    solve_data.z_cg_uhpc        = realised.z_cg_uhpc;
     solve_data.z_cg_air         = realised.z_cg_air;
     solve_data.CG_z_body        = realised.CG_z_body;
     solve_data.CG_z_world       = realised.CG_z_world;
@@ -443,7 +443,7 @@ function solve_data = solve(config, x_opt_3d, final_props, opts)
 
         iter_hist.iter(end+1)       = optimValues.iteration;
         iter_hist.vs(end+1)         = vs_l;
-        iter_hist.z_ballast(end+1)     = zb_l;
+        iter_hist.z_ballast(end+1)  = zb_l;
         iter_hist.draft(end+1)      = r_l.draft;
         iter_hist.t_strip           = [iter_hist.t_strip, t_l(:)];
         iter_hist.M_total(end+1)    = r_l.M_total;
@@ -451,7 +451,7 @@ function solve_data = solve(config, x_opt_3d, final_props, opts)
         iter_hist.GM(end+1)         = r_l.GM;
         iter_hist.T_heave(end+1)    = r_l.T_heave;
         iter_hist.T_pitch(end+1)    = r_l.T_pitch;
-        iter_hist.V_uhpc(end+1)    = r_l.V_uhpc;
+        iter_hist.V_uhpc(end+1)     = r_l.V_uhpc;
         iter_hist.V_air(end+1)      = r_l.V_air;
         iter_hist.CG_z_world(end+1) = r_l.CG_z_world;
         iter_hist.phi(end+1)        = optimValues.fval;

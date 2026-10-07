@@ -8,14 +8,14 @@ function cstr = solve_and_extract(config, x_opt, final_props)
 
     %% RESOLVE UHPC MATERIAL PARAMETERS
     rho_UHPC     = config.constructability_rho_hull;
-    rho_air = config.constructability_rho_air;
+    rho_air      = config.constructability_rho_air;
     t_min_uhpc   = config.constructability_t_min;
 
     % Build opts struct overriding Shell_Offset defaults with UHPC params.
     % opt_or_cfg in Shell_Offset reads opts field first, then config field,
     % so overriding here does NOT require changing config.
     uhpc_opts = struct();
-    uhpc_opts.rho_uhpc = rho_UHPC;
+    uhpc_opts.rho_uhpc  = rho_UHPC;
     uhpc_opts.rho_air   = rho_air;
     uhpc_opts.t_min     = t_min_uhpc;
 
@@ -85,9 +85,9 @@ function cstr = solve_and_extract(config, x_opt, final_props)
     [grids_pre, ~] = mwecmass.realise.modular_precast.build_geometry_grid( ...
         config, strip_edges_realize, t_offset_pre, is_solid_pre, n_z_pre, slope_f);
     A_jacket_pre = grids_pre.A_outer - grids_pre.A_inner;
-    M_min_uhpc   = rho_UHPC    * trapz(grids_pre.z, A_jacket_pre) + ...
-                   rho_air * trapz(grids_pre.z, grids_pre.A_inner);
-    M_max_uhpc   = rho_UHPC    * trapz(grids_pre.z, grids_pre.A_outer);
+    M_min_uhpc   = rho_UHPC * trapz(grids_pre.z, A_jacket_pre) + ...
+                   rho_air  * trapz(grids_pre.z, grids_pre.A_inner);
+    M_max_uhpc   = rho_UHPC * trapz(grids_pre.z, grids_pre.A_outer);
 
     fprintf('      Achievable mass range: [%.0f, %.0f] kg  |  target: %.0f kg\n', ...
             M_min_uhpc, M_max_uhpc, final_props.mass_total);

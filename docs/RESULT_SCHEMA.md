@@ -153,7 +153,10 @@ Results written before the ballast and material renaming carry the old names. Th
 | `rho_fill` in `results.steel_data` (solid ballast) | `rho_ballast` |
 | `rho_steel` in `results.steel_data` (held the ballast density) | removed; use `rho_ballast` |
 | `t_steel`, `rho_steel`, `V_steel`, `M_steel`, `z_cg_steel` in `results.constructability` (held UHPC quantities) | `t_uhpc`, `rho_uhpc`, `V_uhpc`, `M_uhpc`, `z_cg_uhpc` |
-| `V_fill`, `M_fill`, `z_cg_fill`, `strip_V_fill` in `results.steel_data` | `V_ballast`, `M_ballast`, `z_cg_ballast`, `strip_V_ballast` |
+| `V_fill`, `M_fill`, `z_cg_fill`, `strip_V_fill` in `results.steel_data`; `V_fill`, `M_fill`, `z_cg_fill` in `final_props` | `V_ballast`, `M_ballast`, `z_cg_ballast`, `strip_V_ballast` |
+| `rho_fill` in `results.config` (thin shell, solid ballast) | `rho_ballast` |
+| `constructability_rho_fill` in `results.config` (air) | `constructability_rho_air` |
+| `z_fill`, `V_steel` in `results.constructability.iter_history` | `z_ballast`, `V_uhpc` |
 | `in.materials.thin_shell.rho_void`, `in.materials.modular_precast.rho_fill` (inputs) | `in.materials.thin_shell.rho_air`, `in.materials.modular_precast.rho_air` |
 | `in.materials.thin_shell.rho_fill` (input) | `in.materials.thin_shell.rho_ballast` |
 

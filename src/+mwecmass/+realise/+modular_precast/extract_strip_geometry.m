@@ -345,7 +345,7 @@ function cstr = extract_strip_geometry(config, t_offset_arg, z_ballast, ...
         cstr.t_UHPC = max(t_offset_strip(isfinite(t_offset_strip)));
     end
     cstr.t_offset_strip   = t_offset_strip;   % per-strip thickness (Inf=solid)
-    cstr.z_ballast           = z_ballast;
+    cstr.z_ballast        = z_ballast;
     cstr.vertical_shift   = solve_data.vertical_shift;
     cstr.draft            = solve_data.draft;
 

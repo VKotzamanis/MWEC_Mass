@@ -26,8 +26,8 @@ in.geometry.eff_w_floor = 0.05;     % m, effective-width floor for the 2D surrog
 %% ------------------------------------------------------------ realisation type and materials
 in.materials.realisation_type = 'thin_shell';  % one of 'preliminary' | 'thin_shell' | 'modular_precast'.
 
-in.materials.thin_shell.rho_shell = 7500;   % kg/m^3, structural steel wall density.
-in.materials.thin_shell.rho_air   = 1.2;    % kg/m^3, air density used for void volume.
+in.materials.thin_shell.rho_shell   = 7500; % kg/m^3, structural steel wall density.
+in.materials.thin_shell.rho_air     = 1.2;  % kg/m^3, air density used for void volume.
 in.materials.thin_shell.rho_ballast = in.materials.thin_shell.rho_shell;  % kg/m^3, density of the solid ballast below z_ballast.
 assert(in.materials.thin_shell.rho_ballast >= in.materials.thin_shell.rho_shell, ...
     'WEC_User_Input:ThinShellSeedNotMonotone', ...

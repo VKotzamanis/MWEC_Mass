@@ -43,25 +43,25 @@ function steel_data = solve(config, x_opt_3d, final_props, opts, fids)
     % rho_shell is wall density; rho_ballast is the density below z_ballast and
     % defaults to rho_shell. opts can override these and solver settings.
     rho_shell        = mwecmass.internal.option_or_config(opts, 'rho_shell',        config.rho_shell);
-    rho_ballast         = mwecmass.internal.option_or_config(opts, 'rho_ballast',         config.rho_ballast);
+    rho_ballast      = mwecmass.internal.option_or_config(opts, 'rho_ballast',      config.rho_ballast);
     rho_air          = mwecmass.internal.option_or_config(opts, 'rho_air',          config.rho_air);
     t_init           = mwecmass.internal.option_or_config(opts, 't_init',           config.steel_t_init);
     t_min            = mwecmass.internal.option_or_config(opts, 't_min',            config.steel_t_min);
     max_slope_factor = mwecmass.internal.option_or_config(opts, 'max_slope_factor', config.steel_max_slope_factor);
     n_z_grid         = mwecmass.internal.option_or_config(opts, 'n_z_grid',         config.steel_n_z_grid);
 
-    assert(rho_shell > 0,        'rho_shell must be > 0 (got %g)',        rho_shell);
-    assert(rho_ballast  > 0,        'rho_ballast must be > 0 (got %g)',         rho_ballast);
-    assert(rho_air   > 0,        'rho_air must be > 0 (got %g)',          rho_air);
+    assert(rho_shell   > 0,        'rho_shell must be > 0 (got %g)',        rho_shell);
+    assert(rho_ballast > 0,        'rho_ballast must be > 0 (got %g)',      rho_ballast);
+    assert(rho_air     > 0,        'rho_air must be > 0 (got %g)',          rho_air);
     % Air must be lighter than both solid regions; the ballast ordering below
     % also ensures a monotone cumulative integrand for the warm-start seed.
-    assert(rho_air   < min(rho_shell, rho_ballast), ...
+    assert(rho_air     < min(rho_shell, rho_ballast), ...
            'rho_air (%g) must be < min(rho_shell, rho_ballast) = %g', rho_air, min(rho_shell, rho_ballast));
-    assert(n_z_grid  >= 50,      'n_z_grid must be >= 50 (got %d)',       n_z_grid);
-    assert(t_min     >= 0,       't_min must be >= 0 (got %g)',           t_min);
+    assert(n_z_grid    >= 50,      'n_z_grid must be >= 50 (got %d)',       n_z_grid);
+    assert(t_min       >= 0,       't_min must be >= 0 (got %g)',           t_min);
     % Enforce the ballast ordering at the solver boundary because opts may
     % override the input values; this keeps the seed cumulative integral monotone.
-    assert(rho_ballast  >= rho_shell, ...
+    assert(rho_ballast >= rho_shell, ...
            ['rho_ballast (%g) must be >= rho_shell (%g): the analytic z_ballast seed''s cumulative ' ...
             'integrand is only guaranteed monotone under this ordering (Amendment A2)'], ...
            rho_ballast, rho_shell);
@@ -186,10 +186,10 @@ function steel_data = solve(config, x_opt_3d, final_props, opts, fids)
                 [V_uniq, ia_uniq] = unique(cumV(interior), 'stable');
                 z_int = z_grid_seed(interior);
                 z_ballast_seed = interp1(V_uniq, z_int(ia_uniq), ...
-                                      V_inner_below_target, 'linear', 'extrap');
+                                         V_inner_below_target, 'linear', 'extrap');
             end
             z_ballast_seed = max(hull_z_min + 1e-3, ...
-                              min(hull_z_max - 1e-3, z_ballast_seed));
+                                 min(hull_z_max - 1e-3, z_ballast_seed));
         end
     else
         % C(z) = integral_{hull_z_min}^{z} [(rho_ballast-rho_shell)*(A_o-A_i) +
@@ -209,7 +209,7 @@ function steel_data = solve(config, x_opt_3d, final_props, opts, fids)
             % cumulative table.
             z_ballast_seed = invert_piecewise_linear_cumulative(z_grid_seed, g_seed, C_target);
             z_ballast_seed = max(hull_z_min + 1e-3, ...
-                              min(hull_z_max - 1e-3, z_ballast_seed));
+                                 min(hull_z_max - 1e-3, z_ballast_seed));
         end
     end
     mwecmass.output.emit(fids, '      Warm-start z_ballast seed: %.4f m (analytic, M_buoy=%.0f kg)\n', ...
@@ -277,7 +277,7 @@ function steel_data = solve(config, x_opt_3d, final_props, opts, fids)
     %% Package output
     steel_data = struct();
     steel_data.t_steel          = t_star;
-    steel_data.z_ballast           = zb_star;
+    steel_data.z_ballast        = zb_star;
     steel_data.draft            = realised.draft;
     steel_data.vertical_shift   = realised.vertical_shift;
     steel_data.draft_optimiser  = draft_opt;
@@ -295,16 +295,16 @@ function steel_data = solve(config, x_opt_3d, final_props, opts, fids)
     steel_data.V_air            = realised.V_air;
     steel_data.V_hull           = realised.V_steel + realised.V_air;
     steel_data.V_shell          = realised.V_shell;
-    steel_data.V_ballast           = realised.V_ballast;
+    steel_data.V_ballast        = realised.V_ballast;
     steel_data.M_steel          = realised.M_steel;
     steel_data.M_air            = realised.M_air;
     steel_data.M_shell          = realised.M_shell;
-    steel_data.M_ballast           = realised.M_ballast;
+    steel_data.M_ballast        = realised.M_ballast;
     steel_data.M_total          = realised.M_total;
 
     steel_data.z_cg_steel       = realised.z_cg_steel;
     steel_data.z_cg_air         = realised.z_cg_air;
-    steel_data.z_cg_ballast        = realised.z_cg_ballast;
+    steel_data.z_cg_ballast     = realised.z_cg_ballast;
     steel_data.z_cg_shell       = realised.z_cg_shell;
     steel_data.CG_z_body        = realised.CG_z_body;
     steel_data.CG_z_world       = realised.CG_z_world;
@@ -379,21 +379,21 @@ function steel_data = solve(config, x_opt_3d, final_props, opts, fids)
         rho_eff   = M_strip_s ./ max(V_env_s, eps);            % [kg/m^3]
         rho_eff(V_env_s <= 1e-12) = NaN;   % degenerate strip: no volume
 
-        steel_data.strip_rho_eff = rho_eff;
-        steel_data.strip_edges   = config.strip_edges(:);
-        steel_data.strip_V_env   = V_env_s;    % [m^3]
-        steel_data.strip_V_solid = V_sol_s;    % [m^3]
-        steel_data.strip_V_void  = V_vd_s;     % [m^3]
-        steel_data.strip_V_ballast  = V_ballast_s;   % [m^3] two-density model
-        steel_data.strip_V_shell = V_shell_s;  % [m^3] two-density model
+        steel_data.strip_rho_eff   = rho_eff;
+        steel_data.strip_edges     = config.strip_edges(:);
+        steel_data.strip_V_env     = V_env_s;     % [m^3]
+        steel_data.strip_V_solid   = V_sol_s;     % [m^3]
+        steel_data.strip_V_void    = V_vd_s;      % [m^3]
+        steel_data.strip_V_ballast = V_ballast_s; % [m^3] two-density model
+        steel_data.strip_V_shell   = V_shell_s;   % [m^3] two-density model
     else
-        steel_data.strip_rho_eff = [];
-        steel_data.strip_edges   = [];
-        steel_data.strip_V_env   = [];
-        steel_data.strip_V_solid = [];
-        steel_data.strip_V_void  = [];
-        steel_data.strip_V_ballast  = [];
-        steel_data.strip_V_shell = [];
+        steel_data.strip_rho_eff   = [];
+        steel_data.strip_edges     = [];
+        steel_data.strip_V_env     = [];
+        steel_data.strip_V_solid   = [];
+        steel_data.strip_V_void    = [];
+        steel_data.strip_V_ballast = [];
+        steel_data.strip_V_shell   = [];
     end
         steel_data.fill_method = 'steel_fill';
 
