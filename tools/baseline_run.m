@@ -156,7 +156,7 @@ function summary = summarise(mode, results, final_props)
       stage3.(names{k}) = double(c.(names{k}));
     end
   end
-  % Accept both field names so one summary works before and after the z_fill rename.
+  % The ballast level field is read under either of its two names.
   for name = {'z_ballast', 'z_fill'}
     if isfield(c, name{1})
       stage3.z_ballast = double(c.(name{1}));

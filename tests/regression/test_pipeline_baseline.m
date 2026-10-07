@@ -11,7 +11,8 @@ function test_pipeline_baseline()
 %   TESTS_BASELINE_PRESET selects the case: 'fast' (default) is the baseline_run preset with
 %   coarser z-grids and the file octave_v1_baseline_fast.json; 'full' is the author input and
 %   octave_v1_baseline.json. TESTS_BASELINE_MODES (comma separated, default both) limits the
-%   run, for example TESTS_BASELINE_MODES=thin_shell.
+%   run, for example TESTS_BASELINE_MODES=thin_shell; the default is every mode that the selected
+%   baseline file holds. tests/run_tests.m runs this test only when MWEC_REGRESSION=1.
     root = fileparts(fileparts(fileparts(mfilename('fullpath'))));
     addpath(fullfile(root, 'tests', 'octave_shims'), fullfile(root, 'tools'));
     preset = getenv('TESTS_BASELINE_PRESET');
@@ -21,7 +22,7 @@ function test_pipeline_baseline()
     members = read_members(fullfile(root, 'tests', 'baseline', ['octave_v1_baseline' suffix '.json']));
     matlab_ref = jsondecode(fileread(fullfile(root, 'tests', 'baseline', 'matlab_v1_reference.json')));
 
-    modes = {'modular_precast', 'thin_shell'};
+    modes = intersect({'modular_precast', 'thin_shell'}, keys(members));
     selected = getenv('TESTS_BASELINE_MODES');
     if ~isempty(selected)
         modes = strsplit(selected, ',');

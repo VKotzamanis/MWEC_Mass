@@ -15,6 +15,14 @@ TESTS_FILTER=geometry octave --no-gui --quiet tests/run_tests.m  # only paths co
 `try/catch`, prints `PASS`/`FAIL` with the elapsed time, prints a summary and exits with status 1 if
 any test failed. Test file names must be unique across folders.
 
+The pipeline regression in `regression/` takes 24 to 94 minutes per mode, so the default run lists
+it as `SKIP`. Run it with `MWEC_REGRESSION=1`, for example the modular-precast `fast` preset
+(about 24 minutes):
+
+```bash
+MWEC_REGRESSION=1 TESTS_FILTER=regression octave --no-gui --quiet tests/run_tests.m
+```
+
 ## Conventions
 
 - One file per test: `tests/<area>/test_<name>.m`, a function with no inputs and no outputs.
@@ -33,8 +41,8 @@ any test failed. Test file names must be unique across folders.
 | `shim/` | Tests of the shims (`test_fmincon_shim.m`, `test_misc_shims.m`). |
 | `geometry/` | Geometry tests against the independent reference (`test_c1_reference_sections.m`). |
 | `reference/` | `c1_reference.py`: evaluator of `Input/C1.ms2` written from the deck text; run on request by the geometry test. |
-| `regression/` | `test_pipeline_baseline.m`: reruns the Octave pipeline and requires the numbers in `baseline/octave_v1_baseline.json` (see Pipeline under Octave). |
-| `baseline/` | `octave_v1_baseline.json` (this repository's Octave pipeline, v1.0 code) and `matlab_v1_reference.json` (the MATLAB v1.0 results read from `Output/C1_*_results.mat`). |
+| `regression/` | `test_pipeline_baseline.m`: reruns the Octave pipeline and requires the numbers recorded in `baseline/` (see Pipeline under Octave). Runs only with `MWEC_REGRESSION=1`. |
+| `baseline/` | `octave_v1_baseline.json` (full preset, both modes), `octave_v1_baseline_fast.json` (fast preset, modular precast) and `matlab_v1_reference.json` (the MATLAB v1.0 results read from `Output/C1_*_results.mat`); `test_baseline_vs_matlab.m` prints the recorded Octave values next to the MATLAB ones from these files, without a pipeline run. |
 | `fixtures/` | `C1_wamit_cache_v5.mat`: the BEM cache converted to a format Octave can read. |
 
 `tools/` holds the scripts that make the baseline and fixture files: `convert_v73_to_v5.py`,
@@ -50,6 +58,11 @@ cannot read the v7.3 BEM cache, hence the converted copy in `fixtures/`. The `fm
 `OutputFcn` only at `init` and `done`, and Octave's `sqp` is not MATLAB's, so Octave and MATLAB
 numbers differ (Stage 1 and Stage 2 end in different local optima); the baselines pin the Octave
 numbers for regression and `matlab_v1_reference.json` holds the MATLAB v1.0 values for comparison.
+
+Known fidelity defect, fixed by a later task (T0e): for modular precast, Octave's Stage 1 picks another
+draft node (`vertical_shift` 0.7786 against MATLAB 1.075) and Stage 2 stops with exitflag -2 at
+`vertical_shift` 0.409 (MATLAB: 0.983, exitflag 1). The final numbers agree with MATLAB only because
+today's Stage 3 re-optimises from scratch and ignores the Stage-2 densities.
 
 Two presets, one baseline file each, one JSON member per line:
 

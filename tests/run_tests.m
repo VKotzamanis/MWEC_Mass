@@ -1,9 +1,12 @@
 % Run every tests/**/test_*.m (except tests/octave_shims) and exit non-zero if any fails.
 %   octave --no-gui --quiet tests/run_tests.m
-% Environment variable TESTS_FILTER (optional): run only files whose path contains that text.
+% Environment variables:
+%   TESTS_FILTER (optional)  run only files whose path contains that text.
+%   MWEC_REGRESSION=1        also run tests/regression/test_*.m (they run the whole pipeline, 24 to 94
+%                            minutes per mode); without it they are listed as skipped.
 % Each test is a function file with no inputs or outputs that calls error() on failure.
-% No local functions here: tests such as test_pipeline_baseline end with "clear functions", which
-% would remove functions defined in this script file.
+% No local functions here: baseline_run clears functions, which would remove functions defined in
+% this script file.
 tests_dir = fileparts(mfilename('fullpath'));
 repo_root = fileparts(tests_dir);
 warning('off', 'Octave:shadowed-function');
@@ -30,9 +33,14 @@ while ~isempty(pending)
   end
 end
 files = sort(files);
+run_regression = strcmp(getenv('MWEC_REGRESSION'), '1');
+regression_dir = [fullfile(tests_dir, 'regression') filesep];
+is_regression = strncmp(files, regression_dir, numel(regression_dir));
 filter = getenv('TESTS_FILTER');
 if ~isempty(filter)
-  files = files(~cellfun(@isempty, strfind(files, filter)));
+  keep = ~cellfun(@isempty, strfind(files, filter));
+  files = files(keep);
+  is_regression = is_regression(keep);
 end
 if isempty(files)
   fprintf('run_tests: no test files found.\n');
@@ -45,10 +53,16 @@ if numel(unique(names)) ~= numel(names)
 end
 
 n_fail = 0;
+n_skip = 0;
 failed = {};
 t_all = tic;
 for k = 1:numel(files)
   rel = files{k}(numel(repo_root) + 2:end);
+  if is_regression(k) && ~run_regression
+    n_skip = n_skip + 1;
+    fprintf('SKIP  %s  (pipeline regression; set MWEC_REGRESSION=1 to run it)\n\n', rel);
+    continue;
+  end
   fprintf('---- %s\n', rel);
   t0 = tic;
   start_dir = pwd;
@@ -73,7 +87,8 @@ for k = 1:numel(files)
     fprintf('FAIL  %s  (%.1f s)\n      %s\n\n', rel, dt, strrep(message, sprintf('\n'), sprintf('\n      ')));
   end
 end
-fprintf('%d passed, %d failed, %d total, %.1f s\n', numel(files) - n_fail, n_fail, numel(files), toc(t_all));
+fprintf('%d passed, %d failed, %d skipped, %d total, %.1f s\n', ...
+        numel(files) - n_fail - n_skip, n_fail, n_skip, numel(files), toc(t_all));
 if n_fail > 0
   fprintf('Failed:\n');
   fprintf('  %s\n', failed{:});
