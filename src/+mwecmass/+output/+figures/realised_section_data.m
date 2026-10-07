@@ -21,10 +21,11 @@ function data = realised_section_data(realised, z_plan, n_z)
 %   counter-clockwise, body frame. A role 'wall' is the material around a void, or the cap above it.
 %   data.void_outlines(k): modules (the modules the void passes through), xz [n x 2] counter-clockwise,
 %   body frame: the boundary of the air region as the realised solid has it. The void polygons of
-%   consecutive modules are one outline where both hold air at the module edge and the two modules
-%   have the same t (no face between them: no joint cap, no joint_step), so no segment lies at that
-%   edge; where t differs, or one side is solid, the outlines stay separate and each keeps its face
-%   at the edge. data.outline: z, x_lo, x_hi, profile (closed [x z] polygon). data.omitted: heights where the
+%   consecutive modules are one outline where both hold air at the module edge: the air is one
+%   region there, so no segment crosses the void at that edge. Where t is the same on both sides
+%   nothing lies at the edge; where it differs the outline keeps only the jog between the two inner
+%   sections (the joint_step annulus). Separate outlines remain where one side of the edge is solid
+%   (the joint cap or the disk above a void) or the void ends inside a module. data.outline: z, x_lo, x_hi, profile (closed [x z] polygon). data.omitted: heights where the
 %   kernel gave no usable section (z, module, reason); a section whose outer loop crosses y = 0 at
 %   more than two points errors mwecmass:figures:SectionTopology.
 %
@@ -83,7 +84,7 @@ outline = struct('z', z_o, 'x_lo', xo(:, 1), 'x_hi', xo(:, 2), ...
 [plan, plan_omitted] = plan_sections(body, e, z_ballast, realised.vs, z_plan, margin, solid_modules);
 omitted = [omitted, plan_omitted];
 panels = strip_panel_list(plan, N, solid_modules);
-void_outlines = merge_voids(polygons, e, margin, design.t);
+void_outlines = merge_voids(polygons, e, margin);
 
 failed = {};
 if isfield(realised.check, 'failed')
@@ -325,11 +326,12 @@ else
 end
 end
 
-function outlines = merge_voids(polygons, e, margin, t)
+function outlines = merge_voids(polygons, e, margin)
 % One outline per connected air region: the void polygon of module m that reaches the top of the
 % module joins the void polygon of module m + 1 that starts at the bottom of m + 1 when the two
-% x ranges overlap at the edge and t(m) == t(m + 1): the solid then has the same inner surface on both
-% sides of the edge. A polygon is [right side, bottom to top; left side, top to bottom].
+% x ranges overlap at the edge: the solid has no air/air face there, so the air is one region (at a
+% t step the two inner sections are joined by the jog of the joint_step). A polygon is
+% [right side, bottom to top; left side, top to bottom].
 outlines = struct('modules', {}, 'xz', {});
 voids = polygons(strcmp({polygons.role}, 'void'));
 used = false(1, numel(voids));
@@ -347,7 +349,7 @@ for a = order
         m = modules(end);
         top = max(right(:, 2));
         nxt = 0;
-        if m < numel(e) - 1 && top == e(m + 1) - margin && t(m) == t(m + 1)
+        if m < numel(e) - 1 && top == e(m + 1) - margin
             for b = find(~used)
                 q = voids(b);
                 if q.module == m + 1 && q.z_lo == e(m + 1) + margin && ...

@@ -126,26 +126,49 @@ for i = 1:N
     check(numel(wa) >= 2, '%s: module %d has %d wall polygons', tag, i, numel(wa));
 end
 
-% void outlines: one per connected air region; consecutive modules with air up to and from their
-% common edge and equal t are one outline with no segment at that edge, otherwise each keeps its own
+% void outlines: one per connected air region. The realised solid has no air/air face, so consecutive
+% modules with air up to and from their common edge are one outline whatever t is; at an equal-t edge no
+% segment lies there, at a t step the only segments are the jog between the two inner sections (the
+% joint_step annulus), |x| between the two inner half-widths.
 air_to_edge = @(i) lay(i).air && lay(i).b >= e(i + 1) - z_tol;
 air_from_edge = @(i) lay(i).air && lay(i).a <= e(i) + z_tol;
 joined = false(1, N - 1);
 for i = 1:N - 1
-    joined(i) = air_to_edge(i) && air_from_edge(i + 1) && t(i) == t(i + 1);
+    joined(i) = air_to_edge(i) && air_from_edge(i + 1);
 end
 vo = data.void_outlines;
 check(numel(vo) == sum([lay.air]) - sum(joined), '%s: %d void outlines, expected %d', tag, numel(vo), ...
     sum([lay.air]) - sum(joined));
+if strcmp(mode, 'modular_precast')
+    n_cavities = numel(realised.body.shells.all_voids);
+else
+    n_cavities = double(~isempty(realised.body.shells.void));   % one closed air region (S4 shells)
+end
+check(numel(vo) == n_cavities, '%s: %d void outlines, body has %d cavities', tag, numel(vo), n_cavities);
 for k = 1:numel(vo)
     check(signed_area(vo(k).xz) > 0, '%s: void outline %d orientation', tag, k);
     xz = vo(k).xz;
     nxt = circshift(xz, -1);
     for i = 1:N - 1
-        flat = abs(xz(:, 2) - e(i + 1)) <= margin & abs(nxt(:, 2) - e(i + 1)) <= margin & xz(:, 1) ~= nxt(:, 1);
-        if joined(i) && any(vo(k).modules == i)
-            check(~any(flat), '%s: void outline %d has a segment at the joined edge %d', tag, k, i);
+        if ~(joined(i) && any(vo(k).modules == i))
+            continue
         end
+        at_edge = abs(xz(:, 2) - e(i + 1)) <= margin & abs(nxt(:, 2) - e(i + 1)) <= margin & xz(:, 1) ~= nxt(:, 1);
+        if t(i) == t(i + 1)
+            check(~any(at_edge), '%s: void outline %d has a segment at the equal-t edge %d', tag, k, i);
+            continue
+        end
+        vi = data.polygons(strcmp(roles, 'void') & [data.polygons.module] == i);
+        vj = data.polygons(strcmp(roles, 'void') & [data.polygons.module] == i + 1);
+        x_in = max(abs(vi.xz(:, 1)));
+        x_out = max(abs(vj.xz(:, 1)));
+        seg = [xz(at_edge, 1), nxt(at_edge, 1)];
+        check(size(seg, 1) == 2, '%s: void outline %d has %d segments at the step edge %d, expected 2', tag, k, size(seg, 1), i);
+        lo = min(x_in, x_out);
+        hi = max(x_in, x_out);
+        check(all(abs(seg(:)) >= lo - 8 * eps(hw_out) & abs(seg(:)) <= hi + 8 * eps(hw_out)), ...
+            '%s: void outline %d step segments leave the joint_step annulus [%.6f %.6f]', tag, k, lo, hi);
+        fprintf('  step edge %d: %d segments, |x| %.6f -> %.6f\n', i, size(seg, 1), x_in, x_out);
     end
     check(all(diff(vo(k).modules) == 1), '%s: void outline %d modules', tag, k);
 end
