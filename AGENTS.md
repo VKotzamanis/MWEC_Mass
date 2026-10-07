@@ -419,8 +419,12 @@ The Stage-3 objective (§5 item 11) therefore acts through T_pitch only at the S
 - Python `gmsh` (bundles OpenCASCADE) is a **test-only** tool for checking STEP files.
 - Octave fidelity (T0 baseline, 2026-10-07): thin shell reproduces the MATLAB v1.0 results;
   modular precast does not (Stage 2 stops with exitflag −2 at vs = 0.409 against MATLAB 0.983).
-  Plan task T0e fixes the `fmincon` shim. A full C1 run takes 24–94 min in Octave, so
-  full-pipeline tests run only with `MWEC_REGRESSION=1`.
+  Owner: "You can't expect to match my matlab results when we're running different geometry
+  and initilization." Octave results are not compared with MATLAB v1.0 numbers; Stage-2 and
+  Stage-3 tests check the formulation directly (constraints and equalities at the returned
+  point, solver exit flags), and the owner's MATLAB run is the final check. A full C1 run takes
+  24–94 min in Octave, so full-pipeline tests run only with `MWEC_REGRESSION=1`, and no
+  whole-pipeline run happens before Waves B–E are implemented.
 
 ---
 
