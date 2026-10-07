@@ -1,7 +1,7 @@
 # Exact geometry, Stage-3 rebuild and STEP export — implementation plan
 
-> Read `AGENTS.md` first. Its ground rules (§1) bind every task in this plan. Open decisions
-> OD1–OD6 (AGENTS.md §8) must be answered by the owner before the tasks that depend on them.
+> Read `AGENTS.md` first. Its ground rules (§1) bind every task in this plan. Every decision in
+> AGENTS.md §8 is resolved.
 
 **Goal.** Remove every shape assumption from the geometry, mass and realisation code; rebuild
 Stage 3 (modular precast and thin shell) on one exact geometry kernel; make Stage 3 follow the
@@ -11,7 +11,7 @@ owner's process; and write STEP files of the realised design.
 outer-surface sampling and normals from `MS2Parser`, normal offset with fold trimming, spline
 surface fitting, body assembly, slicing, and mass-property integration. Stage-2 floors,
 both Stage-3 realisations, the stored contours, the figures and the STEP writer
-(`src/+mwecmass/+output/+step/`) all call this kernel. Nothing else computes wall geometry.
+(`src/+mwecmass/+output/+step/`) all call this kernel. Nothing else computes shell geometry.
 
 **Tech stack.** MATLAB code (must also run in GNU Octave for testing), Octave test scripts in
 `tests/`, Python `gmsh` (OpenCASCADE) as a test-only STEP checker.
@@ -20,16 +20,30 @@ both Stage-3 realisations, the stored contours, the figures and the STEP writer
 
 ## Execution model (subagent-driven)
 
-- One implementation subagent per task, run one at a time unless a task is marked parallel.
-  Implementers: **Sonnet 5.5, high effort** for kernel, solver and STEP tasks; **Sonnet 5.5,
-  medium effort** for cleanup and docs tasks.
-- After each task a **review subagent (Opus 5.5, high effort)** checks the diff against this plan
-  and AGENTS.md §1, reruns the tests, and lists Critical / Important / Minor issues. Critical and
-  Important issues are fixed by a follow-up subagent before the next task starts.
-- Every task ends with its tests passing in Octave, a commit, and a push to
-  `claude/lucid-cray-7o9442`. Work happens in the cloud container only.
-- Checkpoints with the owner: after T3 (kernel validated), after T6 (UHPC Stage 3), after T10
-  (STEP files). Report measured numbers, not claims.
+- **Implementers:** Sonnet 5.5, high effort for kernel, solver and STEP tasks; Sonnet 5.5, medium
+  effort for cleanup and docs tasks. Opus 5.5, high effort is also allowed.
+- **Grading:** every task is graded by an Opus 5.5, xhigh effort grader. The grader accepts only
+  with no rule violation, every acceptance item reproduced by the grader itself, all tests
+  passing, and a score ≥ 9 (the minimum of correctness, rules, evidence, quality, scope). Up to
+  four grading rounds, with fixer subagents between rounds. Only accepted branches merge. A
+  second grader checks each merge: the diff equals the accepted branches, the full test suite
+  reruns, the push is verified.
+- **Worktrees:** tasks run in git worktrees on task branches. The orchestrator merges accepted
+  branches into `claude/lucid-cray-7o9442` and pushes after the full test suite passes. Work
+  happens in the cloud container only.
+- **Waves.** Tasks in one wave run in parallel; a wave starts when the previous one is merged.
+  - A: T0 harness, T1 kernel rows and normals, T9 STEP writer.
+  - B: T0b renames, T2 offset, fold trimming and spline fit.
+  - C: T3 bodies and exact properties, T4a Stage-2 changes that do not need the kernel.
+    **Owner checkpoint after T3.**
+  - D: T4b Stage-2 floors from the kernel, both modes.
+  - E: T5 then T6 (UHPC Stage 3), in parallel with T7 (thin shell). **Owner checkpoint after T6.**
+  - F: T8 figures, T10 Stage-3 STEP exports. **Owner checkpoint after T10.**
+  - G: T11 cleanup, then T12 docs, then T13 final review.
+- **Baseline:** the Octave regression baseline (T0, `tests/baseline/`) may change only in a task
+  that intends to change results (T4a, T4b, T5, T6, T7). That task updates the baseline in the
+  same commit and prints the changed quantities. Renames (T0b) leave every number identical.
+- Checkpoints with the owner report measured numbers, not claims.
 - Deletions happen in the same commit as the code that replaces them. The pipeline must not sit
   in a broken state between tasks.
 - Tests may assert exact-by-construction properties (symmetry, closure, shared edges, identity of
@@ -42,19 +56,23 @@ both Stage-3 realisations, the stored contours, the figures and the STEP writer
 
 | ID | Delete | Replaced by | Task |
 |---|---|---|---|
-| D1 | `hydrostatics/compute_perpendicular_shell_volume.m` | kernel wall volume at t_min | T4 |
+| D1 | `hydrostatics/compute_perpendicular_shell_volume.m` | kernel shell volume at t_min | T4b |
 | D2 | `geometry/compute_rmin_at_z.m` and every call | exact `t_max` from the kernel | T5, T7 |
-| D3 | `build_config.m` Passes 1–3 (r_min profile, r′, s_max; dead) | nothing | T4 |
+| D3 | `build_config.m` Passes 1–3 (r_min profile, r′, s_max; dead) | nothing | T4b |
 | D4 | `thin_shell/hull_slope_cos_at_z.m`; `t/cos α` and cap in `inner_properties_at_z.m` | kernel slices of the offset surface | T7 |
 | D5 | `extract_strip_geometry.m` L_k block and `R_eq` fallback (138–168, 218) | kernel slices | T5 |
 | D6 | `max_slope_factor` inputs, config fields and arguments | nothing | T5, T7 |
 | D7 | `(A_in/A_out)^2` moment fallback in `inner_properties_at_z.m` | exact moments | T7 |
-| D8 | void squeezes and wall lines in `plot_modular_precast.m`, `compute_inner_profile.m`, `plot_inner_spline.m`, `plot_steel_solve.m` offset, `stage_animations.m` squeeze | true sections of the realised solid | T8 |
+| D8 | void squeezes and shell lines in `plot_modular_precast.m`, `compute_inner_profile.m`, `plot_inner_spline.m`, `plot_steel_solve.m` offset, `stage_animations.m` squeeze | true sections of the realised solid | T8 |
 | D9 | `strip_scale_factor`, `strip_r_min`, `feasibility.s_max`, `feasibility.rho_min_achievable` | nothing | T5, T11 |
 | D10 | dead `config.shell` branches, `compute_strip_equivalent_density.m` | nothing | T8 |
 | D11 | `internal/offset_polygon.m` if orphaned | nothing | T11 |
-| D12 | doc sentences describing D1–D10 | new method text | T12 |
+| D12 | doc sentences describing D1–D10 and D14–D17 | new method text | T12 |
 | D13 | `build_silhouette_profile.m` max-x mirror, `extract_midplane_profile.m` 5 cm band (figure inputs) | exact y = 0 slice | T8 |
+| D14 | `c_mono` in `optim/stage2_constraints.m` (lines 35, 39, 51 and its share of the fallback size at line 64) and `c_monotonic` in `optim/solve_2d_surrogate.m` (lines 226–248 and its share of the fallback size at lines 266–269) | nothing: stability by GM ≥ `gm_min` (Stage 2) and GM = GM_Stage2 (Stage 3) | T4a |
+| D15 | `c_mass_min` in both files of D14 (`stage2_constraints.m:42–49`, `solve_2d_surrogate.m:240–246`) and its fallback size; `config.m_min_constructability` (`build_config.m:609`) once no reader is left. The m_min sum stays for the feasibility check at `build_config.m:620–645` | nothing: implied by the density bounds | T4a |
+| D16 | UHPC Stage-3 feasibility pre-check, `modular_precast/solve_and_extract.m:63–106` (0.95 and 1.05 factors, `MassTooLight` and `MassTooHeavy` errors) | the closest-fail rule; the Stage-2 floors from the kernel | T5 |
+| D17 | Thin-shell `t_max` numbers in `thin_shell/solve.m`: the 10 %–90 % probe range (lines 76–81), the 0.95 · t_max bound (lines 123, 237), the 0.9 · t_max start clamp (line 110), the 1 % `t_min_active` flag (line 260, used at lines 296 and 416) | `t_max` = half the neck thickness from the exact geometry | T7 |
 
 Kept as exact geometry: `MS2Parser` evaluation of `RevSurf` (revolved spline), arcs and conics;
 `isocurve_revsurf.m`; `compute_wetted_surface_area.m`; mesh panel normals.
@@ -84,8 +102,8 @@ the install script in future cloud sessions.
 
 ### T0b — Rename the ballast and density variables (Sonnet medium)
 
-Runs right after T0, so every later task uses the new names. Pure renaming: no change to any
-formula or value. Covers `src/`, `WEC_User_Input.m`, `WEC_Output_Options.m`, `validation/`,
+Wave B, so every later task uses the new names. Pure renaming: no change to any
+formula or value; every number in the baseline stays identical. Covers `src/`, `WEC_User_Input.m`, `WEC_Output_Options.m`, `validation/`,
 `Input/WAMIT/` if affected, `docs/`, `README.md`, `AGENTS.md`.
 
 | Old name | New name | Meaning |
@@ -154,104 +172,136 @@ result; symmetric CG x = y = 0 to machine precision for C1); convergence of ever
 reported; agreement with an independent `gmsh` mesh integration of the same body, reported.
 **Owner checkpoint after T3.**
 
-### T4 — Stage-2 floors and bounds from the kernel, both modes (Sonnet high)
+### T4a — Stage-2 changes that do not need the kernel (Sonnet high)
 
-Files: `src/+mwecmass/+driver/build_config.m`, `src/+mwecmass/+optim/stage2_bounds.m`,
-`WEC_User_Input.m`; delete D1, D3.
+Files: `src/+mwecmass/+optim/stage2_constraints.m`, `solve_2d_surrogate.m`, `stage2_bounds.m`,
+`run.m`, `src/+mwecmass/+driver/build_config.m`, `WEC_User_Input.m`; delete D14, D15.
 
-- Modular precast: ρ_min,i = [ρ_UHPC·V_wall,i(t_min) + ρ_air·(V_i − V_wall,i)] / V_i with
-  V_wall from the kernel; `m_min_constructability` from the same values. Wall module pinned
-  solid as today.
-- Thin shell (new): the same floor with ρ_shell and the user-set minimum shell thickness, no wall
-  module.
+- Delete `c_mono` and `c_mass_min` (D14, D15; AGENTS.md §3 items 26 and 33). Stability stays
+  enforced by GM ≥ `gm_min`.
+- Bottom-filled start (AGENTS.md §3 item 26): Stage 2 also runs from a start at the Stage-1 draft
+  with every module at its lower density bound (its floor once T4b is merged), then modules
+  filled to the mode's solid density from the keel up until mass = ρ_w · V_sub; the UHPC wall
+  module stays pinned. Stage 2 keeps the start with the lower objective and logs both.
 - Upper density bound per mode from the material inputs (OD9): `rho_ballast` (7500) for thin
-  shell, `rho_uhpc` (2500) for modular precast. Set `in.materials.thin_shell.t_min` = `t_init` = 0.0254 m
-  (owner decision, OD7) and update `RUNTIME_GUIDE.md` defaults.
-- `in.materials.modular_precast.t_init` is derived from the steel `t_init` today; the new UHPC
-  Stage 3 starts from the Stage-2 split instead, so remove that derived input in T5.
+  shell, `rho_uhpc` (2500) for modular precast.
+- Set `in.materials.thin_shell.t_min` = `t_init` = 0.0254 m (owner decision, OD7) and update
+  `RUNTIME_GUIDE.md` defaults.
 - Assert that every UHPC path reads `rho_air` (1.2) and the thin-shell paths read `rho_air` and
   `rho_ballast` as named after T0b.
 
-Acceptance: floors reported for both modes (Python estimates on C1 — precast ≈ 608/284/211/610
-kg/m³; thin shell at 15 mm ≈ 432/159/268/1196/1336, at 25 mm ≈ 711/264/446/1978/2184); no
-remaining caller of D1; Stage 2 runs under the Octave shim for both modes.
+Acceptance: no reference to `c_mono`, `c_monotonic` or `c_mass_min` remains; Stage 2 runs under
+the Octave shim for both modes and logs both starts; the baseline is updated in the same commit
+and the changed quantities are printed.
 
-### T5 — UHPC Stage 3, part a: split, build, check, store (Sonnet high) — needs OD2, OD10
+### T4b — Stage-2 floors from the kernel, both modes (Sonnet high)
+
+Files: `src/+mwecmass/+driver/build_config.m`, `src/+mwecmass/+optim/stage2_bounds.m`; delete D1,
+D3.
+
+- Modular precast: ρ_min,i = [ρ_UHPC·V_shell,i(t_min) + ρ_air·(V_i − V_shell,i)] / V_i with
+  V_shell from the kernel; `m_min` from the same values, used by the feasibility check in
+  `build_config.m`. Wall module pinned solid as today.
+- Thin shell (new): the same floor with ρ_shell and the user-set minimum shell thickness, no wall
+  module.
+- `in.materials.modular_precast.t_init` is derived from the steel `t_init` today; the new UHPC
+  Stage 3 starts from the Stage-2 split instead, so remove that derived input in T5.
+
+Acceptance: floors reported for both modes (Python estimates on C1 — precast ≈ 608/284/211/610
+kg/m³; thin shell at 25.4 mm ≈ 722/268/451/2009/2217); no remaining caller of D1; Stage 2 runs
+under the Octave shim for both modes; the baseline is updated in the same commit and the changed
+quantities are printed.
+
+### T5 — UHPC Stage 3, part a: split, build, check, store (Sonnet high) — needs OD2
 
 Files: `src/+mwecmass/+realise/+modular_precast/` (`solve_and_extract.m`, new
 `split_from_stage2.m`, `realise_modules.m`, `check_against_stage2.m`, rewrite of
 `extract_strip_geometry.m`), `build_realised_properties.m`; delete D5, D9 (precast path),
-D2 calls in `modular_precast/solve.m`, D6 (precast fields).
+D2 calls in `modular_precast/solve.m`, D6 (precast fields), D16 (the pre-check in
+`solve_and_extract.m`).
 
 1. Read the whole Stage-2 solution (`Final3D`, `x_opt`).
 2. V_UHPC,i = V_i(ρ_i − ρ_air)/(ρ_UHPC − ρ_air) per module; modules with ρ_i = ρ_UHPC are solid;
    the wall module stays solid.
-3. Ballast module k* = lowest module with ρ_i < ρ_UHPC: walls at t_min, remaining UHPC as
-   ballast from the module bottom (stays inside k*). Modules above k*: solve t_i ≥ t_min so the
-   wall holds V_UHPC,i. A module whose V_UHPC,i is below its t_min wall volume is flagged
-   (cannot occur once T4 floors are in place).
+3. Ballast module k* = lowest module with ρ_i < ρ_UHPC: the shell above the ballast starts at
+   t_min (t_k* ≥ t_min is a variable in T6, like the t_i above k*), remaining UHPC as ballast
+   from the module bottom (stays inside k*). Modules above k*: solve t_i ≥ t_min so the shell
+   holds V_UHPC,i. The wall module and the ballast zone are full solid sections with no t_min
+   shell added (AGENTS.md §1 rule 11). A module whose V_UHPC,i is below its t_min shell volume is
+   flagged (cannot occur once the T4b floors are in place).
 4. Restore equilibrium at the Stage-2 draft: adjust the ballast level in k* so that mass equals
    the Stage-2 displaced mass (differences come only from exact versus table module volumes).
    Evaluate the realised body with T3 at the Stage-2 draft: mass, Z_CG, Iyy, GM, coupled
    periods (added mass at the realised CG). Compare with Stage 2 using `mass_acceptable_pct`:
    |Z_CG,3 − Z_CG,2| / |Z_CG,2| with Z_CG = `CG_total(3)` (world frame), and the same relative
-   form for GM, coupled T_heave and coupled T_pitch. Flotation is an equality (OD10).
+   form for GM, coupled T_heave and coupled T_pitch. Flotation is an equality held to the
+   solver's constraint tolerance (OD10).
 5. Store the realised body description, exact contours, per-module volumes and masses, the check
    report and a status flag; `final_props` always describes this realised design.
 
 Acceptance: C1 run under Octave prints the split, the realised module geometry and the check
 table; `final_props` never contains Stage-2 values for this mode.
 
-### T6 — UHPC Stage 3, part b: optimisation, spill, closest fail (Sonnet high) — needs OD10
+### T6 — UHPC Stage 3, part b: optimisation, spill, closest fail (Sonnet high)
 
 Files: `src/+mwecmass/+realise/+modular_precast/solve.m` (rewrite), new `stage3_report.m`.
 
 - Runs only when T5's check fails. Start point: T5's split. Variables: draft, ballast level in
-  k*, t_i of the hollow modules above k*. Equalities: flotation and GM = GM_Stage2. Objective:
-  unchanged — heave and pitch range penalties against the configured goals, evaluated with the
-  **coupled** periods (fixes I20). Bounds: t_min ≤ t_i ≤ t_max,i (largest t for which module i
-  keeps a void, from the kernel); ballast level within k*.
+  k*, t_k* and the t_i of the hollow modules above k*. Equalities: flotation and
+  GM = GM_Stage2. Objective (AGENTS.md §3 item 27): minimise Σ ((X3 − X2)/X2)² over Z_CG =
+  `CG_total(3)`, coupled T_heave and coupled T_pitch (the coupled periods fix I20). Bounds:
+  t_min ≤ t_k*, t_i ≤ t_max,i (largest t for which module i keeps a void, from the kernel);
+  ballast level within k*.
 - Escalation order (owner decision; equalities held to the solver's constraint tolerance, OD10):
   1. Draft fixed at the Stage-2 value; ballast within k*.
   2. Draft fixed; ballast may enter k*+1: the same ballast-level variable, its upper bound
      widened from the top of k* to the top of k*+1 (k* is then solid; OD6, option ii).
-  3. Draft free (last resort).
+  3. Draft free (last resort): only when mass balance cannot be met at the Stage-2 draft after
+     step 2. A failed `mass_acceptable_pct` check at the Stage-2 draft does not release it.
   4. Closest fail (below).
-- If still infeasible: keep the iterate with the smallest constraint violation, set status
-  `failed`, and report each metric (value, Stage-2 value, deviation, limit, pass/fail) and the
-  active reason. Plot it, store it in `final_props` and the `.mat`, export its STEP files.
+- After every solve the `mass_acceptable_pct` check on Z_CG, GM, T_heave and T_pitch decides
+  accepted or failed.
+- Closest fail: if the equalities hold but the check fails, the optimum itself is the closest
+  design; if the equalities cannot be met, the iterate with the smallest equality violation is.
+  Set status `failed`, and report each metric (value, Stage-2 value, deviation, limit,
+  pass/fail) and the active reason. Plot it, store it in `final_props` and the `.mat`, export its
+  STEP files.
 
 Acceptance: C1 run under the Octave shim; report printed; a forced-infeasible test case (e.g. an
 unreachable GM) produces a stored, plotted, flagged closest-fail design. **Owner checkpoint
 after T6.**
 
-### T7 — Thin-shell rebuild on the kernel (Sonnet high) — needs OD10
+### T7 — Thin-shell rebuild on the kernel (Sonnet high)
 
 Also in T7: evaluate coupled periods in the objective (I20), and replace the fallback to Stage 2
 with the closest-fail rule (OD4): flagged status, per-metric report, plotted, stored in
 `final_props` and the `.mat`, STEP files exported. Escalation order: (t, z_ballast) at the
-Stage-2 draft first; free the draft only if equilibrium cannot be reached there (OD8, OD10).
+Stage-2 draft first; free the draft only if mass balance cannot be met there (OD8, OD10). A
+failed `mass_acceptable_pct` check at the Stage-2 draft does not release the draft. Closest
+fail as in T6.
 
 Files: `src/+mwecmass/+realise/+thin_shell/` (`build_geometry_grid.m`, `inner_properties_at_z.m`,
 `solve.m`, `evaluate_design_point.m`, `strip_partition_volumes.m`); delete D2 (last callers),
-D4, D6, D7.
+D4, D6, D7, D17.
 
 - Keep the thin-shell formulation: one uniform thickness t for the whole hull and `z_ballast`
-  free to pass module edges without penalty (plus the draft, last resort); period-penalty
-  objective; flotation equality; **GM = GM_Stage2** (OD11, replaces GM ≥ `gm_min`); ballast
+  free to pass module edges without penalty (plus the draft, last resort); objective: minimise
+  Σ ((X3 − X2)/X2)² over Z_CG = `CG_total(3)`, coupled T_heave and coupled T_pitch (AGENTS.md
+  §3 item 27); flotation equality; **GM = GM_Stage2** (OD11, replaces GM ≥ `gm_min`); ballast
   model (full section below `z_ballast`). At fixed draft the two equalities fix t and
   `z_ballast` (AGENTS.md §5, "What the two equalities imply").
 - Replace the inner geometry with the kernel's normal offset at the single t. Build it with care
   in the slender neck (C1 half-width 0.10 m): the void there is 0.20 − 2t wide and closes at
   t = 0.10 m; the rounded top (radius 0.10 m) needs no fold trimming for t < 0.10 m. Remove the
   forced `cos α = 0.1` near the top.
-- `t_max` = the thickness at which the void first closes at any height in the middle 80 % of the
-  hull (today's probe range, which excludes the keel point and the top cap), computed on the
-  exact geometry: 0.10 m for C1, set by the neck. It replaces 0.5 × `compute_rmin_at_z`
-  (0.5025 m in the C1 run).
+- `t_max` = half the thickness of the slender wall (the neck), where the two offset shells meet,
+  computed on the exact geometry (AGENTS.md §3 item 30): 0.10 m for C1. It replaces
+  0.5 × `compute_rmin_at_z` (0.5025 m in the C1 run). The 10 %–90 % probe range, the
+  0.95 · t_max bound, the 0.9 · t_max start clamp and the 1 % `t_min_active` flag are deleted
+  (D17).
 
 Acceptance: C1 thin-shell run under the Octave shim; realised module densities reported next to
-the T4 floors; no reference to D2/D4/D6/D7 remains; the modular-precast path does not call
+the T4b floors; no reference to D2/D4/D6/D7/D17 remains; the modular-precast path does not call
 thin-shell functions.
 
 ### T8 — Figures from the realised solid (Sonnet high)
@@ -267,7 +317,7 @@ D13.
 Acceptance: data functions tested in Octave against T3 sections; the owner confirms the figures
 in MATLAB.
 
-### T9 — STEP writer (Sonnet high) — parallel with T4–T7 (separate files)
+### T9 — STEP writer (Sonnet high) — wave A (separate files)
 
 Files: `src/+mwecmass/+output/+step/write_step.m` and helpers, tests.
 
