@@ -22,7 +22,9 @@
 
 ## 1. Data structures
 
-**S1 outer patch** (`geo.outer(k)`, one per entry of `model.visible_surfs`, same order; C1: 8):
+**S1 outer patch** (`geo.outer(k)`, one per entry of `model.visible_surfs`, same order, while every
+patch takes the exact path (C1: 8); a patch on the general path (§8) is replaced in place by its fitted
+faces, consecutive, each with the patch's `name` and `source`):
 `name`, `source` (ultimate source entity), `type`, `flips` (`cache.mirrors(m).effective_flips`);
 `surf`: T9's `'bspline'` surface as is (`degree [du dv]`, `ctrl [nu x nv x 3]` (m, body), `knots
 {ku, kv}` clamped and **not renormalised** after a split (a piece keeps its parent's parameter),
@@ -34,10 +36,14 @@ at u0 / u1 has all control points bitwise equal; `c0_u`, `c0_v`: interior knot v
 multiplicity (du, dv), set by F1 (F2 for S2); `seam_u0`, `seam_u1`, `seam_v0`, `seam_v1`: `[patch
 boundary]` of the neighbour on that boundary, empty for a pole; **boundaries are numbered as the
 parser's EdgeSnake** (`MS2Parser.eval_edge_snake`): 1 = v0, 2 = u1, 3 = v1, 4 = u0. Bitwise
-equality: element-wise IEEE `==` (`isequal`), so −0 = +0. C1 values: §3, C1 oracles.
+equality: element-wise IEEE `==` (`isequal`), so −0 = +0. C1 values: §3, C1 oracles. Added fields
+(an absent field means its default): `visible`, the index into `model.visible_surfs` (default k);
+`fit`, for a fitted face (`exact` false) the S2r fields of that face plus `dev_max` [m], the largest
+distance of the face from the exact surface at its check points along the exact normal (default `[]`).
 
 **S1b hull geometry** `geo`: `hull_name` (deck stem), `outer` (S1 array), `z_range [z_min z_max]`
-(body), `analytic` (`[]` for a real deck; stand-ins only, §3). Once per deck; `config.hull_solid`
+(body), `analytic` (`[]` for a real deck; stand-ins only, §3). Once per deck (and per t_min when a
+patch is fitted, §8); `config.hull_solid`
 (T4b, inside T0d's cached block).
 
 **S2 inner set** (`inner`, one per distinct t): `t`, `d` = t + eps_fit/2, `eps_fit` [m], `z_range`
@@ -48,6 +54,7 @@ point of the inner surface), `refit` (true when refitted on fixed knots, F2 `opt
 report:** per inner patch `n_nodes`, `n_knots [u v]`, `n_passes`, `n_removed`, `n_check`,
 `t_local_min`, `t_local_max` [m], `M1`, `M2`, `M3`, `M3_reason`; totals `ok`, `cap_reached`. Check
 points: the F6 quadrature nodes and the midpoint of every knot span (where the integrals sample).
+t_local is measured between the faces as written: outer as written (exact or fitted), inner as fitted (§8).
 
 **S3 design** (input of F5): `mode` (`modular_precast` | `thin_shell`), `edges [N+1 x 1]` module
 edges (body; `config.strip_edges`), `vs` [m], `t [N x 1]` [m] (thin shell: all equal; NaN for a
@@ -125,16 +132,16 @@ All take and return the structs of §1; none reads globals or writes files excep
 
 | | Signature | Contract |
 |---|---|---|
-| F1 | `geo = mwecmass.solid.outer_nurbs(model)` | S1b from the `.ms2` entity tree, every entity converted exactly. Points: FramePoint, MirrPoint, AbsBead (on the converted curve, at the parser's parameter map). Curves: BCurve as is, Line degree 1, Arc rational quadratic, BSubCurve by knot insertion, PolyCurve2 joined with C0 knots after exact degree elevation of its pieces to the highest degree, ProjCurve by projecting control points (kept coordinates copied bitwise), EdgeSnake as the boundary row or column of its converted parent surface, taken from the same array (bitwise seam; edge numbers are the parser's, S1: 1 = v0, 2 = u1, 3 = v1, 4 = u0). Surfaces: RevSurf as profile × rational arc (multiples of 90° use exact 0, ±1), RuledSurf as degree 1 in v between its two curves after one common reparameterisation (one knot vector, equal weights), mirrors by flipping control points. `offset_kind` = `rev_z` when the axis end points have equal x and y within T1's 16-ulp bound; the revolution then uses the (x, y) of the axis Line's second end point, every profile control point that is an axis end point by entity (the profile ends at a point or bead that defines the axis) takes that (x, y) bitwise, and control points are axis point + radial vector (a zero radius gives the axis point bitwise); `ruled_parallel` when the cross product of every ruling with the first is bitwise zero. Any other entity: error `NotExact` (§9 item 1). C1 results: §3, C1 oracles. |
-| F2 | `[inner, rep] = mwecmass.solid.offset_surface(model, cache, geo, t, z_range, opts)` | S2 at thickness t over `z_range` (body). Nodes from `MS2Parser` + T1 `surface_normals`, offset by d, folds trimmed (`trim_fold.m`), faces split at creases into pieces that meet along u-boundaries, cubic fit (`fit_bspline_surface.m`), knot insertion where M1–M3 fail, knot removal while they hold (AGENTS §5 item 9). Keeps the outer v-construction for `rev_z` (offset profile fitted in u, revolved with the same rational arc) and `ruled_parallel` (both boundary curves offset at the same u nodes, one knot vector, ruled in v), as I3 and §8; `''`: error `OffsetNotStructured`. Inner patches of a `z_of_u` patch are `z_of_u` with monotone z. Source points are taken wherever needed so the inner patches cover `z_range`; past an open end (precast: the bottom of the wall module) F5 cuts them with F3b. v-seams must be tangent-continuous; a seam node is offset once, so neighbours share boundary curves bitwise (I2); a C0 v-seam is out of scope (§9 item 1) and fails loudly through M1–M3. `opts.t_min` (eps_fit), `opts.max_passes` (§9 item 2); cap reached: error `FitNotConverged` listing the failing patches and metrics. `opts.knots_from` (an S2 set): same pieces and knot vectors, only the control points refitted at the new t (§7 item 4); M1–M3 reported in S2r, not refined. Tests: identity at the same t; properties smooth in t. |
+| F1 | `geo = mwecmass.solid.outer_nurbs(model)`, `outer_nurbs(model, cache, opts)` | S1b from the `.ms2` entity tree. Exact path, every entity converted exactly. Points: FramePoint, MirrPoint, AbsBead (on the converted curve, at the parser's parameter map). Curves: BCurve as is, Line degree 1, Arc rational quadratic, BSubCurve by knot insertion, PolyCurve2 joined with C0 knots after exact degree elevation of its pieces to the highest degree, ProjCurve by projecting control points (kept coordinates copied bitwise), EdgeSnake as the boundary row or column of its converted parent surface, taken from the same array (bitwise seam; edge numbers are the parser's, S1: 1 = v0, 2 = u1, 3 = v1, 4 = u0). Surfaces: RevSurf as profile × rational arc (multiples of 90° use exact 0, ±1), RuledSurf as degree 1 in v between its two curves after one common reparameterisation (one knot vector, equal weights), mirrors by flipping control points. `offset_kind` = `rev_z` when the axis end points have equal x and y within T1's 16-ulp bound; the revolution then uses the (x, y) of the axis Line's second end point, every profile control point that is an axis end point by entity (the profile ends at a point or bead that defines the axis) takes that (x, y) bitwise, and control points are axis point + radial vector (a zero radius gives the axis point bitwise); `ruled_parallel` when the cross product of every ruling with the first is bitwise zero. A patch takes this exact path when its entity converts exactly, it is `z_of_u` with z(u) monotone, and every seam it shares with another exact patch is one converted curve (bitwise, as through EdgeSnake); every other patch takes the general path of §8 (faces fitted through exact points, `exact` false, `fit` filled). Optional inputs `geo = outer_nurbs(model, cache, opts)`: `cache` (T1's) and `opts.t_min` (ε of the fitted faces) are needed only when a patch takes the general path; missing there: error `FitInputMissing`. C1: all 8 exact, so `outer_nurbs(model)` returns the same `geo` as before. C1 results: §3, C1 oracles. |
+| F2 | `[inner, rep] = mwecmass.solid.offset_surface(model, cache, geo, t, z_range, opts)` | S2 at thickness t over `z_range` (body). Nodes from `MS2Parser` + T1 `surface_normals`, offset by d, folds trimmed (`trim_fold.m`), faces split at creases into pieces that meet along u-boundaries, cubic fit (`fit_bspline_surface.m`), knot insertion where M1–M3 fail (judged between the faces as written, §8), knot removal while they hold (AGENTS §5 item 9). Keeps the outer v-construction for `rev_z` (offset profile fitted in u, revolved with the same rational arc) and `ruled_parallel` (both boundary curves offset at the same u nodes, one knot vector, ruled in v), as I3 and §8, when every trim curve of the piece is a parameter line (C1, the cylinder, the box); every other inner piece (`offset_kind` `''`, or trimmed along a curve that is not a parameter line) takes the general path of §8. Inner patches of a `z_of_u` patch are `z_of_u` with monotone z. Source points are taken wherever needed so the inner patches cover `z_range`; past an open end (precast: the bottom of the wall module) F5 cuts them with F3b. At a tangent-continuous seam a seam node is offset once, so neighbours share boundary curves bitwise (I2). At a C0 seam (a crease, along u or v) each side is offset along its own normal: on a convex crease the two offsets overlap and are trimmed at their intersection (as a fold); on a concave crease the gap between them is closed by a face of its own, the crease curve offset by d along the fan of normals from one side's to the other's (rule 3: normal distance d everywhere). `opts.t_min` (eps_fit), `opts.max_passes` (§9 item 2); cap reached: error `FitNotConverged` listing the failing patches and metrics. `opts.knots_from` (an S2 set): same pieces and knot vectors, only the control points refitted at the new t (§7 item 4); M1–M3 reported in S2r, not refined. Tests: identity at the same t; properties smooth in t. |
 | F2b | `d_close = mwecmass.solid.void_closing_distance(model, cache, geo, z_range)` | Smallest offset distance at which offset layers from opposite sides meet inside `z_range` (not a fold of one layer). C1 neck: 0.10 m. The design bound is t_max = d_close − eps_fit/2: at t = t_max the void closes (d = d_close); an evaluation with d ≥ d_close errors `VoidClosed` (§8). |
 | F3 | `[S, Su, Sv] = mwecmass.solid.eval_bspline_surface(surf, u, v)`; `[C, Cs] = …eval_bspline_curve(curve, s)` | Rational or not; u, v column vectors; [n x 3]. |
-| F3b | `[lo, hi, u_star] = mwecmass.solid.split_bspline_surface(patch, z)` | `z_of_u` patch, z strictly between z(u0) and z(u1), in either order: u* from z(u*) = z, knot insertion to multiplicity du; `lo`, `hi` keep the parent parameter and share the cut row bitwise. Errors: `ZNotOneParameter` (not `z_of_u`), `ZOutside`, `ZNotMonotonic` (z(u) = z has more than one root). |
+| F3b | `[lo, hi, u_star] = mwecmass.solid.split_bspline_surface(patch, z)` | `z_of_u` patch, z strictly between z(u0) and z(u1), in either order: u* from z(u*) = z, knot insertion to multiplicity du; `lo`, `hi` keep the parent parameter and share the cut row bitwise. Errors: `ZNotOneParameter` (not `z_of_u`), `ZOutside`, `ZNotMonotonic` (z(u) = z has more than one root). Every face F1 and F2 return is `z_of_u` with monotone z (exact path by test, general path by construction, §8), so `ZNotOneParameter` and `ZNotMonotonic` signal invalid input. |
 | F4 | `loop = mwecmass.solid.slice_bspline_surface(patches, z)` | S5 from the iso-u rows; one closed simple loop or error `SectionNotClosed` (as T1). Constant-z patches (z_range(1) = z_range(2)) are skipped. |
 | F5 | `body = mwecmass.solid.build_body(geo, design, inner)` | S4. `inner` holds one S2 set per distinct t whose `z_range` covers its modules (§7). Builds every face once; edges shared by index. Layout of S3, including `z_ballast` ≤ `z_lo`; faces per mode as in S4. A patch is cut only at planes strictly between z(u0) and z(u1), in either order (constant-z patches never). At every `joint_step` the loop of the larger t must lie inside the loop of the smaller t, tested on the exact loops without tolerance (no intersection of the two loops, and one point of the larger-t loop inside the smaller-t loop); otherwise error `JointNotNested`, which Stage 3 reports as a failed evaluation. |
 | F6 | `bp = mwecmass.solid.body_properties(body, rho, opts)` | S6 by the divergence theorem with fields (f,0,0): V = ∮x n_x, ∫x = ∮x²/2 n_x, ∫y = ∮xy n_x, ∫z = ∮xz n_x, ∫x² = ∮x³/3 n_x, ∫y² = ∮xy² n_x, ∫z² = ∮xz² n_x, ∫xy = ∮x²y/2 n_x, ∫xz = ∮x²z/2 n_x, ∫yz = ∮xyz n_x. Horizontal faces (caps and constant-z outer patches) contribute exactly 0 (n_x = 0), so only lateral faces are integrated; a region's integral sums faces with `inside` = r minus faces with `outside` = r. Gauss–Legendre of order `opts.n_gauss` on every knot span (exact for polynomial faces, convergent for rational ones). |
 | F6b | `sec = mwecmass.solid.body_section(body, z)` | Body section (S5 block). |
-| F7 | `hs = mwecmass.solid.hydrostatics_at_draft(geo, vs, opts)` | S7 on the exact outer patches cut at z_body = −vs (F3b, F6 on the outer pieces, F4 for the waterplane); `full` and `none` as in S7, without a cut. |
+| F7 | `hs = mwecmass.solid.hydrostatics_at_draft(geo, vs, opts)` | S7 on the outer patches (S1, exact or fitted, §8) cut at z_body = −vs (F3b, F6 on the outer pieces, F4 for the waterplane); `full` and `none` as in S7, without a cut. |
 | F8 | `fl = mwecmass.driver.density_floors(model, cache, geo, edges, t_min, rho_solid, rho_air, solid_modules)` | Per module ρ_min = [ρ_solid·V_solid + ρ_air·V_air]/V with a t_min shell, no ballast (F2, F5, F6); solid modules give ρ_solid. Returns `rho_min`, `V`, `V_solid`, `V_air` [N x 1], `fit` (S2r). |
 | F9 | `props = mwecmass.realise.evaluate_realised(bp, hs, design, config)` | `final_props` fields of `export_schema.m` from the exact body. Computed here from the exact body: `vertical_shift` = `design.vs`, `mass_total`, `CG_total` = [0 0 CG_body(3)+vs] (declared symmetric model; x, y kept in `bp`), `Inertia_Tensor` = `I_cg`, `Ixx/Iyy/Izz`, S7 fields, `A_sub` = `hs.S_wet`, `GM_L` = KM − CG_total(3), `periods.heave_uncoupled` = 2π√((M+A33)/K33) and `periods.pitch_uncoupled` = 2π√((I_cg,yy+A55)/K55), Inf when K ≤ 1e-6 (`properties_3d.m` §11; today from `steel_data`), `densities_at_nodes` = `realised_strip_density` = `[bp.modules.rho_eff]'` (layout of x(2:end)), `cross_section` = `config.profile` (as `optim/run.m`), `realised_strip_edges` = `design.edges`, `components(i)` (`density` = `rho_eff`, `z_level` = module mid-height + vs, world, as Final3D), `density_profile_source` = `'realised_partition'`. As `build_realised_properties.m` today: `K_hydro` (K33 = ρ_w g A_w; K55 = M g GM if GM > 0, else 0, `properties_3d.m` §8), A = `mwecmass.bem.interpolate_at_draft(vs, config, CG_total(3))`, `periods.heave`, `.pitch`, `.surge` (Inf, K11 = 0), `coupled_periods`, `participation_factors`, `coupled_modes`, `surge_per_pitch` (`coupled_periods_by_share`), `mass_discrepancy`, `mass_buoyant_force` = ρ_w V_sub, `K_pto` = zeros(3), `K_total` = `K_hydro`, `MassMatrix_CG`/`_Origin` (`build_mass_matrix`), `fill_method` (renamed only if T0b renames it). `realised_strips` leaves the schema (T5): only the realise files T5 and T7 rewrite read it; its data is S8 `modules`. |
 | F10 | `check = mwecmass.realise.check_against_stage2(props, stage2, pct, tol_eq, rho_water)` | `metrics(k)` for `Z_CG`, `GM`, `T_heave`, `T_pitch`: `value`, `stage2`, `rel_dev` = abs(X3−X2)/abs(X2), `limit` = pct/100, `pass`; `equalities(k)`: `flotation` (M/(ρ_w V_sub) − 1, as Stage 2) and `GM` (GM/GM2 − 1), `residual`, `tol` = `tol_eq` (the Stage-3 fmincon ConstraintTolerance, 1e-6 today), `pass`; `pass`, `failed` (cellstr), `reason`. |
@@ -191,7 +198,8 @@ Where the plan's task sections differ, this contract wins:
   of convex radius 0 < t, so it also tests fold trimming and crease splitting, plan T2; rational
   faces, so results are compared with the closed form and printed); the join tests of T4b, T5, T6
   and T7 use it, since their code calls F2. The box serves F5–F7, F11, F12 with `sti_inner_box`
-  (its vertical corners are C0 v-seams, outside F2's scope); results polynomial, asserted exact.
+  (its vertical corners are convex C0 v-seams; since §8, general hulls, F2 builds them too, and T2
+  compares its box set with `sti_inner_box`); results polynomial, asserted exact.
 - C1 oracles (by construction): `BeadBottom` evaluates to x = 3.9e-16 m, `BeadTop` exactly to
   (0, 1); both ends of `curve6` lie at these beads, so `surface1` (`rev_z`, `z_range` [1.1 −3.25])
   has poles at its keel and neck-top rows. `Edge_For_Dev` = EdgeSnake edge 3 of `surface1` (v1,
@@ -255,7 +263,8 @@ group, accepted) and it has rebased on it; such edits are the task's last commit
   RuledSurf: `curve7` keeps z at both ends of every ruling. A plane z = z_k meets the patch in the
   iso-u row u*; knot insertion cuts it without moving the surface (test: parent and pieces agree at
   the same (u, v) to rounding; cap vertices within T9's 1e-7 m). Offsets keep it for `rev_z` and
-  `ruled_parallel` only (normal in the meridian plane; normal constant along a ruling).
+  `ruled_parallel` only (normal in the meridian plane; normal constant along a ruling). Every other
+  face, outer or inner, is fitted with z as one parameter (§8), so its cut is the same knot insertion.
 - **I4 Units:** METRE everywhere; `step_check` reports `declared_length_unit = METRE`. **I5 Names:**
   new code uses only the names of §0 (`grep` for the old names in new files is empty).
 - **I6 Frames:** CG_total(3) = CG_body(3) + vs; KM, CB world. **I7 Orientation:** outer normals
@@ -263,7 +272,8 @@ group, accepted) and it has rebased on it; such edits are the task's last commit
 - **I8 C1 symmetry:** CG x = y = 0 and products of inertia 0 to machine precision.
 - **I9 Exactness of F1:** F4 sections of the NURBS and T1 `outer_rows` at the same z: the
   difference is printed per height and asserted within T1's documented in-plane accuracy at that
-  height (about sqrt(16 ulp/|z_ss|), 5.5e-8 m at the C1 shoulder z = −1), not to rounding.
+  height (about sqrt(16 ulp/|z_ss|), 5.5e-8 m at the C1 shoulder z = −1), not to rounding. This holds
+  for exact patches; a fitted face instead has `fit.dev_max` ≤ ε/4 (§8), asserted and printed per face.
 
 ## 6. Lanes and joins
 
@@ -306,17 +316,63 @@ the expensive step), F5 (knot insertion at `z_ballast`), F6 on the changed faces
 - Inner fit keeps the outer v-construction only where it is the exact normal offset (I3): exact
   z-splits, no trimming curves in the T9 writer. `rev_z` within T1's 16-ulp bound and the F1 axis
   snapping: no new tolerance, and C1's poles and keel seam come out bitwise.
-- One S2 set per distinct t (§7 item 2). `A_sub` = F7 `S_wet` on the exact outer pieces (one kernel).
+- One S2 set per distinct t (§7 item 2). `A_sub` = F7 `S_wet` on the outer pieces (one kernel).
 - No margin below t_max (agent's decision, owner informed): solvers use t_max = d_close − eps_fit/2;
   an evaluation with d ≥ d_close returns error `VoidClosed` and counts as a failed evaluation.
 - `results.stage3`, F9, F10 shared by both modes, schema owned by T5 (one struct, one owner;
   OD11); the thin-shell process stays its own (rule 7). `<hull>_STEEL_all.step` mirrors `_UHPC_all`.
+- **General hulls** (owner's decision of 2026-10-07 on former §9 item 1: "No it needs to be
+  generalized."; AGENTS §3 item 36). It follows AGENTS §5 item 9: exact NURBS where the entity
+  allows, otherwise fitted with the same metrics.
+  - *Scope.* Any entity type `MS2Parser` evaluates and any parametrisation, for hulls whose
+    horizontal section is one closed loop at every height in (z_min, z_max) (one body, no holes),
+    as T1 `outer_rows` already assumes; a section of several loops raises
+    `mwecmass:solid:SectionNotClosed` (T1, F4).
+  - *Two paths per patch.* Exact path (F1, unchanged; conditions in F1): the entity converts
+    exactly and z is a monotone function of u alone (all of C1). General path: every other patch is replaced by faces
+    fitted through exact points of the parametric definition, the T1 `outer_rows` sections (points
+    on the exact surface with their patch and (u, v)) at heights placed adaptively in z (AGENTS §5
+    item 9.1), with T1 `surface_normals`. A face covers a height band in which its part of every
+    section is one arc between two seam or crease points; a band ends where that changes: at a
+    patch corner, at a z-extreme of a patch boundary or crease curve, at a row where the surface is
+    horizontal (z turns back), and at z_min and z_max. In a face u runs with z and v along the arc:
+    every control row has one z (bitwise) and the row heights are monotone in u, strictly except
+    for a first or last pair of rows that meets a horizontal tangent, so the face is `z_of_u` with
+    monotone z by construction. Every face is an untrimmed patch, and every horizontal cut (module
+    edges, `z_ballast`, waterline) is a parameter line found by F3b's knot insertion, so the T9
+    writer, F5–F7 and the SK stand-ins need no trimming curves. A constant-z region is a face of
+    its own, fitted in its patch's own (u, v) (never cut; F4 skips it; F6 adds 0). Fitted faces are
+    non-rational cubics except where a seam imposes a neighbour's structure (next item). Inner
+    pieces whose structure is not kept (F2) are fitted the same way through their offset nodes.
+  - *Seams (I2).* A boundary shared by two faces is built once and taken by both bitwise. A fitted
+    face that meets an exact patch or a structured inner piece takes that boundary curve as it is
+    (degree, knots, weights, control points) in that direction and fits only its other control
+    points; knots its fit needs are inserted in the neighbour as well, which stays exact. A seam
+    between two fitted faces is fitted once. A fitted face that would have to take two different
+    structures in one direction from two neighbours (different control-row heights or weights after
+    mutual knot insertion) cannot; the later of those neighbours in `model.visible_surfs` order then
+    takes the general path as well, repeated until no conflict is left (C1: no fitted face).
+  - *Metrics on the written faces.* M1–M3 are judged between the faces actually written, outer as
+    written (exact or fitted) and inner as fitted, and F6 and F7 integrate those faces (AGENTS §5
+    item 9.7). A fitted outer face is judged by M3 (no self-intersection; every horizontal slice of
+    the written outer surface is one simple closed loop) and by `fit.dev_max` ≤ ε/4; F1 refines it
+    as F2 refines inner faces (`opts.max_passes`; cap reached: `FitNotConverged`). Derivation of
+    ε/4, from the owner's band ε = 0.01·t_min alone (rule 5): at a check point let e_o be the normal
+    deviation of the written outer face from the exact surface and e_i that of the inner face from
+    the exact offset at d = t + ε/2, both positive toward the other face. To first order
+    t_local = d − e_o − e_i, so M2 (t ≤ t_local ≤ t + ε) holds for every sign of the errors if and
+    only if |e_o| + |e_i| ≤ ε/2, and M1 follows from M2 because t ≥ t_min. The outer faces are
+    fitted once per hull, before any t is known, and must leave every inner fit the same budget
+    whatever the signs; the two errors enter t_local alike, so each gets half: |e_o| ≤ ε/4. The
+    inner fit is judged by M1–M2 on the written faces, which leaves it ε/2 − `dev_max` of its outer
+    face: at least ε/4, and ε/2 on an exact patch, as before. No other number enters.
+  - *Errors.* `NotExact` (F1) and `OffsetNotStructured` (F2) are removed: those patches and pieces
+    take the general path. `ZNotOneParameter` and `ZNotMonotonic` stay in F3b as invalid-input
+    guards. New: `FitInputMissing` (F1). Unsupported, with a named error: a section of several loops
+    (`SectionNotClosed`).
 
 ## 9. Open for the owner, and decisions due
 
-1. Open: hulls (not C1) with z depending on both parameters or not monotone in u, `offset_kind`
-   `''`, C0 v-seams or entities without an exact NURBS form need trimming curves in the STEP writer,
-   or faces fitted in both directions with M1–M3 (outer faces then not exact). Until decided the
-   kernel stops with `ZNotOneParameter`, `ZNotMonotonic`, `OffsetNotStructured` or `NotExact`.
+1. Decided by the owner on 2026-10-07 (general hulls): moved to §8.
 2. Due at the T3 checkpoint: `opts.max_passes` and `opts.n_gauss` (limits, not gates), set from the
    pass counts and convergence tables T2 and T3 measure and present there.

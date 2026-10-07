@@ -206,18 +206,29 @@ outward, continuous across patch seams; exact symmetry under the deck's mirror p
 
 Contract: implements S1, S1b, S2, S2r, F1, F2, F2b, F3, F3b, F4 and invariants I3, I4, I9; consumes T1
 (`surface_normals`, `outer_rows`) and the SK fixtures. Starts after SK in lane K. Scope per contract F1,
-F2: offset at d = t + eps_fit/2; `offset_kind` checked; creases split along u; tangent v-seams only (a
-C0 v-seam is Open item 1); `c0_u`/`c0_v` knot rows in S1 and S2; F2 `opts.knots_from` (refit at a
-new t on fixed knots); the cylinder fixture is its join test, the box is not.
+F2 and §8 (general hulls; owner, 2026-10-07: "No it needs to be generalized."): offset at
+d = t + eps_fit/2; two paths per patch, exact (C1) and general (faces fitted through exact points with
+z as one parameter, split at band changes, horizontal-tangent rows and creases, untrimmed); the same
+general path for inner pieces whose structure is not kept; creases split along u and v (convex:
+trimmed; concave: a face of the crease curve offset along its fan of normals); seams shared bitwise
+(contract §8 seam rule); `c0_u`/`c0_v` knot rows in S1 and S2; F2 `opts.knots_from` (refit at a new
+t on fixed knots); the cylinder fixture is its join test, the box is not (T2 still runs the real F2
+on it, below).
 
-Files: `src/+mwecmass/+solid/offset_surface.m`, `trim_fold.m`, `fit_bspline_surface.m`,
-`eval_bspline_surface.m`, `slice_bspline_surface.m`, tests.
+Files: `src/+mwecmass/+solid/outer_nurbs.m`, `offset_surface.m`, `trim_fold.m`,
+`fit_bspline_surface.m`, `fit_z_faces.m` (general path, shared by F1 and F2),
+`eval_bspline_surface.m`, `slice_bspline_surface.m`, tests, `tests/solid/fixtures/tilted_revolution.ms2`
+and `tilted_revolution_two_loops.ms2`.
 
 - Adaptive, error-bounded fitting as specified in AGENTS.md §5 item 9: initial nodes dense where
   curvature is high or the void is narrow; offset by t + ε/2 along the exact normal; trim the
   fold; split faces along creases; fit cubic B-splines; check M1–M3 on points between the nodes;
   insert knots only in failing spans; remove unneeded knots at the end; stop with an error report
   at the iteration cap.
+- General path (contract §8): outer patches that are not exact with z monotone in one parameter,
+  and inner pieces whose structure is not kept, become untrimmed faces fitted through T1 sections and
+  normals, with z as one parameter; outer fitted faces within ε/4 of the exact surface (contract §8
+  derivation); M1–M3 judged between the faces as written.
 - Slice the fitted surface at any height into an ordered closed contour.
 
 Acceptance: M1–M3 pass on a dense check grid not used for fitting (report min / max t_local, the
@@ -225,7 +236,28 @@ number of refinement passes and knots per face); fold trimming and crease splitt
 folds occur (C1 at t ≥ 0.100 m, and a stand-in fixture with a convex radius below t); C1 at
 t = 0.0762 m compared with the Python reference half-widths per height and with the independent
 erosion result for module 4 (void 3.548 m³ with the v1.0 module edges and `z_ballast`); a
-slender-section case (thin-shell neck, t = 0.025 m) passes M3.
+slender-section case (thin-shell neck, t = 0.025 m) passes M3. C1 keeps its exact-path oracles (all 8
+patches exact, contract §3; `outer_nurbs(model)` and `outer_nurbs(model, cache, opts)` give the same
+`geo`).
+
+Non-C1 hull (general path). `tests/solid/fixtures/tilted_revolution.ms2`: the profile of BCurves
+through, in the axis frame (r, h) [m], T (0, 1), D (0.5, 1), N (0.5, 0.8), S (1.0, 0.4), Q (1.0, −1),
+K (0, −1), one RevSurf of 360° per segment about the Line K–T, every point rotated by 15° about the
+y axis (x' = x cos 15° + z sin 15°, z' = −x sin 15° + z cos 15°), written in the format of
+`capped_cylinder.ms2`. z depends on both surface parameters, the rims at D, S and Q are convex C0
+creases, N is a concave one, and the creases are tilted circles, so bands end at their z-extremes.
+Verified 2026-10-07: T1 `outer_rows` (grid 60) returns one closed loop at each of 38 heights through
+its z range [−1.2247, 1.0952] m. Oracles: the solid is a rigid rotation of a solid of revolution, so
+the distance of any point from the exact outer surface, and t_local, are 2D distances to the profile
+in the meridian plane of the axis frame (lines; the inner profile is the 2D offset by d, trimmed at the
+convex corners, with an arc of radius d about N). Asserted: F1 marks every patch fitted; each fitted
+outer face has `fit.dev_max` ≤ ε/4 and the oracle distance at the check points is ≤ ε/4; M1–M3 pass
+for a shell at t = t_min (the offset folds at every convex corner), with t ≤ t_local ≤ t + ε by the
+oracle; every face is `z_of_u` with monotone z and F3b cuts it at a module-edge height; seams pass
+the I2 bitwise test. Printed: deviations, t_local range, passes and knots per face. The same deck with
+N (0.5, 0.6) and S (1.0, 0.5) (`tilted_revolution_two_loops.ms2`) raises `SectionNotClosed`
+(verified: two loops at z = 0.738 m). The box: the real F2 set equals `sti_inner_box` (convex C0
+v-seams, trimmed along parameter lines, structure kept), compared and printed.
 
 ### T3 — Kernel C: bodies and exact properties (Sonnet high)
 
