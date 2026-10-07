@@ -40,9 +40,10 @@ both Stage-3 realisations, the stored contours, the figures and the STEP writer
     after T3.**
   - Lane N: T0b, merged as soon as accepted (every later lane starts from the new names); T0c in
     parallel (it edits only `MS2Parser.m`).
-  - Lane P: after T0b and T0c: T0d, then T4a, then T4b (all edit `build_config.m`); T4b merges
-    after J1.
-  - Lane U: after T0b: T5, then T6. Lane S: after T0b: T7. Lane O: after T0b: T8 and T10.
+  - Lane P: after T0b, SK and T0c: T0d, then T4a, then T4b (all edit `build_config.m`); T4b
+    merges after J1.
+  - Lane U: after T0b and SK: T5, then T6. Lane S: after T0b and SK: T7. Lane O: after T0b and
+    SK: T8 and T10.
   - J2: after J1 and lane P, the group T5, T6, T7, T8, T10 merges as one chain in that order; the
     first whole-pipeline runs follow. **Owner checkpoints after T6 and after T10**, on those runs.
   - Lane G: T11 cleanup, then T12 docs, then T13 final review.
@@ -204,7 +205,9 @@ outward, continuous across patch seams; exact symmetry under the deck's mirror p
 ### T2 — Kernel B: normal offset, fold trimming, spline surfaces (Sonnet high)
 
 Contract: implements S1, S1b, S2, S2r, F1, F2, F2b, F3, F3b, F4 and invariants I3, I4, I9; consumes T1
-(`surface_normals`, `outer_rows`) and the SK fixtures. Starts after SK in lane K.
+(`surface_normals`, `outer_rows`) and the SK fixtures. Starts after SK in lane K. Scope per contract F1,
+F2: offset at d = t + eps_fit/2; `offset_kind` checked; creases split along u; tangent v-seams only (a
+C0 v-seam is Open item 1); the cylinder fixture is its join test, the box is not.
 
 Files: `src/+mwecmass/+solid/offset_surface.m`, `trim_fold.m`, `fit_bspline_surface.m`,
 `eval_bspline_surface.m`, `slice_bspline_surface.m`, tests.
@@ -226,6 +229,8 @@ the independent erosion result for module 4 (void 3.548 m³ with the v1.0 module
 
 Contract: implements S3–S7, F5, F6, F6b, F7 and invariants I1, I2, I6–I8 (including pole vertices and
 a `write_step` + `step_check` import of C1 bodies); consumes F1–F4 (T2), T9 `write_step`/`validate_brep`.
+Methods per contract §3: divergence-theorem surface integrals (F6) and hydrostatics on the cut outer
+patches (F7, including `full`/`none` submersion and `S_wet`) replace the section integration below.
 
 Files: `src/+mwecmass/+solid/build_body.m`, `body_properties.m`, `hydrostatics_at_draft.m`,
 tests.
@@ -247,7 +252,8 @@ reported; agreement with an independent `gmsh` mesh integration of the same body
 
 ### T4a — Stage-2 changes that do not need the kernel (Sonnet high)
 
-Contract: no kernel item; edits shared files in the contract §4 order (after T0d). Stage-2 runs are checked after J2.
+Contract: no kernel item; edits shared files in the contract §4 order (after T0d). Stage-2 runs are checked after J2;
+the per-task baseline update below is superseded by contract §6 (baseline regenerated once, after J2).
 
 Files: `src/+mwecmass/+optim/stage2_constraints.m`, `solve_2d_surrogate.m`, `stage2_bounds.m`,
 `run.m`, `src/+mwecmass/+driver/build_config.m`, `WEC_User_Input.m`; delete D14, D15.
@@ -272,7 +278,8 @@ and the changed quantities are printed.
 ### T4b — Stage-2 floors from the kernel, both modes (Sonnet high)
 
 Contract: implements F8 and `config.hull_solid` (S1b, inside the T0d cache); consumes F1, F2, F5, F6
-(SK stand-ins until J1). Merges after J1.
+(SK stand-ins until J1). Merges after J1. The per-task baseline update below is superseded by contract
+§6 (baseline regenerated once, after J2).
 
 Files: `src/+mwecmass/+driver/build_config.m`, `src/+mwecmass/+optim/stage2_bounds.m`; delete D1,
 D3.
@@ -326,8 +333,9 @@ table; `final_props` never contains Stage-2 values for this mode.
 
 ### T6 — UHPC Stage 3, part b: optimisation, spill, closest fail (Sonnet high)
 
-Contract: extends F14 (precast escalation, closest fail) and fills S8 `step`, `solver`, `check`; consumes
-S8, F9, F10 (T5), F2, F2b, F5–F7; caching per contract §7.
+Contract: extends F14 (precast escalation, closest fail) and fills S8 `escalation`, `solver`, `check`;
+consumes S8, F9, F10 (T5), F2, F2b, F5–F7; caching per contract §7; t_max,i = d_close − eps_fit/2 (F2b,
+Open item 3).
 
 Files: `src/+mwecmass/+realise/+modular_precast/solve.m` (rewrite), new `stage3_report.m`.
 
@@ -360,7 +368,7 @@ after T6.**
 
 Contract: implements F14 for thin shell (S8 with `ballast`, `shell`, `air`, including the F11 and F13
 calls); consumes F2, F2b, F5–F7 (SK until J1), F9 and F10 (SK until J2), `config.hull_solid`; caching per
-contract §7.
+contract §7; t_max = d_close − eps_fit/2 (F2b, Open item 3).
 
 Also in T7: evaluate coupled periods in the objective (I20), and replace the fallback to Stage 2
 with the closest-fail rule (OD4): flagged status, per-metric report, plotted, stored in
