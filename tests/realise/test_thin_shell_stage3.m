@@ -145,7 +145,7 @@ for c = 1:numel(cases)
         check(abs(m.V_ballast + m.V_shell + m.V_air - m.V) <= 4 * eps * m.V, 'module %d closure', i);
         check(m.rho_stage2 == rho_x(i), 'module %d rho_stage2', i);
     end
-        fprintf('sum of module volumes - closed-form hull volume = %.3g m^3\n', sum(V) - V_hull);
+    fprintf('sum of module volumes - closed-form hull volume = %.3g m^3\n', sum(V) - V_hull);
     if standin
         check(abs(sum(V) - V_hull) <= 8 * eps * V_hull, 'sum of module volumes %.17g vs hull %.17g', ...
             sum(V), V_hull);
@@ -220,8 +220,8 @@ for c = 1:numel(cases)
             check(r.vs == cs.bounds(1) && t(1) == config.steel_t_min && zb == zr(1), ...
                 'closest design (%g, %g, %g) is not the deepest draft with the lightest build', r.vs, t(1), zb);
             if standin
-            check(abs(fl.residual - r_cf) <= bound, 'flotation residual differs from the closed form');
-        end
+                check(abs(fl.residual - r_cf) <= bound, 'flotation residual differs from the closed form');
+            end
         case 8
             % too light at every draft in the bounds: the smallest flotation violation is the
             % full-ballast design at the shallowest allowed draft (vs = 0), where the cylinder
@@ -241,8 +241,8 @@ for c = 1:numel(cases)
                     'module %d is not all ballast', i);
             end
             if standin
-            check(abs(fl.residual - r_cf) <= bound, 'flotation residual differs from the closed form');
-        end
+                check(abs(fl.residual - r_cf) <= bound, 'flotation residual differs from the closed form');
+            end
     end
 end
 

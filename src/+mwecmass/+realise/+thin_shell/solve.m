@@ -108,7 +108,7 @@ ev_hi = point(ctx, [stage2.vs, t_min, z_max]);
 reachable = ev_lo.ceq(1) <= tol_eq && ev_hi.ceq(1) >= -tol_eq;
 emit('      Mass at the Stage-2 draft: target rho_w V_sub = %.1f kg; buildable [%.1f, %.1f] kg -> %s\n', ...
     config.RHO_WATER * ev_lo.V_sub, ev_lo.mass, ev_hi.mass, ...
-    ternary(reachable, 'reachable, draft fixed', 'unreachable, draft released'));
+    mwecmass.internal.ternary(reachable, 'reachable, draft fixed', 'unreachable, draft released'));
 
 if reachable
     step = 'fixed_draft';
@@ -492,13 +492,5 @@ end
 emit('      M %.1f kg (Stage 2 %.1f kg); elapsed %.1f s\n', r.props.mass_total, r.stage2.mass, elapsed);
 if ~isempty(r.reason)
     emit('      reason: %s\n', r.reason);
-end
-end
-
-function s = ternary(cond, a, b)
-if cond
-    s = a;
-else
-    s = b;
 end
 end
