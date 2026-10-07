@@ -61,17 +61,17 @@ numbers differ (Stage 1 and Stage 2 end in different local optima); the baseline
 numbers for regression and `matlab_v1_reference.json` holds the MATLAB v1.0 values for comparison.
 
 Known difference: for modular precast Octave's Stage 1 picks another draft node (`vertical_shift`
-0.7786, MATLAB 1.075) and Stage 2 stops with exitflag -2 at 0.409 (MATLAB 0.983, exitflag 1); the final
-numbers agree with MATLAB only because today's Stage 3 re-optimises from scratch. Octave results are not
-compared with MATLAB v1.0 numbers (owner, 2026-10-07): Stage-2 and Stage-3 tests check the formulation
-directly, and the owner's MATLAB run is the final check.
+0.7786, MATLAB 1.075) and Stage 2 stops with exitflag -2 at 0.409 (MATLAB 0.983, exitflag 1). Stage 3
+splits that Stage-2 solution, builds it and checks it, so the difference carries into the final numbers.
+Octave results are not compared with MATLAB v1.0 numbers (owner, 2026-10-07): Stage-2 and Stage-3 tests
+check the formulation directly, and the owner's MATLAB run is the final check.
 
 Two presets, one baseline file each, one JSON member per line:
 
 | Preset | Inputs | Baseline file |
 |---|---|---|
 | `full` | author inputs of `WEC_User_Input.m`, except `modular_precast.n_sub = 101` (the default 100 makes `build_config` read a roundoff-sized polygon area in the circle-based floor code) | `baseline/octave_v1_baseline.json` |
-| `fast` | `full` plus `geometry.n_z_levels = 40`, `thin_shell.n_z_grid = 60`, `modular_precast.n_z_grid = 60` | `baseline/octave_v1_baseline_fast.json` |
+| `fast` | `full` plus `geometry.n_z_levels = 40`, `thin_shell.n_z_grid = 60` | `baseline/octave_v1_baseline_fast.json` |
 
 `test_pipeline_baseline.m` reruns the `fast` preset by default and requires the recorded text
 `jsonencode(summary)` to be identical (every double bit-for-bit). Environment variables:
