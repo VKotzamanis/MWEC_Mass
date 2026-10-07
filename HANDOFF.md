@@ -1,6 +1,6 @@
 # HANDOFF — MWEC_Mass exact-geometry refactor
 
-Updated 2026-10-07 21:40 UTC on `claude/lucid-cray-7o9442`. Process file for agents: the
+Updated 2026-10-07 22:00 UTC on `claude/lucid-cray-7o9442`. Process file for agents: the
 orchestrator updates it at every milestone and at least every 100k tokens; delete it in T12.
 
 ## 1. Goal
@@ -36,7 +36,7 @@ Main `claude/lucid-cray-7o9442` = `f52e232`: general-kernel amendment, AGENTS ru
 | T8 | figures from the realised solid | O | accepted (round 10); waits for J2 | 8, 8, 8, 8, 6, 6, 6, 6, 7, 9 | `3b0a0be` |
 | T10 | Stage-3 STEP exports | O | accepted, waits for J2 | 9 (3) | `07856a2` |
 | T0d | geometry cache of `build_config` (C1: fresh build 421 s CPU, reload 0.44 s) | P | merged `f52e232` | 9 (2); merge 10 | `158d77d` |
-| T4a | Stage-2 changes (delete `c_mono`, `c_mass_min`; bottom-filled start; bounds) | P | round 1 rejected at 7, fix not done (paused; uncommitted partial edits in the worktree may be discarded) | 7 | task/T4a `4d6762b` |
+| T4a | Stage-2 changes (delete `c_mono`, `c_mass_min`; bottom-filled start; bounds) | P | round 2: 8, minor only → fix + quick check, then T4b (`wf_c0835769-40a`) | 7, 8 | task/T4a `d22d95c` |
 | T4b | Stage-2 floors from the kernel (merges after J1) | P | queued after T4a | — | — |
 | SK2 | stand-ins updated to spec2 | SK2 | merged `1bb06d6` | 9 (3); merge 10 | `753a11e` |
 | T2a | exact-path offset, fold trim, adaptive fit | K1 | round 1 rejected at 5 (general decks crash, decimal arcs, fold on exact decks, rounding bounds); C1 results correct; fixing (`wf_f1cd8be0-af1`) | 5 | task/T2a `23ddfe9` |
@@ -122,6 +122,9 @@ Main `claude/lucid-cray-7o9442` = `f52e232`: general-kernel amendment, AGENTS ru
   whole range (fixed, conservative); closest fail ranks flotation-holding points first (item 32);
   solver must establish the equalities before optimising and keep feasible phase-2 progress; draft
   released only when flotation cannot hold at the Stage-2 draft; fmincon shim edit accepted (test-only).
+- T4a decision (22:00 UTC): between the two Stage-2 starts, one that holds the constraints beats one
+  that does not; then the lower objective; if none holds them, the smallest violation (item 26 read
+  with item 32; owner informed).
 - SK2 spec issues for J1/T3 (contract errata with the batch above): whether a void end (constant-z
   end piece of an inner set) counts as a flat part for F6b `side` (stand-in: yes); name the error
   for a bad `side` (stand-in `mwecmass:solid:BadSide`); a row cut at a plane takes that height
