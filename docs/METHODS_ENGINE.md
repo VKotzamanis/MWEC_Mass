@@ -768,17 +768,17 @@ fabrication prescription.
 
 Source: [realise/preliminary/run.m](../src/+mwecmass/+realise/+preliminary/run.m).
 
-### 9.2 Thin shell with fill level
+### 9.2 Thin shell with ballast level
 
 The thin-shell solve uses three design variables:
 
 \[
-x_r=[v_s,t,z_{fill}]^T.
+x_r=[v_s,t,z_{ballast}]^T.
 \]
 
 It minimizes only heave and pitch range penalties, subject to flotation equality and the GM floor. GM is
 not an objective term in this realization stage. Thickness is bounded below by the fabrication minimum
-and above by 95% of a radius-derived limit. `z_fill` lies just inside the sampled hull limits.
+and above by 95% of a radius-derived limit. `z_ballast` lies just inside the sampled hull limits.
 
 The inner realization SQP evaluates the **uncoupled** per-axis formulas for its heave and pitch objective.
 After realization, the shared property builder recomputes and exports coupled, kinetic-share-labeled
@@ -815,32 +815,32 @@ moment multiplied by `(A_inner/A_outer)^2`. Inner moments are then capped at the
 This is a contour-offset approximation. The relation `dA/dz≈P dr/dz` is exact only for restricted shape
 families and uniform normal motion; corners and rapidly changing non-axisymmetric sections are approximate.
 
-#### `z_fill` partition and two solid densities
+#### `z_ballast` partition and two solid densities
 
-`z_fill` is inserted as an exact interpolation knot in the geometry grid. Below it, the full outer section
-is solid fill. Above it, the material occupies the annulus and the inner section is air:
+`z_ballast` is inserted as an exact interpolation knot in the geometry grid. Below it, the full outer section
+is solid ballast. Above it, the material occupies the annulus and the inner section is air:
 
 \[
-V_{fill}=\int_{z_{min}}^{z_{fill}}A_o dz,
+V_{ballast}=\int_{z_{min}}^{z_{ballast}}A_o dz,
 \]
 
 \[
-V_{shell}=\int_{z_{fill}}^{z_{max}}(A_o-A_i)dz,
+V_{shell}=\int_{z_{ballast}}^{z_{max}}(A_o-A_i)dz,
 \qquad
-V_{air}=\int_{z_{fill}}^{z_{max}}A_i dz.
+V_{air}=\int_{z_{ballast}}^{z_{max}}A_i dz.
 \]
 
 Mass closes by region:
 
 \[
-M=\rho_{fill}V_{fill}+\rho_{shell}V_{shell}+\rho_{air}V_{air}.
+M=\rho_{ballast}V_{ballast}+\rho_{shell}V_{shell}+\rho_{air}V_{air}.
 \]
 
-The source preserves an equivalent aggregate expression when `rho_fill=rho_shell` so the equal-density
+The source preserves an equivalent aggregate expression when `rho_ballast=rho_shell` so the equal-density
 default follows the original arithmetic order. First moments and all three diagonal inertias are
 superposed from the same region integrals, then transferred from the body origin to the CG. The solver
-requires `rho_air<min(rho_shell,rho_fill)` and `rho_fill>=rho_shell`; the latter guarantees monotonicity of
-the generalized analytical fill-seed integral. For unequal solid densities, the seed inverts the exact
+requires `rho_air<min(rho_shell,rho_ballast)` and `rho_ballast>=rho_shell`; the latter guarantees monotonicity of
+the generalized analytical ballast-seed integral. For unequal solid densities, the seed inverts the exact
 quadratic cumulative on each interval of a piecewise-linear grid integrand. End clamps are bounded
 fallbacks when the requested mass lies outside the seed's achievable range.
 
@@ -859,7 +859,7 @@ Sources:
 The modular-precast realization solves
 
 \[
-x_r=[v_s,z_{fill},t_1,\ldots,t_{N_{nonwall}}]^T,
+x_r=[v_s,z_{ballast},t_1,\ldots,t_{N_{nonwall}}]^T,
 \]
 
 where each non-wall strip has an offset thickness. The designated structural wall strip is permanently
@@ -882,7 +882,7 @@ At each elevation sample, the material classification is:
 |---|---|
 | designated wall strip | fully solid UHPC |
 | strip explicitly promoted solid | fully solid UHPC |
-| `z<=z_fill` | fully solid UHPC |
+| `z<=z_ballast` | fully solid UHPC |
 | otherwise, valid inward offset | UHPC annulus plus air/void interior |
 | solver grid: collapsed, tiny, or too-large inner polygon | fully solid fallback |
 
@@ -893,7 +893,7 @@ falls back to the available outer-section material representation for post-solve
 post-processing fallback must not be mistaken for the solver's behavior.
 
 The solver's grid uses the same slope-corrected inner-contour machinery as thin shell. After optimization,
-non-wall strips lying completely below `z_fill` are promoted to solid for downstream extraction.
+non-wall strips lying completely below `z_ballast` are promoted to solid for downstream extraction.
 
 For each extracted strip and sample,
 

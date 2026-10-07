@@ -50,9 +50,10 @@ call a shell a wall.
    written STEP files). Commit and push after every task; the container is ephemeral.
 9. Do not push the `STEP_Producer` zip the owner uploaded. It stays outside the repository.
 10. **Names say what the material is.** The solid region at the bottom is the *ballast*:
-    `z_fill` becomes `z_ballast` everywhere (code, `.mat` fields, docs). Air is `rho_air` in
-    both modes; the thin-shell solid fill density is `rho_ballast`. No variable may carry the name
-    of one material and the value of another (see the rename table in the plan, task T0b).
+    its top is `z_ballast` everywhere (code, `.mat` fields, docs). Air is `rho_air` in both modes;
+    the thin-shell solid ballast density is `rho_ballast`; UHPC quantities carry `uhpc` names. No
+    variable may carry the name of one material and the value of another (rename table in the plan,
+    task T0b; old `.mat` field names map to the new ones in `docs/RESULT_SCHEMA.md`).
 11. **Count every volume once.** Each height z in a module belongs to exactly one description:
     below the ballast level the full outer section is solid (no separate shell term); above it,
     shell + air. A 2D shell surface never overlaps a solid body. The wall module (UHPC) and the
@@ -102,7 +103,7 @@ call a shell a wall.
 ### 2.4 Stage 3, modular precast (UHPC) — current behaviour
 
 - `solve_and_extract` → `solve.m` runs a new fmincon optimisation with variables
-  `[vs, z_fill, t_2 … t_N_nonwall]`, objective = heave and pitch period penalties (evaluated
+  `[vs, z_ballast, t_2 … t_N_nonwall]`, objective = heave and pitch period penalties (evaluated
   with uncoupled periods, I20), equality = flotation, inequality = GM ≥ `gm_min`. **It reads only the Stage-2 vertical shift** (and the
   mass for a pre-check); the Stage-2 densities are never used.
 - Pre-check (`solve_and_extract.m:64–106`): the Stage-2 mass must lie in [0.95 · M_min, 1.05 · M_max]
@@ -111,14 +112,14 @@ call a shell a wall.
   stops with an error (`MassTooLight`, `MassTooHeavy`).
 - Inner (void) geometry: each horizontal slice is offset in its own plane by t·L, with
   L = 1/cos α estimated from `dA/dz ÷ P` and capped at 5 (`inner_properties_at_z`,
-  `hull_slope_cos_at_z`). One global `z_fill`: everything below is solid UHPC.
+  `hull_slope_cos_at_z`). One global `z_ballast`: everything below is solid UHPC.
 - `extract_strip_geometry` repeats the slicing per module to store `contours_outer/inner` and
   per-module volumes. For C1 it used the `R_eq = sqrt(A/π)` circle fallback, because `P_table`
   (92 entries) and `Aw_table_z` (96) differ in length.
 - `build_realised_properties` overwrites `final_props` with the realised design when the solve
   returns finite numbers, otherwise keeps Stage 2.
 - C1 result: vs = 0.8932 m, M = 20 660.7 kg, z_CG = −1.182 m, GM = 0.231 m, t = 76.2 mm in every
-  hollow module (all at the floor), z_fill = −1.291 m (world, inside module 2), exitflag 2.
+  hollow module (all at the floor), z_ballast = −1.291 m (world, inside module 2), exitflag 2.
 
 ### 2.5 Stage 3, thin shell (steel) — current behaviour and how it differs
 
@@ -128,12 +129,12 @@ call a shell a wall.
   `build_config.m` run only when `enable_constructability`, i.e. modular precast).
 - `in.materials.thin_shell.t_min` = 25 mm and `t_init` = 20 mm. Both are used **only** in Stage 3
   (lower bound and start of the thickness variable). No 15 mm value exists in the code.
-- `thin_shell/solve.m`: fmincon over `[vs, t, z_fill]` — the draft, **one** uniform shell
-  thickness for the whole hull, and one fill level free to rise through any module.
+- `thin_shell/solve.m`: fmincon over `[vs, t, z_ballast]` — the draft, **one** uniform shell
+  thickness for the whole hull, and one ballast level free to rise through any module.
   Objective: heave and pitch period penalties against the configured goals. Equality:
   flotation. Inequality: GM ≥ `gm_min`. Reads only the Stage-2 vertical shift.
-- Materials: shell `rho_shell` (7500), fill `rho_fill` (defaults to `rho_shell`), air `rho_air`
-  (1.2). Below `z_fill` the **full** outer section is fill; above it, a steel annulus encloses air.
+- Materials: shell `rho_shell` (7500), ballast `rho_ballast` (defaults to `rho_shell`), air `rho_air`
+  (1.2). Below `z_ballast` the **full** outer section is ballast; above it, a steel annulus encloses air.
 - Same in-plane `t/cos α` inner offset as UHPC, plus a forced `cos α = 0.1` (offset 10 t) just
   below the top of the hull. `t_max = 0.5 × compute_rmin_at_z` came out as **0.5025 m** in the
   C1 run: the function measures centroid-to-*vertex* distances, and the neck's flat sides carry
@@ -143,7 +144,7 @@ call a shell a wall.
   and the flag `t_min_active` is set when t lies within 1 % of the t_min to t_max span (line 260).
 - If the solve is infeasible, `final_props` keeps the Stage-2 properties.
 - C1 thin-shell example: Stage-2 densities [2500, 1297, 310.5, 310.5, 310.5]; Stage 3 built
-  t = 27.3 mm, `z_fill` = −2.731 m (body, inside module 1), realised densities
+  t = 27.3 mm, `z_ballast` = −2.731 m (body, inside module 1), realised densities
   [6977, 286, 400, 2153, 2275]. A 15 mm steel shell alone already gives modules 4–5 at least
   ≈1196 / 1336 kg/m³ (≈1978 / 2184 at 25 mm; Python estimate on the exact C1 geometry), so the
   Stage-2 values 310.5 cannot be built.
@@ -179,9 +180,9 @@ Figures: `WEC_Constructability_XZ`, `WEC_Constructability_Strips` (precast), `St
       and the mass distribution to come closer to the Stage-2 solution.
 5. GM is an **equality**: GM_realised = GM_Stage2 (not GM ≥ `gm_min`), so the optimiser cannot
    default to ballast everywhere.
-6. Ballast first, inside one module only. The fill may enter the next module only if flotation
+6. Ballast first, inside one module only. The ballast may enter the next module only if flotation
    and the GM equality cannot be met otherwise. When it does, the owner asked for the more
-   robust of (i) rebuilding the module edges or (ii) measuring the fill from that module's own
+   robust of (i) rebuilding the module edges or (ii) measuring the ballast level from that module's own
    bottom; the agent chose (ii) (reasons under OD6).
 7. If Stage 3 cannot meet its requirements, return the closest realisable design, flag it as
    failed, report which metric failed and why, **plot it, store it in `final_props` and the
@@ -192,7 +193,7 @@ Figures: `WEC_Constructability_XZ`, `WEC_Constructability_Strips` (precast), `St
 11. Rebuild the thin-shell mode on the exact kernel without copying the UHPC logic.
 12. Stage 3 writes STEP files: UHPC — one per module plus one fused solid of all modules; steel —
     the ballast solid, the shell as a 2D surface, and (if possible) one file with both.
-13. Rename `z_fill` → `z_ballast` and remove the density naming trap, in code and docs.
+13. The ballast level is `z_ballast` and no density name carries another material's value, in code and docs.
 14. Thin shell is a separate pipeline:
     1. Stage-2 densities start from (are floored by) a thin-shell minimum shell thickness that the
        user sets in the input file (value fixed later at 25.4 mm, item 19).
@@ -291,10 +292,10 @@ Figures: `WEC_Constructability_XZ`, `WEC_Constructability_Strips` (precast), `St
 | I5 | Equivalent-radius `sqrt(A/π)` slope fallback used for C1's stored contours | `extract_strip_geometry.m:146–149` | `P_table` 92 vs `Aw_table_z` 96 entries |
 | I6 | Solver (table areas + contour offset) and stored contours (separate slicing) are two geometries | `build_geometry_grid.m` vs `extract_strip_geometry.m` | Stored contours: +0.85 % mass, z_CG +7 mm vs solver |
 | I7 | `t_max = 0.5 × compute_rmin_at_z` (a radius) bounds the thickness | both `solve.m` files | — |
-| I8 | Figures do not show the solved geometry: voids squeezed to a volume ratio, `z_fill` ignored, shell lines from 2D offsets or t_min | `plot_modular_precast.m`, `compute_inner_profile.m`, `plot_inner_spline.m`, `plot_steel_solve.m`, `stage_animations.m` | Read as a 3D body, the XZ figure weighs 23 687 kg with z_CG 71 mm higher |
+| I8 | Figures do not show the solved geometry: voids squeezed to a volume ratio, `z_ballast` ignored, shell lines from 2D offsets or t_min | `plot_modular_precast.m`, `compute_inner_profile.m`, `plot_inner_spline.m`, `plot_steel_solve.m`, `stage_animations.m` | Read as a 3D body, the XZ figure weighs 23 687 kg with z_CG 71 mm higher |
 | I9 | Zero-thickness points: the offset leaves seam vertices unmoved | `internal/offset_polygon.m:47–50` | 932 inner vertices lie on the outer hull |
 | I10 | `strip_scale_factor`, `strip_r_min`, `feasibility.s_max` assume shape scaling | `extract_strip_geometry.m`, `export_schema.m`, `Report.m` | — |
-| I11 | Name trap: modular-precast `rho_fill` means air (1.2); thin-shell `rho_fill` means solid fill (7500) | `WEC_User_Input.m`, `build_config.m` | Values are correct today; the name invites a wrong density |
+| I11 | Name trap (fixed by T0b): one density name meant air in one mode and solid ballast in the other | `WEC_User_Input.m`, `build_config.m` | Values were correct; the name invited a wrong density |
 | I12 | `BM_L` taken about x = 0 without the parallel-axis term | `hydrostatics/properties_3d.m:95–100` | Exact for C1 (symmetric); wrong for a hull whose waterplane centroid is off x = 0 |
 | I13 | Silhouette for figures = widest x mirrored, labelled "midplane"; midplane points sampled with a 5 cm band | `build_silhouette_profile.m`, `extract_midplane_profile.m` | — |
 | I14 | Dead `config.shell` branches (always empty) | `compute_strip_equivalent_density.m`, figure and `properties_2d` branches | `build_config.m:283` is the only assignment |
@@ -302,7 +303,7 @@ Figures: `WEC_Constructability_XZ`, `WEC_Constructability_Strips` (precast), `St
 | I16 | Thin-shell Stage 2 has no density floor, so it can request unbuildable densities | `build_config.m:358` (floors only for precast) | C1: modules 4–5 at 310.5 kg/m³; a 15 mm shell alone gives ≥ ≈1196 / 1336 |
 | I17 | `compute_rmin_at_z` measures distances to vertices only; flat faces have none | `geometry/compute_rmin_at_z.m:36–37` | C1 thin shell: `t_max` = 0.5025 m although the neck closes at t = 0.10 m |
 | I18 | Stage-2 density upper bound is 2500 kg/m³ in every mode, although steel ballast reaches 7500 | `WEC_User_Input.m` `ballast_density_bounds`, `stage2_bounds.m` | C1 thin shell: Stage 2 capped module 1 at 2500; Stage 3 built 6977 |
-| I19 | More material-name traps: the UHPC path passes UHPC density as `rho_steel` and stores UHPC volume and thickness as `V_steel`, `t_steel`; thin shell stores the fill density in `steel_data.rho_steel` | `modular_precast/solve_and_extract.m:18`, `solve.m`, `thin_shell/solve.m` packaging | — |
+| I19 | More material-name traps (fixed by T0b): the UHPC path used steel names for UHPC density, volume and thickness; thin shell stored the ballast density under a steel name | `modular_precast/solve_and_extract.m:18`, `solve.m`, `thin_shell/solve.m` packaging | — |
 | I20 | Stage 3 optimises **uncoupled** periods, while Stage 2 and the reported results use coupled periods | `modular_precast/evaluate_design_point.m:119–126`, `thin_shell/evaluate_design_point.m:200–207` vs `properties_3d.m:254–257`, `build_realised_properties.m` | Pitch only (heave identical): precast 4.960 s optimised vs 4.907 s reported; thin shell 3.890 s optimised (the target) vs 3.813 s reported. A15²/(M+A11) = 2.1 % and 3.9 % of the pitch inertia |
 | I21 | C1 floats with ≈95 % of its volume submerged (V_sub 20.16 of 21.16 m³). Mass balance therefore cannot carry a percentage tolerance | hydrostatics of C1 | From the C1 tables: +1 % mass raises the waterline 160 mm; +5 % submerges the hull completely; −10 % lowers the waterline 256 mm |
 | I22 | The monotonic density constraint `c_mono` makes Stage 2 infeasible for thin shell with the true floors, and over-constrains UHPC | `optim/stage2_constraints.m:35,39,51,64`; Stage-1 copy `c_monotonic` in `optim/solve_2d_surrogate.m:224–238,248,261–264,269` | Python estimate on the exact C1 sections. Thin shell (25.4 mm steel shell, air inside): module floors ≈ 722/268/451/2009/2217 kg/m³, so `c_mono` forces every module to ≥ 2217 kg/m³: minimum mass 46 934 kg against 21 702 kg displaced with the hull fully submerged; no feasible point. UHPC (76.2 mm): floors ≈ 608/284/211/610 (wall module 2500); `c_mono` lifts modules 1–3 to ≥ 610 kg/m³, ≈ 3.1 t more in module 3 than its floor requires |
@@ -456,7 +457,7 @@ MWEC_Mass/
     ├── +optim/                Stage 1 modes, Stage 2 objective/constraints/bounds
     ├── +realise/
     │   ├── +preliminary/      pass-through of Stage 2
-    │   ├── +thin_shell/       steel shell + fill solve
+    │   ├── +thin_shell/       steel shell + ballast solve
     │   ├── +modular_precast/  UHPC modules solve and strip extraction
     │   └── build_realised_properties.m, empty_realised_properties.m
     ├── +output/               export, schema, reports, logs, +figures/
@@ -500,8 +501,8 @@ New folders created by the plan: `src/+mwecmass/+solid/` (exact geometry kernel)
 - **OD9** Resolved: the Stage-2 upper density bound is the solid density of the mode's ballast —
   7500 kg/m³ (solid steel) for thin shell, 2500 kg/m³ (solid UHPC) for modular precast — taken
   from the material inputs, not from the shared `ballast_density_bounds`. ρ_air is 1.2 kg/m³ in
-  both modes today (`config.rho_air` from `thin_shell.rho_void`; `constructability_rho_fill` from
-  `modular_precast.rho_fill`); T0b renames both to `rho_air`, T4a asserts it.
+  both modes (`config.rho_air` from `thin_shell.rho_air`; `config.constructability_rho_air` from
+  `modular_precast.rho_air`); T4a asserts it.
 - **OD10** Resolved by the owner's wording (§3 item 32): mass = displaced mass is an equality
   held to the solver's constraint tolerance (1e-6) in every reported state; `mass_acceptable_pct`
   applies only to the Stage-2 comparison of Z_CG, GM, T_heave and T_pitch (see I21).
