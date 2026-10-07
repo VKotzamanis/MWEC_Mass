@@ -1,0 +1,19 @@
+MultiSurf 1.44
+Units: m kg
+Symmetry:  x y
+BeginModel;
+FramePoint K 14 -1 / 0 * * 0.0 0.0 -3.0 ;
+FramePoint P1 14 -1 / 0 * * 1.5 0.0 -3.0 ;
+FramePoint P2 14 -1 / 0 * * 1.5 0.0 -1.0 ;
+FramePoint P3 14 -1 / 0 * * 0.75 0.0 -1.0 ;
+FramePoint P4 14 -1 / 0 * * 0.75 0.0 1.0 ;
+FramePoint T 14 -1 / 0 * * 0.0 0.0 1.0 ;
+Line keel_line 11 -1 8x4 / * K P1 ;
+Line base_line 11 -1 8x4 / * P1 P2 ;
+Line step_line 11 -1 8x4 / * P2 P3 ;
+Line column_line 11 -1 8x4 / * P3 P4 ;
+Line top_line 11 -1 8x4 / * P4 T ;
+PolyCurve2 profile 11 -1 8x4 / * { keel_line base_line step_line column_line top_line } ;
+Line axis 6 -1 8x4 / * K T ;
+RevSurf spar 2 11 36x4 12x4 0 / * profile axis 0.0 90.0 ;
+EndModel;

@@ -1,0 +1,33 @@
+MultiSurf 1.44
+Units: m kg
+BeginModel;
+FramePoint B1 14 -1 / 0 * * 1.0 -0.75 -2.5 ;
+FramePoint B2 14 -1 / 0 * * 1.0 0.75 -2.5 ;
+FramePoint B3 14 -1 / 0 * * -1.0 0.75 -2.5 ;
+FramePoint B4 14 -1 / 0 * * -1.0 -0.75 -2.5 ;
+FramePoint T1 14 -1 / 0 * * 1.0 -0.75 0.5 ;
+FramePoint T2 14 -1 / 0 * * 1.0 0.75 0.5 ;
+FramePoint T3 14 -1 / 0 * * -1.0 0.75 0.5 ;
+FramePoint T4 14 -1 / 0 * * -1.0 -0.75 0.5 ;
+FramePoint M2 14 -1 / 0 * * 1.0 0.75 -1.0 ;
+FramePoint M3 14 -1 / 0 * * -1.0 0.75 -1.0 ;
+Line V1 11 -1 8x4 / * B1 T1 ;
+Line V2 11 -1 8x4 / * B2 T2 ;
+Line V3 11 -1 8x4 / * B3 T3 ;
+Line V4 11 -1 8x4 / * B4 T4 ;
+Line V2lo 11 -1 8x4 / * B2 M2 ;
+Line V2hi 11 -1 8x4 / * M2 T2 ;
+Line V3lo 11 -1 8x4 / * B3 M3 ;
+Line V3hi 11 -1 8x4 / * M3 T3 ;
+Line BL1 11 -1 8x4 / * B4 B1 ;
+Line BL2 11 -1 8x4 / * B3 B2 ;
+Line TL1 11 -1 8x4 / * T4 T1 ;
+Line TL2 11 -1 8x4 / * T3 T2 ;
+RuledSurf box_side1 2 11 36x4 12x4 0 / * V1 V2 ;
+RuledSurf box_side2lo 2 11 36x4 12x4 0 / * V2lo V3lo ;
+RuledSurf box_side2hi 2 11 36x4 12x4 0 / * V2hi V3hi ;
+RuledSurf box_side3 2 11 36x4 12x4 0 / * V3 V4 ;
+RuledSurf box_side4 2 11 36x4 12x4 0 / * V4 V1 ;
+RuledSurf box_bottom 2 11 36x4 12x4 0 / * BL1 BL2 ;
+RuledSurf box_top 2 11 36x4 12x4 0 / * TL1 TL2 ;
+EndModel;
