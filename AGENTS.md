@@ -60,6 +60,13 @@ call a shell a wall.
     ballast zone are full solid sections; no t_min shell is added to them. Tests assert volume
     closure to machine precision: per module V_UHPC + V_air = V_module (thin shell: V_ballast +
     V_shell + V_air = V_hull), and the module volumes sum to the hull volume.
+12. **Judge by metrics.** The owner: "you and any agent judges from metrics." Every judgement (the
+    orchestrator's, an implementer's, a grader's, and every report to the owner) rests on numbers
+    computed from the code's outputs: exact checks, measured values, the gates of rule 5. Never
+    judge by how a figure or a text looks. A figure is judged by its section data: every drawn
+    boundary has a face of the solid behind it, the drawn areas equal the body's section areas, and
+    the drawn ballast level equals `z_ballast`. The owner reviews real XZ (y = 0) and YZ (x = 0)
+    sections of the realised C1 bodies, with these metrics printed beside them.
 
 ---
 

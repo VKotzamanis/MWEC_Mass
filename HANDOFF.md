@@ -1,6 +1,6 @@
 # HANDOFF — MWEC_Mass exact-geometry refactor
 
-Updated 2026-10-07 13:45 UTC on `claude/lucid-cray-7o9442`. Process file for agents: the
+Updated 2026-10-07 13:50 UTC on `claude/lucid-cray-7o9442`. Process file for agents: the
 orchestrator updates it at every milestone and at least every 100k tokens; delete it in T12.
 
 ## 1. Goal
@@ -18,7 +18,7 @@ STEP output of the realised bodies. The binding documents, in this order:
 
 ## 2. Progress tracker
 
-Main `claude/lucid-cray-7o9442` = `e7e9114` (pushed; holds the general-kernel amendment). Every task branch `task/<id>` is on GitHub.
+Main `claude/lucid-cray-7o9442` holds the general-kernel amendment (`e7e9114`) and AGENTS rule 12 (judge by metrics). Every task branch `task/<id>` is on GitHub.
 
 | Task | What | Lane | Status | Grade (rounds) | Head |
 |---|---|---|---|---|---|
@@ -30,12 +30,12 @@ Main `claude/lucid-cray-7o9442` = `e7e9114` (pushed; holds the general-kernel am
 | SK | stand-in kit (box, cylinder, closed forms) | K | merged `8eb4552` | 9 (3) | `a03bc4b` |
 | T0b | renames (`z_ballast`, `rho_air`, `rho_ballast`, `uhpc`) | N | merged `b4523aa` | 9 (4) | `c64a4d0` |
 | spec2 | contract amendment: general kernel (owner) + errata | K | merged `e7e9114` | 9 (round 8; errata 9; merge 10) | `5ce48fc` |
-| T5 | UHPC Stage 3 a: split, build, check, store | U | fixing | r1 –, r2 8 | task/T5 |
+| T5 | UHPC Stage 3 a: split, build, check, store | U | round 3 grading | r1 –, r2 8 | task/T5 `4a9bffa` |
 | T6 | UHPC Stage 3 b: optimisation, spill, closest fail | U | queued after T5 | — | — |
-| T7 | thin-shell rebuild | S | fixing | r2 7 | task/T7 |
-| T8 | figures from the realised solid | O | extra fix rounds 5–6 (void outlines at module edges) | r1–r4 8 | task/T8 |
+| T7 | thin-shell rebuild | S | round 3 grading | r2 7 | task/T7 `c9626ec` |
+| T8 | figures from the realised solid | O | round 5 grading (void outlines at module edges) | r1–r4 8 | task/T8 `5dc35c2` |
 | T10 | Stage-3 STEP exports | O | accepted, waits for J2 | 9 (3) | `07856a2` |
-| T0d | geometry cache of `build_config` | P | fixing | r1 8 | task/T0d |
+| T0d | geometry cache of `build_config` | P | round 2 grading | r1 8 | task/T0d `158d77d` |
 | T4a | Stage-2 changes (delete `c_mono`, `c_mass_min`; bottom-filled start; bounds) | P | queued after T0d | — | — |
 | T4b | Stage-2 floors from the kernel (merges after J1) | P | queued after T4a | — | — |
 | SK2 | stand-ins updated to spec2 | SK2 | implementing | — | task/SK2 |
@@ -48,8 +48,15 @@ Main `claude/lucid-cray-7o9442` = `e7e9114` (pushed; holds the general-kernel am
 
 ## 3. How the work is run
 
+- **Metrics decide (AGENTS rule 12).** Every acceptance, rejection and report to the owner cites
+  numbers computed from the code's outputs. Never send the owner a picture as evidence; send the
+  failing metric. Figures for the owner: real C1 XZ (y = 0) and YZ (x = 0) sections from J1 on, with
+  the metrics printed beside them.
 - The orchestrator delegates; implementers and graders are subagents run by the Workflow tool.
-  Scripts: `docs/plans/orchestration/lane.js` and `merge.js` (copies of the scripts in use).
+  Scripts: `docs/plans/orchestration/lane.js` (with rule 15 and grader item 7, judge by metrics) and
+  `merge.js`. New lane launches use the session copy `workflows/scripts/mwec-lane-v2.js`; resume a
+  workflow started before 13:50 UTC only with its own script `mwec-lane-wf_d681e461-e66.js`
+  (resume reuses cached agent calls only while the prompts are unchanged).
 - **Lane workflow** (`lane.js`, args `{lane, mode: 'chain'|'parallel', tasks: [{id, wt, branch,
   base, model, effort, brief}]}`): per task, implementer → Opus 5.5 xhigh grader → fixer, at most 4
   grading rounds. The grader accepts only with no rule violation, every acceptance item reproduced
@@ -113,10 +120,10 @@ Main `claude/lucid-cray-7o9442` = `e7e9114` (pushed; holds the general-kernel am
 - Reading a workflow's result from the notification text can mislead; read its `journal.jsonl`.
 - Hand edits of the dense contract by the orchestrator were rejected twice: route every contract
   change through an author agent and the grader.
-- Owner: figures are judged by metrics on the section data (every drawn boundary has a face of the
-  solid behind it, drawn areas equal the body's section areas, ballast level within contract I3), not
-  by pictures of stand-ins. The owner reviews real XZ (y = 0) and YZ (x = 0) cross sections of the C1
-  bodies, from J1 on (real kernel), with the metrics printed beside them.
+- T8 round 4: I sent the owner rendered pictures of stand-in figures instead of the metric the
+  grader had already measured: dashed void boundaries with no face of the solid behind them at the
+  3 interior module edges of the thin-shell cylinder stand-in. The owner had asked from the start
+  for judgement by metrics; the handoff did not state it as a rule. It is now AGENTS rule 12.
 
 ## 7. Next steps
 

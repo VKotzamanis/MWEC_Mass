@@ -34,6 +34,7 @@ Before writing code read, in your worktree: AGENTS.md (all), the contract ${CONT
 12. No side quests; do only your task.
 13. Long runs: up to 10 minutes in the foreground; longer ones in the background, and wait for them before reporting. Leave no process running.
 14. Commit after each completed deliverable.
+15. Judge by metrics (AGENTS section 1 rule 12): every claim in your report is a number you computed from the code's outputs, with the command that produced it. Never judge a result, a figure included, by how it looks; a figure is judged by its section data.
 Your final answer goes to the orchestrator: fill the schema factually. List every test command you ran with its key printed numbers, and every minor finding you defer, with the reason (nothing is dropped silently). Never claim anything you did not run or read.`
 
 const IMPL_SCHEMA = { type: 'object', properties: {
@@ -68,7 +69,8 @@ Procedure:
 4. For every acceptance item of the plan section, the contract and the brief: met with evidence you reproduced, or not met.
 5. Minor findings: each must be fixed, or listed by the implementer as deferred with a reason; nothing dropped silently.
 6. Report in spec_issues any requirement of the brief, plan or contract that contradicts AGENTS.md, the owner decisions or another contract item; do not enforce such a requirement.
-7. Score 0-10: correctness, rules, evidence, quality, scope; overall = the minimum. accepted = true ONLY if there is no violation, every acceptance item is met with evidence you reproduced, all tests pass, and the overall score >= 9. Otherwise list every required fix precisely (file, line, issue, fix, how to verify). Be strict; never accept what you could not verify.`
+7. Judge only by metrics (AGENTS section 1 rule 12): every violation, required fix and acceptance item cites a number you computed from the code's outputs (a test result, a measured value, an exact reference). Judge a figure by its section data (every drawn boundary has a face of the solid behind it, the drawn areas equal the body's section areas, the drawn ballast level equals z_ballast), never by looking at a rendering.
+8. Score 0-10: correctness, rules, evidence, quality, scope; overall = the minimum. accepted = true ONLY if there is no violation, every acceptance item is met with evidence you reproduced, all tests pass, and the overall score >= 9. Otherwise list every required fix precisely (file, line, issue, fix, how to verify). Be strict; never accept what you could not verify.`
 
 const fixPrompt = (t, g, round) => `${RULES(t)}
 
