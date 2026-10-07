@@ -20,6 +20,7 @@ out.save.stage3.steel_solve_log = true;        % bool: print the thin-shell stee
 out.save.stage3.precast_midplane = true;       % bool: save the modular-precast midplane figure.
 out.save.stage3.precast_strips = true;         % bool: save the modular-precast strip-plan figure.
 out.save.stage3.realised_density_3d = false;   % bool: save the realised-density 3-D figure.
+out.save.stage3.step = true;                   % bool: write the Stage-3 STEP files into Output/<type>/step (modular precast: one per module and one fused solid; thin shell: ballast solid, shell sheet and both together).
 out.save.stage3.final_results_log = true;      % bool: print the final-results log.
 out.save.stage3.diagnostic_panels_log = true;  % bool: print the diagnostic-panels log.
 
