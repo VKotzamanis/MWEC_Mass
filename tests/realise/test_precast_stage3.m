@@ -2,6 +2,8 @@ function test_precast_stage3()
 %TEST_PRECAST_STAGE3  Modular-precast Stage 3 (split, build, check, store) on the SK fixtures.
 %   Kernel F1-F7 are the SK stand-ins until J1 (cylinder inner sets through F2, box inner sets
 %   through sti_inner_box); Stage 2 is sti_stage2 (closed-form prisms), not an optimiser run.
+%   After J1 the same cases run on the real kernel (join test); the hull-volume sum against the
+%   closed form is then printed only (rational faces, Gauss quadrature).
 %   Asserted: S8 layout, final_props from the realised body, volume closure (rule 11), shell and
 %   ballast bounds, flotation held to the Stage-3 constraint tolerance 1e-6 (AGENTS OD10), the
 %   status rule. Root-finding residuals and Stage-2 deviations are printed.
@@ -117,8 +119,11 @@ for i = 1:N
     check(abs(m.V_uhpc + m.V_air - m.V) <= 2 * eps * m.V, sprintf('%s: module %d closure', label, i));
     Vsum = Vsum + m.V;
 end
-% N prism volumes of the closed form summed: within N roundings of the hull volume
-check(abs(Vsum - hull.V) <= N * eps * hull.V, [label ': module volumes sum to the hull']);
+fprintf('%s: sum of module volumes - closed-form hull volume = %.3g m^3\n', label, Vsum - hull.V);
+if ~isempty(config.hull_solid.analytic)
+    % stand-in kernel: N closed-form prism volumes summed, within N roundings of the hull volume
+    check(abs(Vsum - hull.V) <= N * eps * hull.V, [label ': module volumes sum to the hull']);
+end
 k = r.k_star;
 check(r.design.z_ballast >= e(k) && r.design.z_ballast <= e(k + 1), [label ': ballast inside k*']);
 t_min = config.constructability_t_min;
