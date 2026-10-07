@@ -1,6 +1,6 @@
 # HANDOFF — MWEC_Mass exact-geometry refactor
 
-Updated 2026-10-07 12:40 UTC on `claude/lucid-cray-7o9442`. Process file for agents: the
+Updated 2026-10-07 13:45 UTC on `claude/lucid-cray-7o9442`. Process file for agents: the
 orchestrator updates it at every milestone and at least every 100k tokens; delete it in T12.
 
 ## 1. Goal
@@ -18,7 +18,7 @@ STEP output of the realised bodies. The binding documents, in this order:
 
 ## 2. Progress tracker
 
-Main `claude/lucid-cray-7o9442` = `1f9d19e` (pushed). Every task branch `task/<id>` is on GitHub.
+Main `claude/lucid-cray-7o9442` = `e7e9114` (pushed; holds the general-kernel amendment). Every task branch `task/<id>` is on GitHub.
 
 | Task | What | Lane | Status | Grade (rounds) | Head |
 |---|---|---|---|---|---|
@@ -29,17 +29,17 @@ Main `claude/lucid-cray-7o9442` = `1f9d19e` (pushed). Every task branch `task/<i
 | T0c | parser resolves entities once (4.3× faster, bit-identical) | N | merged `a935491` | 9 (2) | `80ef938` |
 | SK | stand-in kit (box, cylinder, closed forms) | K | merged `8eb4552` | 9 (3) | `a03bc4b` |
 | T0b | renames (`z_ballast`, `rho_air`, `rho_ballast`, `uhpc`) | N | merged `b4523aa` | 9 (4) | `c64a4d0` |
-| spec2 | contract amendment: general kernel (owner) | K | grading, 3rd run (rounds 8–10) | runs 1–2 failed (6, 7) | `c9e2231` |
-| T5 | UHPC Stage 3 a: split, build, check, store | U | implementing | — | `e5528db` |
+| spec2 | contract amendment: general kernel (owner) + errata | K | merged `e7e9114` | 9 (round 8; errata 9; merge 10) | `5ce48fc` |
+| T5 | UHPC Stage 3 a: split, build, check, store | U | fixing | r1 –, r2 8 | task/T5 |
 | T6 | UHPC Stage 3 b: optimisation, spill, closest fail | U | queued after T5 | — | — |
-| T7 | thin-shell rebuild | S | implementing | — | `4e34ee3` |
-| T8 | figures from the realised solid | O | grading | — | `78bdc1a` |
-| T10 | Stage-3 STEP exports | O | fixing | r1 7, r2 8 | `07856a2` |
-| T0d | geometry cache of `build_config` | P | implementing | — | `8f28d80` |
+| T7 | thin-shell rebuild | S | fixing | r2 7 | task/T7 |
+| T8 | figures from the realised solid | O | extra fix rounds 5–6 (void outlines at module edges) | r1–r4 8 | task/T8 |
+| T10 | Stage-3 STEP exports | O | accepted, waits for J2 | 9 (3) | `07856a2` |
+| T0d | geometry cache of `build_config` | P | fixing | r1 8 | task/T0d |
 | T4a | Stage-2 changes (delete `c_mono`, `c_mass_min`; bottom-filled start; bounds) | P | queued after T0d | — | — |
 | T4b | Stage-2 floors from the kernel (merges after J1) | P | queued after T4a | — | — |
-| SK2 | stand-ins updated to spec2 | K | waits for spec2 merge | — | — |
-| T2a | exact-path offset, fold trim, adaptive fit | K | waits for spec2 + SK2 | — | — |
+| SK2 | stand-ins updated to spec2 | SK2 | implementing | — | task/SK2 |
+| T2a | exact-path offset, fold trim, adaptive fit | K1 | implementing (Opus high) | — | task/T2a |
 | T2b | general path (refits, flat regions, mirrors) | K | after T2a, ∥ T3 | — | — |
 | T3 | bodies and exact properties | K | after T2a | — | — |
 | J1 | merge T2a, T2b, T3; owner checkpoint | — | pending | — | — |
@@ -111,11 +111,14 @@ Main `claude/lucid-cray-7o9442` = `1f9d19e` (pushed). Every task branch `task/<i
   amendment. Verify claims on the code and the exact deck before writing them.
 - Deleting remote branches returns HTTP 403 (policy): do not retry.
 - Reading a workflow's result from the notification text can mislead; read its `journal.jsonl`.
+- Hand edits of the dense contract by the orchestrator were rejected twice: route every contract
+  change through an author agent and the grader.
+- Owner: when a figure fails grading, render it and show it to the owner before another iteration
+  (MATLAB-only figure code cannot run in Octave: redraw from the F12 section data).
 
 ## 7. Next steps
 
-1. spec2 (third run, rounds 8–10): if accepted, merge `task/spec2`, apply the §4 errata (graded),
-   run SK2, then lane K: T2a → T3, with T2b from T2a's branch in parallel with T3.
+1. When T2a is accepted: launch T3 and T2b in parallel from `task/T2a` (lane script, mode parallel).
 2. As lanes return: merge T0d and T4a when accepted; T4b after J1; T5–T10 wait for J2.
 3. J1, owner checkpoint after T3 (measured numbers), then J2 with the first whole-pipeline runs,
    the baseline regenerated once, owner checkpoints after T6 and T10; then G.
