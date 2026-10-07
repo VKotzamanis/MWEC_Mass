@@ -1,6 +1,6 @@
 # HANDOFF — MWEC_Mass exact-geometry refactor
 
-Updated 2026-10-07 22:25 UTC on `claude/lucid-cray-7o9442`. Process file for agents: the
+Updated 2026-10-07 22:20 UTC on `claude/lucid-cray-7o9442`. Process file for agents: the
 orchestrator updates it at every milestone and at least every 100k tokens; delete it in T12.
 
 ## 1. Goal
@@ -18,7 +18,7 @@ STEP output of the realised bodies. The binding documents, in this order:
 
 ## 2. Progress tracker
 
-Main `claude/lucid-cray-7o9442` = `f52e232`: general-kernel amendment, AGENTS rule 12 (judge by metrics), SK2, T0d; suite 27 passed, 1 skipped (476 s). Every task branch `task/<id>` is on GitHub.
+Main `claude/lucid-cray-7o9442` = `9447e9c` + handoff commits: general-kernel amendment, AGENTS rule 12, SK2, T0d, T4a; suite 30 passed, 2 skipped (627 s). Every task branch `task/<id>` is on GitHub.
 
 | Task | What | Lane | Status | Grade (rounds) | Head |
 |---|---|---|---|---|---|
@@ -36,8 +36,8 @@ Main `claude/lucid-cray-7o9442` = `f52e232`: general-kernel amendment, AGENTS ru
 | T8 | figures from the realised solid | O | accepted (round 10); waits for J2 | 8, 8, 8, 8, 6, 6, 6, 6, 7, 9 | `3b0a0be` |
 | T10 | Stage-3 STEP exports | O | accepted, waits for J2 | 9 (3) | `07856a2` |
 | T0d | geometry cache of `build_config` (C1: fresh build 421 s CPU, reload 0.44 s) | P | merged `f52e232` | 9 (2); merge 10 | `158d77d` |
-| T4a | Stage-2 changes (delete `c_mono`, `c_mass_min`; bottom-filled start; bounds) | P | round 2: 8, minor only → fix + quick check, then T4b (`wf_c0835769-40a`) | 7, 8 | task/T4a `d22d95c` |
-| T4b | Stage-2 floors from the kernel (merges after J1) | P | queued after T4a | — | — |
+| T4a | Stage-2 changes (delete `c_mono`, `c_mass_min`; bottom-filled start; bounds) | P | merged `9447e9c` (suite 30 passed, 2 skipped; merge grade 10) | 7, 8 + quick check | `6687df5` |
+| T4b | Stage-2 floors from the kernel (merges after J1) | P | implementing (`wf_c0835769-40a`) | — | task/T4b |
 | SK2 | stand-ins updated to spec2 | SK2 | merged `1bb06d6` | 9 (3); merge 10 | `753a11e` |
 | T2a | exact-path offset, fold trim, adaptive fit | K1 | round 1 rejected at 5 (general decks crash, decimal arcs, fold on exact decks, rounding bounds); C1 results correct; fixing (`wf_f1cd8be0-af1`) | 5 | task/T2a `23ddfe9` |
 | T2b | general path (refits, flat regions, mirrors) | K | after T2a, ∥ T3 | — | — |
