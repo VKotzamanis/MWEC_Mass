@@ -1,0 +1,15 @@
+MultiSurf 1.44
+Units: m kg
+Symmetry:  x y
+BeginModel;
+FramePoint K 14 -1 / 0 * * 0.0 0.0 -3.0 ;
+FramePoint P1 14 -1 / 0 * * 1.5 0.0 -3.0 ;
+FramePoint P2 14 -1 / 0 * * 1.5 0.0 1.0 ;
+FramePoint T 14 -1 / 0 * * 0.0 0.0 1.0 ;
+Line bottom_line 11 -1 8x4 / * K P1 ;
+Line side_line 11 -1 8x4 / * P1 P2 ;
+Line top_line 11 -1 8x4 / * P2 T ;
+PolyCurve2 profile 11 -1 8x4 / * { bottom_line side_line top_line } ;
+Line axis 6 -1 8x4 / * K T ;
+RevSurf cylinder 2 11 36x4 12x4 0 / * profile axis 0.0 90.0 ;
+EndModel;
