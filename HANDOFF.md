@@ -1,6 +1,6 @@
 # HANDOFF — MWEC_Mass exact-geometry refactor
 
-Updated 2026-10-07 15:45 UTC on `claude/lucid-cray-7o9442`. Process file for agents: the
+Updated 2026-10-07 16:05 UTC on `claude/lucid-cray-7o9442`. Process file for agents: the
 orchestrator updates it at every milestone and at least every 100k tokens; delete it in T12.
 
 ## 1. Goal
@@ -30,16 +30,16 @@ Main `claude/lucid-cray-7o9442` = `f52e232`: general-kernel amendment, AGENTS ru
 | SK | stand-in kit (box, cylinder, closed forms) | K | merged `8eb4552` | 9 (3) | `a03bc4b` |
 | T0b | renames (`z_ballast`, `rho_air`, `rho_ballast`, `uhpc`) | N | merged `b4523aa` | 9 (4) | `c64a4d0` |
 | spec2 | contract amendment: general kernel (owner) + errata | K | merged `e7e9114` | 9 (round 8; errata 9; merge 10) | `5ce48fc` |
-| T5 | UHPC Stage 3 a: split, build, check, store | U | resumed (`wf_1b65ba81-885`): fix round 4 findings + F11 folder, rounds 5–6 | 7, 8, 8, 8 | task/T5 `eaf4c16` |
-| T6 | UHPC Stage 3 b: optimisation, spill, closest fail | U | after T5 in `wf_1b65ba81-885` (t_max,i per module from F2b) | — | — |
-| T7 | thin-shell rebuild | S | resumed (`wf_0aa3006e-39b`): two deferred line ranges, rounds 5–6 | 7, 7, 7, 8 | task/T7 `bbee405` |
-| T8 | figures from the realised solid | O | resumed with Opus high (`wf_11198ef4-0cf`), rounds 9–10: void outlines with holes (material island), resolution limit stated, U-shaped mock, stray file | 8, 8, 8, 8, 6, 6, 6, 6 | task/T8 `b0a9c9f` |
+| T5 | UHPC Stage 3 a: split, build, check, store | U | accepted (round 5); waits for J2 | 7, 8, 8, 8, 9 | `31f470f` |
+| T6 | UHPC Stage 3 b: optimisation, spill, closest fail | U | implementing (`wf_e905b818-430`, base task/T5) | — | task/T6 |
+| T7 | thin-shell rebuild | S | resumed after restart (`wf_1ef512c2-5e3`), rounds 6–7 | 7, 7, 7, 8, 8 | task/T7 `4ae74bb` |
+| T8 | figures from the realised solid | O | restarted (`wf_69d3ee54-efc`), Opus fix of the round-8 verdict, rounds 9–10 | 8, 8, 8, 8, 6, 6, 6, 6 | task/T8 `b70b1ff` |
 | T10 | Stage-3 STEP exports | O | accepted, waits for J2 | 9 (3) | `07856a2` |
 | T0d | geometry cache of `build_config` (C1: fresh build 421 s CPU, reload 0.44 s) | P | merged `f52e232` | 9 (2); merge 10 | `158d77d` |
-| T4a | Stage-2 changes (delete `c_mono`, `c_mass_min`; bottom-filled start; bounds) | P | implementing (Sonnet high) | — | task/T4a |
+| T4a | Stage-2 changes (delete `c_mono`, `c_mass_min`; bottom-filled start; bounds) | P | implementing, restarted (`wf_6bfb8540-04d`, then T4b) | — | task/T4a `7ad75d5` |
 | T4b | Stage-2 floors from the kernel (merges after J1) | P | queued after T4a | — | — |
 | SK2 | stand-ins updated to spec2 | SK2 | merged `1bb06d6` | 9 (3); merge 10 | `753a11e` |
-| T2a | exact-path offset, fold trim, adaptive fit | K1 | implementing: F3, F3b/F4, F1 committed; F2 (offset, trim, fit) in progress; F2b next | — | task/T2a `59aeb4f` |
+| T2a | exact-path offset, fold trim, adaptive fit | K1 | implementing, restarted (`wf_6f9b1ce1-590`): F3, F3b/F4, F1 and part of F2 committed | — | task/T2a `c825835` |
 | T2b | general path (refits, flat regions, mirrors) | K | after T2a, ∥ T3 | — | — |
 | T3 | bodies and exact properties | K | after T2a | — | — |
 | J1 | merge T2a, T2b, T3; owner checkpoint | — | pending | — | — |
@@ -124,8 +124,11 @@ Main `claude/lucid-cray-7o9442` = `f52e232`: general-kernel amendment, AGENTS ru
 
 ## 6. What did not work (do not repeat)
 
-- Container restarts (00:18, 04:02 UTC) kill every background job and workflow; only committed and
-  pushed work survives. Workflow resume reuses only the longest unchanged prefix of agent calls;
+- Container restarts (00:18, 04:02, 15:54 UTC) kill every background job and workflow; only committed and
+  pushed work survives. After a restart: recover each run's launch input from the session transcript,
+  check every worktree (delete `octave-workspace` crash dumps), and relaunch each lane from its last
+  verdict with a generated `mwec-lane-<lane>-restart.js` (args embedded) and a note to continue from
+  the committed state. Workflow resume reuses only the longest unchanged prefix of agent calls;
   editing an early prompt reruns everything after it.
 - Whole-pipeline runs in Octave (24–94 min) die in restarts; the Octave `fmincon` stand-in fails the
   v1.0 modular Stage 2 (exitflag −2). Do not compare Octave with MATLAB v1.0 numbers (owner).
