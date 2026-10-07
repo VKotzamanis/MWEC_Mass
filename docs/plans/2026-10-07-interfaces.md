@@ -15,7 +15,7 @@
 - **Names (rule 10):** regions are `uhpc`, `air` (modular precast) and `ballast`, `shell`, `air`
   (thin shell); densities `rho_uhpc`, `rho_air`, `rho_ballast`, `rho_shell`; ballast top
   `z_ballast`; never `z_fill`, `rho_fill`, `rho_void`, `rho_steel` or `V_steel` for UHPC.
-- **Offset distance:** a wall of design thickness t is built at d = t + eps_fit/2, eps_fit =
+- **Offset distance:** a shell of design thickness t is built at d = t + eps_fit/2, eps_fit =
   0.01·t_min (AGENTS §5 item 9.2); every closed form, oracle and stand-in below uses d.
 - **Errors:** `mwecmass:solid|realise|step:<Name>`. **Tests:** `tests/<area>/test_<name>.m`;
   exact-by-construction assertions only, approximation errors printed (rule 5).
@@ -30,12 +30,13 @@
 `exact`: `surf` is the `.ms2` entity converted exactly (C1: all 8); `z_of_u`: every control row
 has one z (bitwise) and the weights are separable (§5 I3); `u_range [u0 u1]`, `z_range [z(u0)
 z(u1)]`; `offset_kind`: `rev_z` (RevSurf about an axis parallel to z), `ruled_parallel` (RuledSurf
-with all rulings parallel) or `''`, set by F1, used by F2; `pole [1x2]`: the row at u0 / u1
-collapses to a point (C1 RevSurf: keel, neck top); `c0_u`, `c0_v`: interior knot values of full
-multiplicity (du, dv), set by F1 (F2 for S2; C1: `c0_u` = the arc-to-`curve1` joint, z = 1.0, of
-the RevSurf and its ruled neighbour; `c0_v` empty); `seam_u0`, `seam_u1`, `seam_v0`, `seam_v1`:
+with all rulings parallel) or `''`, set by F1, used by F2; `pole [1x2]`: the row at u0 / u1 has
+all control points bitwise equal (C1 RevSurf: keel, neck top; F1); `c0_u`, `c0_v`: interior knot
+values of full multiplicity (du, dv), set by F1 (F2 for S2; C1: `c0_u` = the arc-to-`curve1` joint,
+z = 1.0, of the RevSurf and its ruled neighbour; `c0_v` empty); `seam_u0`, `seam_u1`, `seam_v0`, `seam_v1`:
 `[patch boundary]` of the neighbour on that boundary (1 = u0, 2 = u1, 3 = v0, 4 = v1; empty for a
-pole; C1: the RuledSurf's ridge row u0, z = 1.1, and keel row u1 are shared with its X-mirror's).
+pole; C1: the RuledSurf's ridge row u0, z = 1.1, and keel row u1 have x = 0, so they are shared with
+its X-mirror's). Bitwise equality means element-wise IEEE `==` (`isequal`), so −0 = +0.
 
 **S1b hull geometry** `geo`: `hull_name` (deck stem), `outer` (S1 array), `z_range [z_min z_max]`
 (body), `analytic` (`[]` for a real deck; stand-ins only, §3). Once per deck; `config.hull_solid`
@@ -56,11 +57,12 @@ module with no void), `z_ballast` [m, body] (≤ z_min: no ballast; one value, m
 `solid_modules` (indices solid regardless of `z_ballast`: the UHPC wall module; `[]` thin shell).
 Module i layout (rule 11): full outer section solid below `z_ballast`; above it shell t(i) + air;
 modules in `solid_modules` solid throughout; no slab at module joints. If `z_ballast` ≤ the inner
-`z_lo`, the inner set is not cut: the ballast top is a full cap, the shell region holds the full
-section from `z_ballast` up to the inner surface, and the inner patches alone close the void.
+`z_lo`, the inner set is not cut: the solid fills the full section up to the inner surface (precast
+uhpc from the keel; thin shell ballast below `z_ballast`, shell above), and the inner patches alone
+close the void (C1: inner keel pole).
 
 **S4 body** (output of F5)
-- `design` (S3), `inner_t` (t of each S2 set used), `planes` (module edges and `z_ballast` in (z_min, z_max)).
+- `design` (S3), `inner_t` (t of each S2 set used), `planes` (edges and `z_ballast` in (z_min, z_max)).
 - `brep`: exactly the T9 writer struct (`vertices`, `curves`, `edges`, `surfaces`, `faces`,
   `bodies`; `uncertainty` unset = 1e-7 m). Extra face fields, which `write_step` and `validate_brep`
   ignore: `role` (`outer` | `inner` | `cap` | `ballast_top` | `joint_step`), `module`, `inside`,
@@ -68,11 +70,19 @@ section from `z_ballast` up to the inner surface, and the inner patches alone cl
   `exterior` outside the hull). Lateral faces (outer and inner): S1/S2 pieces cut at `planes` by
   knot insertion and at their `c0_u`, `c0_v` rows (an existing knot: no control point moves; a
   `c0_u` row of a `z_of_u` patch has one z, so its edge is shared under I2). Reason: OpenCASCADE
-  `getMass` is wrong on a face with an interior full-multiplicity knot row (T9 `write_step` +
-  `step_check.py`: revolved line + arc +0.37 %, sharp rim −0.048 %, two rims with poles +2.2 %;
-  fine mesh exact; split faces −2.5e-10). Caps: `plane` faces inside (z_min, z_max), annuli with a
-  hole loop; `joint_step`: annulus between inner sections of different t at a joint. A collapsed
-  row is omitted from the loop (three edges, or two when both rows collapse).
+  `getMass` is wrong on a face with an interior full-multiplicity knot row (T9 `step_check.py`: up
+  to +2.2 %; split faces −2.5e-10). Caps: `plane` faces inside (z_min, z_max), annuli with a
+  hole loop. A collapsed row is omitted from the loop (three edges, or two when both rows collapse).
+  The hull's own bottom and top are outer patches (C1: poles; box: horizontal faces), never caps.
+- Modular precast faces: `cap` at every module joint (the full section where both sides are solid,
+  else the annulus between the outer section and the inner section of smaller t, plus a uhpc/air
+  disk where only one side is hollow, e.g. the void top under the solid wall module); `joint_step`
+  (annulus between the two inner sections where t differs, uhpc/air); `ballast_top` is only the
+  void-bottom disk (uhpc/air) at `z_ballast`, also when `z_ballast` is at a joint. No face where
+  uhpc meets uhpc inside a module, so none at `z_ballast` ≤ `z_lo` (the inner patches close the void).
+- Thin shell faces: no joint caps (lateral faces are only split at the module planes);
+  `ballast_top` is the full section at `z_ballast` (ballast/shell), split into an annulus
+  (ballast/shell) and a disk (ballast/air) when the inner set is cut.
 - `brep.bodies`: modular precast `<hull>_UHPC_module_<i>` (solid, one closed shell each; a hollow
   module is a ring); thin shell `<hull>_STEEL_ballast` (solid, full outer section below
   `z_ballast`; absent when `z_ballast` ≤ z_min) and `<hull>_STEEL_shell` (sheet: outer faces
@@ -98,8 +108,8 @@ waterline, same Gauss rule), `Aw` [m²], `xF`, `yF` (centre of flotation), `I_wp
 centroid, `Aw`, `I_wp_*`, `BM_L` = 0, KM = CB(3), `waterline` empty. At or below z_min: `none`,
 V_sub = `S_wet` = `Aw` = 0, CB, `xF`, `yF`, `BM_L`, KM = NaN, `waterline` empty.
 
-**S8 realised design** (`results.stage3`, both modes; replaces `results.constructability` and
-`results.steel_data`)
+**S8 realised design** (`results.stage3`, both modes; `[]` for `preliminary`; replaces
+`results.constructability` and `results.steel_data`)
 - `mode`, `hull_name`, `status` (`accepted` | `failed`), `reason` ('' when accepted), `escalation`
   (`split` | `fixed_draft` | `spill` | `draft_free`: the last step run), `vs`, `draft` [m] (world).
 - `stage2`: `vs`, `rho [N x 1]`, `mass`, `Z_CG` (= `Final3D.CG_total(3)`, world), `GM`
@@ -119,18 +129,18 @@ All take and return the structs of §1; none reads globals or writes files excep
 
 | | Signature | Contract |
 |---|---|---|
-| F1 | `geo = mwecmass.solid.outer_nurbs(model)` | S1b from the `.ms2` entity tree. Points: FramePoint, MirrPoint, AbsBead (on the converted curve, at the parser's parameter map). Curves: BCurve directly, Line as degree 1, Arc as rational quadratic, BSubCurve by knot insertion, PolyCurve2 joined with C0 knots after elevating its pieces to the highest degree (exact degree elevation), ProjCurve by projecting control points (the kept coordinates copied bitwise), EdgeSnake as the boundary row or column of its already converted parent surface, taken from the same array so the seam is bitwise equal (C1: `Edge_For_Dev` = edge 3 of `surface1`). Surfaces: RevSurf as profile × rational arc (angles that are multiples of 90° use exact 0, ±1), RuledSurf as degree 1 in v between its two curves when both get the same reparameterisation (one knot vector, equal weights; C1: `curve7` is the projection of `Edge_For_Dev`), mirrors by flipping control points. Sets `offset_kind`: `rev_z` when the axis end points have equal x and y to the parser's evaluation rounding (T1's 16-ulp bound; C1's `BeadBottom` evaluates to x = 3.9e-16 m), and then revolves about the exact vertical line; `ruled_parallel` when the cross product of every ruling with the first is bitwise zero (C1: x and z of every ruling are 0, since ProjCurve copies them). Any other entity: error `NotExact` (Open item 1). |
+| F1 | `geo = mwecmass.solid.outer_nurbs(model)` | S1b from the `.ms2` entity tree. Points: FramePoint, MirrPoint, AbsBead (on the converted curve, at the parser's parameter map). Curves: BCurve directly, Line as degree 1, Arc as rational quadratic, BSubCurve by knot insertion, PolyCurve2 joined with C0 knots after elevating its pieces to the highest degree (exact degree elevation), ProjCurve by projecting control points (the kept coordinates copied bitwise), EdgeSnake as the boundary row or column of its already converted parent surface, taken from the same array so the seam is bitwise equal (C1: `Edge_For_Dev` = edge 3 of `surface1`). Surfaces: RevSurf as profile × rational arc (angles that are multiples of 90° use exact 0, ±1), RuledSurf as degree 1 in v between its two curves when both get the same reparameterisation (one knot vector, equal weights; C1: `curve7` is the projection of `Edge_For_Dev`), mirrors by flipping control points. Sets `offset_kind`: `rev_z` when the axis end points have equal x and y to the parser's evaluation rounding (T1's 16-ulp bound; C1's `BeadBottom` evaluates to x = 3.9e-16 m), and then revolves about the vertical line through the (x, y) of the axis Line's second end point (C1: `BeadTop`, evaluated exactly as (0, 1)); every profile control point that is an axis end point by entity (the profile ends at a point or bead that defines the axis; C1: both ends of `curve6`, at `BeadTop` and `BeadBottom`) takes that (x, y) bitwise, and control points are formed as axis point + radial vector, so a zero radius gives the axis point bitwise. C1 consequence: the keel and neck-top rows of `surface1` are poles, and `surface2`'s keel row has x = 0, shared with its X-mirror's; `ruled_parallel` when the cross product of every ruling with the first is bitwise zero (C1: x and z of every ruling are 0, since ProjCurve copies them). Any other entity: error `NotExact` (Open item 1). |
 | F2 | `[inner, rep] = mwecmass.solid.offset_surface(model, cache, geo, t, z_range, opts)` | S2 at thickness t over `z_range` (body). Nodes from `MS2Parser` + T1 `surface_normals`, offset by d = t + eps_fit/2, folds trimmed (`trim_fold.m`), faces split at creases into pieces that meet along u-boundaries, cubic fit (`fit_bspline_surface.m`), knot insertion where M1–M3 fail, knot removal while they hold (AGENTS §5 item 9). The outer v-construction is kept only where it is the exact normal offset: `rev_z` (the normal lies in the meridian plane: the offset profile is fitted in u and revolved with the same rational arc) and `ruled_parallel` (the normal is constant along a ruling: both boundary curves are offset at the same u nodes, fitted with one knot vector, ruled in v). Inner patches of a `z_of_u` patch are `z_of_u` with monotonic z. `z_range` bounds the inner surface: source points are taken wherever needed so the inner patches cover it, and past an open end (precast: the bottom of the wall module, strictly inside their z range) F5 cuts them with F3b. `offset_kind` `''`: error `OffsetNotStructured` (Open item 1). v-seams must be tangent-continuous (C1: `surface1`–`surface2` by construction, mirror seams in symmetry planes); a seam node is offset once and shared, so neighbouring inner patches share boundary curves bitwise; a C0 v-seam is out of scope (Open item 1) and fails loudly through M1–M3. `opts.t_min` (eps_fit), `opts.max_passes`; cap reached → error `FitNotConverged` listing the failing patches and metrics. `opts.knots_from` (an S2 set): keep its pieces and knot vectors, refit only the control points at the new t, insert and remove no knots, report M1–M3 in S2r (a failure is reported, not refined; §7 item 4). Tests: identity at the same t; properties smooth in t. |
 | F2b | `d_close = mwecmass.solid.void_closing_distance(model, cache, geo, z_range)` | Smallest offset distance at which offset layers from opposite sides meet inside `z_range` (not a fold of one layer). C1 neck: 0.10 m. The design bound is t_max = d_close − eps_fit/2: at t = t_max the void closes (d = d_close) and M3 fails (Open item 3). |
 | F3 | `[S, Su, Sv] = mwecmass.solid.eval_bspline_surface(surf, u, v)`; `[C, Cs] = …eval_bspline_curve(curve, s)` | Rational or not; u, v column vectors; [n x 3]. |
 | F3b | `[lo, hi, u_star] = mwecmass.solid.split_bspline_surface(patch, z)` | `z_of_u` patch, z strictly inside its z range: u* from z(u*) = z, knot insertion to multiplicity du; `lo`, `hi` keep the parent parameter and share the cut row bitwise. Else error `ZNotOneParameter` / `ZOutside`. |
-| F4 | `loop = mwecmass.solid.slice_bspline_surface(patches, z)` | S5 from the iso-u rows; one closed simple loop or error `SectionNotClosed` (as T1). |
-| F5 | `body = mwecmass.solid.build_body(geo, design, inner)` | S4. `inner` holds one S2 set per distinct t whose `z_range` covers its modules (§7). Builds every face once; edges shared by index. Layout of S3, including `z_ballast` ≤ `z_lo`. |
-| F6 | `bp = mwecmass.solid.body_properties(body, rho, opts)` | S6 by the divergence theorem with fields (f,0,0): V = ∮x n_x, ∫x = ∮x²/2 n_x, ∫y = ∮xy n_x, ∫z = ∮xz n_x, ∫x² = ∮x³/3 n_x, ∫y² = ∮xy² n_x, ∫z² = ∮xz² n_x, ∫xy = ∮x²y/2 n_x, ∫xz = ∮x²z/2 n_x, ∫yz = ∮xyz n_x. Horizontal caps contribute exactly 0, so only lateral faces are integrated; a region's integral sums faces with `inside` = r minus faces with `outside` = r. Gauss–Legendre of order `opts.n_gauss` on every knot span (exact for polynomial faces, convergent for rational ones). |
+| F4 | `loop = mwecmass.solid.slice_bspline_surface(patches, z)` | S5 from the iso-u rows; one closed simple loop or error `SectionNotClosed` (as T1). Constant-z patches (z_range(1) = z_range(2)) are skipped. |
+| F5 | `body = mwecmass.solid.build_body(geo, design, inner)` | S4. `inner` holds one S2 set per distinct t whose `z_range` covers its modules (§7). Builds every face once; edges shared by index. Layout of S3, including `z_ballast` ≤ `z_lo`; faces per mode as in S4. A patch is cut only at planes strictly inside its z range (constant-z patches never). |
+| F6 | `bp = mwecmass.solid.body_properties(body, rho, opts)` | S6 by the divergence theorem with fields (f,0,0): V = ∮x n_x, ∫x = ∮x²/2 n_x, ∫y = ∮xy n_x, ∫z = ∮xz n_x, ∫x² = ∮x³/3 n_x, ∫y² = ∮xy² n_x, ∫z² = ∮xz² n_x, ∫xy = ∮x²y/2 n_x, ∫xz = ∮x²z/2 n_x, ∫yz = ∮xyz n_x. Horizontal faces (caps and constant-z outer patches) contribute exactly 0 (n_x = 0), so only lateral faces are integrated; a region's integral sums faces with `inside` = r minus faces with `outside` = r. Gauss–Legendre of order `opts.n_gauss` on every knot span (exact for polynomial faces, convergent for rational ones). |
 | F6b | `sec = mwecmass.solid.body_section(body, z)` | Body section (S5 block). |
 | F7 | `hs = mwecmass.solid.hydrostatics_at_draft(geo, vs, opts)` | S7 on the exact outer patches cut at z_body = −vs (F3b, F6 on the outer pieces, F4 for the waterplane); `full` and `none` as in S7, without a cut. |
 | F8 | `fl = mwecmass.driver.density_floors(model, cache, geo, edges, t_min, rho_solid, rho_air, solid_modules)` | Per module ρ_min = [ρ_solid·V_solid + ρ_air·V_air]/V with a t_min shell, no ballast (F2, F5, F6); solid modules give ρ_solid. Returns `rho_min`, `V`, `V_solid`, `V_air` [N x 1], `fit` (S2r). |
-| F9 | `props = mwecmass.realise.evaluate_realised(bp, hs, design, config)` | `final_props` fields of `export_schema.m` from the exact body, vs = `design.vs`: `mass_total`, `CG_total` = [0 0 CG_body(3)+vs] (declared symmetric model; kernel x, y kept in `bp`), `Inertia_Tensor` = `I_cg`, `Ixx/Iyy/Izz`, S7 fields, `A_sub` = `hs.S_wet`, `GM_L` = KM − CG_total(3), `K_hydro` (K33 = ρ_w g A_w, K55 = M g GM), A from `mwecmass.bem.interpolate_at_draft(vs, config, CG_total(3))`, coupled periods from `coupled_periods_by_share` (as `build_realised_properties.m` today), `mass_discrepancy`; `mass_buoyant_force` = ρ_w V_sub, `K_pto` = zeros(3), `K_total` = `K_hydro`, `MassMatrix_CG`/`_Origin` by `build_mass_matrix` (as `build_realised_properties.m` today); `densities_at_nodes` = `realised_strip_density` = `[bp.modules.rho_eff]'` (one per module, the layout of x(2:end)); `cross_section` = `config.profile` (as `optim/run.m` sets it); `realised_strip_edges` = `design.edges`, `components(i)` (`density` = `rho_eff`, `z_level` = module mid-height + vs, world, as Final3D), `fill_method` (the mode's tag as today, renamed only if T0b renames it), `density_profile_source` = `'realised_partition'`. `realised_strips` leaves the schema (T5): its only readers are the realise files T5 and T7 rewrite; its data is S8 `modules`. |
+| F9 | `props = mwecmass.realise.evaluate_realised(bp, hs, design, config)` | `final_props` fields of `export_schema.m` from the exact body: `vertical_shift` = `design.vs`, `mass_total`, `CG_total` = [0 0 CG_body(3)+vs] (declared symmetric model; kernel x, y kept in `bp`), `Inertia_Tensor` = `I_cg`, `Ixx/Iyy/Izz`, S7 fields, `A_sub` = `hs.S_wet`, `GM_L` = KM − CG_total(3), `K_hydro` (K33 = ρ_w g A_w, K55 = M g GM), A from `mwecmass.bem.interpolate_at_draft(vs, config, CG_total(3))`, `periods.heave`, `periods.pitch`, `coupled_periods`, `participation_factors`, `coupled_modes`, `surge_per_pitch` from `coupled_periods_by_share` (as `build_realised_properties.m` today); `periods.surge` = Inf (K11 = 0, as today), `periods.heave_uncoupled` = 2π√((M+A33)/K33) and `periods.pitch_uncoupled` = 2π√((I_cg,yy+A55)/K55) computed here (as `properties_3d.m` §11; today they come from `steel_data`), `mass_discrepancy`; `mass_buoyant_force` = ρ_w V_sub, `K_pto` = zeros(3), `K_total` = `K_hydro`, `MassMatrix_CG`/`_Origin` by `build_mass_matrix` (as `build_realised_properties.m` today); `densities_at_nodes` = `realised_strip_density` = `[bp.modules.rho_eff]'` (one per module, the layout of x(2:end)); `cross_section` = `config.profile` (as `optim/run.m` sets it); `realised_strip_edges` = `design.edges`, `components(i)` (`density` = `rho_eff`, `z_level` = module mid-height + vs, world, as Final3D), `fill_method` (the mode's tag as today, renamed only if T0b renames it), `density_profile_source` = `'realised_partition'`. `realised_strips` leaves the schema (T5): its only readers are the realise files T5 and T7 rewrite; its data is S8 `modules`. |
 | F10 | `check = mwecmass.realise.check_against_stage2(props, stage2, pct, tol_eq, rho_water)` | `metrics(k)` for `Z_CG`, `GM`, `T_heave`, `T_pitch`: `value`, `stage2`, `rel_dev` = abs(X3−X2)/abs(X2), `limit` = pct/100, `pass`; `equalities(k)`: `flotation` (M/(ρ_w V_sub) − 1, as Stage 2) and `GM` (GM/GM2 − 1), `residual`, `tol` = `tol_eq` (the Stage-3 fmincon ConstraintTolerance, 1e-6 today), `pass`; `pass`, `failed` (cellstr), `reason`. |
 | F11 | `files = mwecmass.output.step.export_stage3(realised, out_dir)` | Writes with T9 `write_step` into `Output/<type>/step/`: precast `<hull>_UHPC_module_<i>.step`, `<hull>_UHPC_all.step`; thin shell `<hull>_STEEL_ballast.step`, `<hull>_STEEL_shell.step`, `<hull>_STEEL_all.step` (both bodies, junction curve shared). Returns `step_files`. |
 | F12 | `data = mwecmass.output.figures.realised_section_data(realised, z_plan, n_z)` | y = 0 elevation (points where F6b loops cross y = 0, found on the exact curves), plan loops at `z_plan`, `z_ballast`, module edges, waterline, `status`. Body frame plus `vs`. |
@@ -164,16 +174,21 @@ Where the plan's task sections differ, this contract wins:
 
 **Stand-in kit SK** (one graded step at the start of lane K, merged before any consumer starts):
 - `tests/standins/fixtures/` (permanent): `cylinder.ms2` (quarter RevSurf about the z axis of a
-  PolyCurve2 of three Lines, bottom disk, wall, top disk, mirrored in x and y like C1; sharp rims),
+  PolyCurve2 of three Lines, bottom disk, side, top disk, mirrored in x and y like C1; sharp rims),
   `box.ms2` (RuledSurf side faces, each ruled between two vertical Lines: horizontal parallel
-  rulings); `sti_closed_form.m` (V, S, J, sections, hydrostatics for any S3 design
-  on these, at d = t + eps_fit/2: inner cylinder of radius R − d between z0 + d and z1 − d, inner
-  box shifted inward by d; `d_close` = min(R, H/2), or half the smallest box dimension);
-  `sti_inner_box.m` (the exact S2 set of the box: planar ruled faces shifted by d); `sti_config.m`
-  (`RHO_WATER`, `G`, one-draft hydro table, `strip_edges`, `mass_acceptable_pct`, as `config` fields);
+  rulings; bottom and top faces, each a RuledSurf between two horizontal Lines of constant z, which
+  F3b never cuts, F4 skips and which add 0 to F6, so the outer patches close the hull);
+  `sti_closed_form.m` (V, S, J, sections, hydrostatics for any S3 design on these, at d = t +
+  eps_fit/2: inner cylinder of radius R − d between z0 + d and z1 − d, inner box shifted inward by
+  d; `d_close` = min(R, H/2), or half the smallest box dimension);
+  `sti_inner_box.m` (the exact S2 set of the box: its six planar ruled faces shifted inward by d,
+  bottom and top included, so the void is closed); `sti_config.m` (`config` fields `RHO_WATER`,
+  `G`, the one-draft hydro table `hydro_drafts`, `hydro_z_cg`, `added_mass_diagonal`,
+  `added_mass_full`, `radiation_damping_full`, `profile`, `strip_edges`, `mass_acceptable_pct`;
+  the tests put the stand-in S1b into `config.hull_solid`);
   `sti_stage2.m` (Final3D-like, consistent with the closed form); `sti_realised.m` (S8 of a design).
-- `tests/standins/+mwecmass/+solid/` and `+realise/`: closed-form versions of F1–F7, F9, F10 that
-  set or require `geo.analytic` (error `mwecmass:standin:NotAnalytic` otherwise).
+- `tests/standins/+mwecmass/+solid/` and `+realise/`: closed-form versions of F1–F7 including F6b,
+  F9, F10 that set or require `geo.analytic` (error `mwecmass:standin:NotAnalytic` otherwise).
 - Consumer tests call `addpath(fullfile(root,'tests','standins'),'-end')`: a real function in `src/`
   wins (Octave 8.4 and MATLAB merge package folders, earlier path entries first; verified in Octave).
   The join that merges a producer deletes its stand-in functions; the consumer tests then run
@@ -220,6 +235,7 @@ group, accepted) and it has rebased on it; such edits are the task's last commit
 | `validation/diagnostics/uhpc_mass_balance.m` | T0b → T11 |
 | `tests/run_tests.m`, `.gitignore` | T0 → T0d |
 | `tests/baseline/*.json` | T0 → J2 run step |
+| `tests/standins/*` | SK → J1 (deletes the stand-ins of F1–F7, F6b) → J2 (deletes the F9, F10 stand-ins); consumers do not edit it |
 | `MS2Parser.m` | T0c only. `+solid/*`: T2 and T3 own disjoint files. `+output/+step/*`: T9 → T10 (new files; `write_step.m` changes only if a C1 body fails `step_check`, by T3). |
 
 ## 5. Invariants every implementation tests
@@ -230,7 +246,8 @@ group, accepted) and it has rebased on it; such edits are the task's last commit
   parameters u* as extra breakpoints (pieces keep the parent parameter: same (u, v) samples). With
   `z_ballast` inside a module, at a module edge, spilled, and below the inner `z_lo`.
 - **I2 Shared edges:** every closed shell passes `validate_brep`; the boundary rows of the two
-  faces at an edge equal its curve bitwise (control points, knots, weights), on u- and v-seams.
+  faces at an edge equal its curve bitwise (`isequal`: control points, knots, weights), on u- and
+  v-seams, including C1's keel seam of `surface2` and its X-mirror (x = 0, F1).
 - **I3 Exact z-splits** where z depends on u only. RevSurf about a vertical axis: rotation keeps z,
   so each control row has one z and w_ij = a_i b_j, hence z(u,v) = Σ N_i a_i z_i / Σ N_i a_i. C1
   RuledSurf: `curve7` = `ProjCurve` of `Edge_For_Dev` onto y = 0 keeps z at both ends of every
@@ -288,6 +305,10 @@ the expensive step), F5 (knot insertion at `z_ballast`), F6 on the changed faces
 - Inner fit keeps the outer v-construction only where it is the exact normal offset (`rev_z`,
   `ruled_parallel`): exact z-splits (I3), no trimming curves in the T9 writer.
 - `rev_z` uses T1's existing 16-ulp bound, not a new tolerance: only `BeadBottom`'s evaluation rounds.
+- Axis through the axis Line's second end point, snapped onto by the profile's axis end points: one
+  exact (x, y) makes C1's poles and keel seam bitwise (`BeadTop` evaluates exactly).
+- Box fixture closed by its own constant-z outer faces, not by caps at z_min/z_max: F5 keeps one
+  rule (caps only strictly inside the hull's z range), and the box stays an ordinary deck.
 - One S2 set per distinct t over the full hollow range: equal t shares joint edges; `z_ballast`
   moves without refitting. `A_sub` = F7 `S_wet` on the exact outer pieces (one kernel).
 - `results.stage3`, F9, F10 shared by both modes, schema owned by T5 (one struct, one owner;
@@ -301,7 +322,7 @@ the expensive step), F5 (knot insertion at `z_ballast`), F6 on the changed faces
    `ZNotOneParameter`, `OffsetNotStructured` or `NotExact`.
 2. `opts.max_passes` and `opts.n_gauss`: limits, not gates; T2 and T3 propose values with measured
    pass counts and convergence tables at the T3 checkpoint.
-3. M3 fails at t = t_max itself (opposite walls touch); a bound strictly below needs a numeric
+3. M3 fails at t = t_max itself (opposite shell layers touch); a bound strictly below needs a numeric
    margin (rule 5). Until decided the solvers use t_max, and an evaluation at d ≥ d_close returns
    error `VoidClosed`, reported as a failed evaluation.
 4. C1 fold: on the deck (uniform clamped knots, as the parser) the smallest convex principal
