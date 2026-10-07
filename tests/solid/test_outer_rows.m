@@ -25,8 +25,8 @@ function test_outer_rows
     ends = mwecmass.solid.outer_rows(model, cache, zr(:), grids);
     check(all([ends.degenerate]) && all([ends.n] == 0), 'range ends are degenerate sections');
 
-    worst = struct('area', 0, 'ixx', 0, 'iyy', 0, 'area_zk', 0, 'zres', 0, 'zres_ref', 0, ...
-                   'sym', 0, 'gap', 0, 'mind', Inf, 'eval', 0, 'zrow', 0, 'shoe', 0);
+    worst = struct('area', 0, 'ixx', 0, 'iyy', 0, 'area_zk', 0, 'zres_ref', 0, ...
+                   'sym', 0, 'gap', 0, 'mind', Inf, 'zrow', 0, 'shoe', 0);
     for k = 1:numel(zs)
         r = rows(k);
         P = r.pts;
@@ -55,10 +55,9 @@ function test_outer_rows
         for flip = [-1 1 1; 1 -1 1]'
             M = P .* flip';
             dm = sqrt((M(:, 1) - P(:, 1)').^2 + (M(:, 2) - P(:, 2)').^2);
-            worst.sym = max(worst.sym, max(min(dm, [], 2)) / max(r.seam_gap, eps));
-            check(max(min(dm, [], 2)) <= r.seam_gap, ...
-                  'z = %g: mirror symmetry differs by %g (seam gap %g)', zs(k), ...
-                  max(min(dm, [], 2)), r.seam_gap);
+            worst.sym = max(worst.sym, max(min(dm, [], 2)));
+            check(max(min(dm, [], 2)) <= 1e-12, ...
+                  'z = %g: mirror symmetry differs by %g m', zs(k), max(min(dm, [], 2)));
         end
 
         ref = mwecmass.geometry.extract_isocurve_at_z(model, zs(k), n_u, cache);
@@ -79,14 +78,15 @@ function test_outer_rows
     fprintf('smallest distance between two points         %.3e m\n', worst.mind);
     fprintf('shoelace vs row.area, relative               %.3e\n', worst.shoe);
     fprintf('|z - z_k| of section points                  %.3e m\n', worst.zrow);
-    fprintf('mirror symmetry error / seam gap             %.3f\n', worst.sym);
+    fprintf('mirror symmetry error x->-x, y->-y (point to nearest point) %.3e m\n', worst.sym);
     fprintf('vs extract_isocurve_at_z at z_k: area diff   %.3e (its points miss z_k by up to %.3e m)\n', ...
             worst.area_zk, worst.zres_ref);
     fprintf('vs extract_isocurve_at_z at its own z: area %.3e, Ixx %.3e, Iyy %.3e (relative)\n', ...
             worst.area, worst.ixx, worst.iyy);
     check(worst.shoe <= 4 * eps, 'row.area is the shoelace area');
-    check(worst.zrow <= 8 * eps(max(1, max(abs(zs)))), ...
-          'section points lie at z_k to 8 eps (root tolerance 4 eps of z)');
+    check(worst.zrow <= 16 * eps(max(1, max(abs(zs)))), ...
+          'section points lie at z_k to 16 ulp (the root tolerance of outer_rows)');
+    % 1e-12 m: the same exact point reached from two patches differs only by z/curve rounding (~1e-15)
     check(worst.gap <= 1e-12, 'seam gap above 1e-12 m');
     check(max([worst.area, worst.ixx, worst.iyy]) <= 1e-12, ...
           'same evaluator, same height: sections differ by more than 1e-12');

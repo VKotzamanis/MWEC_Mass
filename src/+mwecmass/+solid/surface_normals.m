@@ -6,7 +6,8 @@ function [n, orient, limit] = surface_normals(model, cache, patch, u, v, orient)
 %   broadcast. n is [N x 3].
 %
 %   S_u and S_v are the analytic derivatives of MS2Parser.eval_surface_with_derivs
-%   (central differences of eval_surface only for surface types without them).
+%   (central differences of eval_surface, parameter step 1e-6, only for surface
+%   types the parser has no derivatives for; C1 uses none).
 %
 %   Orientation: for each patch the sign of S_u x S_v is fixed once by the exact
 %   closed sections of outer_rows. Their counter-clockwise order gives the

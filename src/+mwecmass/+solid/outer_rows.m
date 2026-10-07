@@ -54,15 +54,14 @@ function grids = build_grids(model, cache)
     grids.patch = struct('name', {}, 'kind', {}, 'Z', {}, 'c1', {}, 'c2', {}, ...
                          'pp', {}, 'axis_start', {}, 'axis_dir', {}, ...
                          'phi0', {}, 'phi1', {}, 'profile', {}, 'curve1', {}, ...
-                         'curve2', {}, 'memo', {});
+                         'curve2', {});
     zr = [Inf, -Inf];
     for s = 1:numel(cache.sources)
         sname = cache.sources{s};
         d = cache.data(sname);
         g = struct('name', sname, 'kind', 'generic', 'Z', [], 'c1', [], 'c2', [], ...
                    'pp', [], 'axis_start', [], 'axis_dir', [], 'phi0', 0, 'phi1', 0, ...
-                   'profile', '', 'curve1', '', 'curve2', '', ...
-                   'memo', containers.Map('KeyType', 'char', 'ValueType', 'any'));
+                   'profile', '', 'curve1', '', 'curve2', '');
         e = model.entities(sname);
         switch d.type
             case 'RuledSurf'
@@ -105,11 +104,6 @@ end
 
 function P = patch_P(model, g, u)
 % Parameter-dependent part of the surface point (the expensive curve evaluations).
-    key = sprintf('%.17g', u);
-    if g.memo.isKey(key)
-        P = g.memo(key);
-        return;
-    end
     switch g.kind
         case 'ruled'
             P = [model.eval_curve(g.curve1, u); model.eval_curve(g.curve2, u)];
@@ -118,10 +112,6 @@ function P = patch_P(model, g, u)
         otherwise
             P = u;
     end
-    if g.memo.Count > 4000
-        remove(g.memo, keys(g.memo));
-    end
-    g.memo(key) = P;
 end
 
 function S = patch_F(g, P, v, model)
@@ -208,7 +198,8 @@ function pieces = march_patch(model, g, U, zk)
     n = numel(U);
     f = g.Z - zk;
     pos = f >= 0;
-    tolz = 4 * eps(max(1, abs(zk)));
+    % z of a patch point carries about 5 ulp of rounding (projected edge curves of C1); 16 ulp stops the root search there
+    tolz = 16 * eps(max(1, abs(zk)));
 
     cu = pos(1:n-1, :) ~= pos(2:n, :);
     cv = pos(:, 1:n-1) ~= pos(:, 2:n);
@@ -227,6 +218,7 @@ function pieces = march_patch(model, g, U, zk)
     xu = zeros(cnt, 1);
     xv = zeros(cnt, 1);
     gi = zeros(cnt, 1);
+    Pu = cell(cnt, 1);
     id_u = zeros(n - 1, n);
     id_v = zeros(n, n - 1);
 
@@ -250,6 +242,7 @@ function pieces = march_patch(model, g, U, zk)
             x = solve_edge(fun, U(i), U(i + 1), f(i, j), f(i + 1, j), tolz, x_prev);
             P_prev = patch_P(model, g, x);
         end
+        Pu{k} = P_prev;
         x_prev = x;
         i_prev = i;
         xu(k) = x;
@@ -319,18 +312,12 @@ function pieces = march_patch(model, g, U, zk)
         chains{end + 1} = struct('idx', chain, 'closed', closed); %#ok<AGROW>
     end
 
-    last_x = NaN;
-    last_P = [];
     for c = 1:numel(chains)
         idx = chains{c}.idx(:);
         pts = zeros(numel(idx), 3);
         for q = 1:numel(idx)
             if idx(q) <= nu
-                if xu(idx(q)) ~= last_x
-                    last_x = xu(idx(q));
-                    last_P = patch_P(model, g, last_x);
-                end
-                P = last_P;
+                P = Pu{idx(q)};
             else
                 P = grid_P(g, gi(idx(q)), U);
             end
@@ -356,6 +343,7 @@ end
 function x = solve_edge(fun, a, b, fa, fb, tolz, x0)
 % Root of fun on [a,b] (fun(a) = fa, fun(b) = fb of opposite sign, zero counts as >= 0).
 % Illinois regula falsi; an optional start x0 (a root of a neighbouring edge) is tried first.
+% It stops when successive iterates agree to 2 ulp: the z evaluation has a rounding floor above tolz.
     if fa == 0, x = a; return; end
     if fb == 0, x = b; return; end
     if ~isnan(x0) && x0 > a && x0 < b
@@ -368,9 +356,13 @@ function x = solve_edge(fun, a, b, fa, fb, tolz, x0)
         end
     end
     side = 0;
-    x = (a + b) / 2;
+    x_old = NaN;
     for it = 1:80
         x = (fa * b - fb * a) / (fa - fb);
+        if abs(x - x_old) <= 2 * eps(abs(x))
+            return;
+        end
+        x_old = x;
         fx = fun(x);
         if abs(fx) <= tolz || abs(b - a) <= eps(max(abs(a), abs(b)))
             return;
