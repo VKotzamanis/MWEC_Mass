@@ -280,12 +280,13 @@ Figures: `WEC_Constructability_XZ`, `WEC_Constructability_Strips` (precast), `St
 36. General hulls (owner, 2026-10-07). On the proposal to build the geometry kernel for hulls like
     C1 only and stop every other hull with a named error, the owner: "No it needs to be
     generalized." The kernel takes any entity type `MS2Parser` evaluates and any parametrisation
-    for hulls whose horizontal section is one closed loop at every height (one body, no holes); a
-    section of several loops raises `mwecmass:solid:SectionNotClosed`, and a deck the parser would
-    misread (an entity type it skips, a mirror plane other than x = 0 or y = 0) stops with a named
-    error. Each outer patch takes the exact path
-    (its entity converts exactly to NURBS and z is a monotone function of one parameter: all of C1)
-    or the general path: faces fitted through exact points of the parametric definition with z as
+    for hulls whose horizontal section is one closed loop at every height (one body, no holes;
+    at a horizontal shelf, the loops just below and above bound it); a section of several loops
+    raises `mwecmass:solid:SectionNotClosed`, and a hull the parser would misread (it references an
+    entity of a type the parser skips, or has a mirror plane other than x = 0 or y = 0) stops with a
+    named error; deck lines the hull does not reference are ignored. Each outer patch takes the
+    exact path (its entity converts exactly to NURBS and z depends on one parameter (F1 orders it as
+    u), monotone: all of C1) or the general path: faces fitted through exact points of the parametric definition with z as
     one parameter, split where z turns back and at creases, so every face is an untrimmed patch and
     every horizontal cut is a parameter line. Inner faces whose offset keeps no structure of the
     outer patch are fitted the same way. Metrics M1–M3 are judged between the faces as written;
@@ -382,7 +383,7 @@ their mean (assumes star-shaped sections); CG_x = CG_y = 0 (declared symmetric-b
    7. Mass properties are computed on the fitted surfaces themselves (the STEP geometry), so any
       fit deviation is already in the reported mass, CG and inertia.
    Outer faces are exported as exact NURBS conversions of the `.ms2` entities where the entity
-   type allows and z is a monotone function of one surface parameter (all of C1: B-spline curves,
+   type allows and z depends on one parameter (F1 orders it as u), monotone (all of C1: B-spline curves,
    arcs, revolution, ruled surface); otherwise they are fitted with the same metrics through exact
    points of the parametric definition, with z as one parameter of every face, split where z turns
    back and at creases, so every face stays an untrimmed patch (§3 item 36). Where a section lies
@@ -392,9 +393,11 @@ their mean (assumes star-shaped sections); CG_x = CG_y = 0 (declared symmetric-b
    single highest or lowest point inside a patch ends in a pole row there. Bands end at one set of
    heights for the whole hull, and a point where a seam, crease or cut ends inside another face's
    row is joined by a cut to a vertex of that face's opposite row, so every face boundary has one
-   neighbour and is shared bitwise (no T-junctions); a flat region is a plane face. The mirror of
-   a fitted face is its source's face with the control points flipped, exactly 0 in the flipped
-   coordinate on a boundary in the mirror plane. A fitted outer face stays within ε/4 of the exact
+   neighbour and is shared bitwise (no T-junctions); a flat region (one connected constant-z area
+   at one height, merged across seams and mirror planes) is one plane face bounded only by rows of
+   lateral faces. The mirror of a fitted face is its source's face with the control points
+   flipped, exactly 0 in the flipped coordinate on a boundary in the mirror plane, and its source
+   is cut at the vertices of both. A fitted outer face stays within ε/4 of the exact
    surface: to first order the thickness between the written faces is t + ε/2 minus the outer and
    the inner fitting error, so M1 and M2 hold for every sign when the two errors sum to at most
    ε/2, and the outer fit, made once per hull before any t, leaves each inner fit the same half.
@@ -506,8 +509,8 @@ New folders created by the plan: `src/+mwecmass/+solid/` (exact geometry kernel)
   T_heave and coupled T_pitch (§3 item 27); the periods are coupled. Stage-1 and Stage-2
   objectives do not change.
 - **OD2** Resolved: |Z_CG,3 − Z_CG,2| / |Z_CG,2| with Z_CG = `CG_total(3)` (world frame).
-- **OD3** Resolved: the steel shell is the exterior parametric surface (exact NURBS of the
-  `.ms2` patches) **from `z_ballast` up to the deck only**. Below `z_ballast` the mass model
+- **OD3** Resolved: the steel shell is the exterior surface as written (exact NURBS where the
+  patch takes the exact path, fitted faces otherwise; interface contract §8) **from `z_ballast` up to the deck only**. Below `z_ballast` the mass model
   counts the full section as ballast (plate included), so a shell surface there would count the
   plate twice. The ballast solid is the full outer section below `z_ballast`. The two bodies
   meet along one closed curve: the section of the exterior surface at `z_ballast`, which is also
