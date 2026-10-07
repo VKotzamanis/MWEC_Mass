@@ -99,7 +99,7 @@ function gif1_stage1(r, cfg, prof, st, outdir)
         plot(ax, sw.vs(topK), fv(topK),'s','MarkerSize',11,'LineWidth',1.4, ...
              'Color',st.fill_palette.waterline,'DisplayName','Tier-2 shortlist');
         plot(ax, vs, fv(k),'o','MarkerSize',12,'LineWidth',2.0, ...
-             'Color',st.fill_palette.fill_level,'DisplayName','current');
+             'Color',st.fill_palette.ballast_level,'DisplayName','current');
         ylabel(ax,'$f$ [--]');
         lg = legend(ax,'Location','southeast');
         mwecmass.output.figures.style_legend(lg, st);
@@ -114,7 +114,7 @@ function gif1_stage1(r, cfg, prof, st, outdir)
                  'FaceAlpha',0.10,'EdgeColor','none','DisplayName','GM < GM_{min}');
         plot(ax, sw.vs, GM,'o-','Color',[0.15 0.45 0.20],'LineWidth',st.line_width.main, ...
              'MarkerSize',5,'DisplayName','GM');
-        plot(ax, vs, GM(k),'o','MarkerSize',12,'LineWidth',2.0,'Color',st.fill_palette.fill_level, ...
+        plot(ax, vs, GM(k),'o','MarkerSize',12,'LineWidth',2.0,'Color',st.fill_palette.ballast_level, ...
              'HandleVisibility','off');
         ylim(ax,yl);
         ylabel(ax,'$GM$ [m]');
@@ -126,12 +126,12 @@ function gif1_stage1(r, cfg, prof, st, outdir)
         ax = nexttile(tl,6); hold(ax,'on');
         xb = [min(sw.vs) max(sw.vs)];
         band(ax, xb, cfg.T_heave_range, st.fill_palette.waterline, 'T_2 band');
-        band(ax, xb, cfg.T_pitch_range, st.fill_palette.fill_level,     'T_3 band');
+        band(ax, xb, cfg.T_pitch_range, st.fill_palette.ballast_level,     'T_3 band');
         plot(ax, sw.vs, Th,'o-','Color',st.fill_palette.waterline,'LineWidth',st.line_width.main, ...
              'MarkerSize',5,'DisplayName','T_2 heave');
-        plot(ax, sw.vs, Tp,'d-','Color',st.fill_palette.fill_level,'LineWidth',st.line_width.main, ...
+        plot(ax, sw.vs, Tp,'d-','Color',st.fill_palette.ballast_level,'LineWidth',st.line_width.main, ...
              'MarkerSize',5,'DisplayName','T_3 pitch (NaN = \infty)');
-        plot(ax, vs, Th(k),'o','MarkerSize',12,'LineWidth',2.0,'Color',st.fill_palette.fill_level, ...
+        plot(ax, vs, Th(k),'o','MarkerSize',12,'LineWidth',2.0,'Color',st.fill_palette.ballast_level, ...
              'HandleVisibility','off');
         xlabel(ax,'$v_s$ [m]');
         ylabel(ax,'$T$ [s]');
@@ -221,10 +221,10 @@ function gif2_stage2(r, cfg, prof, st, outdir)
 
         ax = nexttile(tl,9); hold(ax,'on');
         band(ax,[-0.5 n-0.5], cfg.T_heave_range, st.fill_palette.waterline,'T_2 band');
-        band(ax,[-0.5 n-0.5], cfg.T_pitch_range, st.fill_palette.fill_level,    'T_3 band');
+        band(ax,[-0.5 n-0.5], cfg.T_pitch_range, st.fill_palette.ballast_level,    'T_3 band');
         plot(ax,0:k-1,Th(1:k),'o-','Color',st.fill_palette.waterline,'LineWidth',st.line_width.main, ...
              'MarkerSize',4,'DisplayName','T_2');
-        plot(ax,0:k-1,Tp(1:k),'d-','Color',st.fill_palette.fill_level,'LineWidth',st.line_width.main, ...
+        plot(ax,0:k-1,Tp(1:k),'d-','Color',st.fill_palette.ballast_level,'LineWidth',st.line_width.main, ...
              'MarkerSize',4,'DisplayName','T_3');
         xlim(ax,[-0.5 n-0.5]); ylim(ax,Tl);
         xlabel(ax,'SQP iterate');
@@ -255,8 +255,8 @@ function gif2b_stage2_uhpc(r, cfg, prof, st, outdir)
 % a UHPC + air partition converts rho_i into a drawable volume fraction with
 % no extra solve:
 %
-%     rho_i*V_i = rho_UHPC*V_u + rho_void*(V_i - V_u)
-%   =>  f_i = V_u/V_i = (rho_i - rho_void) / (rho_UHPC - rho_void)
+%     rho_i*V_i = rho_UHPC*V_u + rho_air*(V_i - V_u)
+%   =>  f_i = V_u/V_i = (rho_i - rho_air) / (rho_UHPC - rho_air)
 %
 % This is the same relation behind the modular-precast realisation.scale_contour,
 % whose s = sqrt((rho_UHPC - rho_eff)/(rho_UHPC - rho_air)) has s^2 equal to
@@ -264,7 +264,7 @@ function gif2b_stage2_uhpc(r, cfg, prof, st, outdir)
 %
 % CAVEAT, stated on the figure: these frames show the UHPC distribution
 % IMPLIED by each iterate's densities, not a solved realisation.  Only the
-% final Stage-3 solve fixes an actual (t_i, z_fill).
+% final Stage-3 solve fixes an actual (t_i, z_ballast).
 %
 % Units: V [m^3], rho [kg/m^3], z/x/t [m].
 
@@ -277,7 +277,7 @@ function gif2b_stage2_uhpc(r, cfg, prof, st, outdir)
     se    = cfg.strip_edges(:);  Ns = numel(se)-1;
     Vs    = cfg.strip_V(:);                      % canonical Aw-trapz strip volumes
     rho_u = cfg.constructability_rho_hull;
-    rho_v = cfg.constructability_rho_fill;
+    rho_v = cfg.constructability_rho_air;
     t_min = cfg.constructability_t_min;
     wIdx  = cfg.wall_strip_index;
     lb    = cfg.per_strip_density_lb(:);         % constructability floor per strip
@@ -351,10 +351,10 @@ function gif2b_stage2_uhpc(r, cfg, prof, st, outdir)
 
         ax = nexttile(tl,9); hold(ax,'on');
         band(ax,[-0.5 n-0.5], cfg.T_heave_range, st.fill_palette.waterline,'T_2 band');
-        band(ax,[-0.5 n-0.5], cfg.T_pitch_range, st.fill_palette.fill_level,    'T_3 band');
+        band(ax,[-0.5 n-0.5], cfg.T_pitch_range, st.fill_palette.ballast_level,    'T_3 band');
         plot(ax,0:k-1,Th(1:k),'o-','Color',st.fill_palette.waterline,'LineWidth',st.line_width.main, ...
              'MarkerSize',4,'DisplayName','T_2');
-        plot(ax,0:k-1,Tp(1:k),'d-','Color',st.fill_palette.fill_level,'LineWidth',st.line_width.main, ...
+        plot(ax,0:k-1,Tp(1:k),'d-','Color',st.fill_palette.ballast_level,'LineWidth',st.line_width.main, ...
              'MarkerSize',4,'DisplayName','T_3');
         xlim(ax,[-0.5 n-0.5]); ylim(ax,Tl);
         xlabel(ax,'SQP iterate');
@@ -430,7 +430,7 @@ function gif2c_stage2_pair(r, cfg, prof, st, outdir)
 
     Vs    = cfg.strip_V(:);
     rho_u = cfg.constructability_rho_hull;
-    rho_v = cfg.constructability_rho_fill;
+    rho_v = cfg.constructability_rho_air;
     t_min = cfg.constructability_t_min;
     wIdx  = cfg.wall_strip_index;
     lb    = cfg.per_strip_density_lb(:);
@@ -616,7 +616,7 @@ function draw_uhpc_from_fraction(ax, prof, P_in_body, vs, cfg, f, ~, ~, ...
 %   shell_name      legend name of the shell patch ('UHPC Shell' default)
 %   show_wall_bound  draw the red wall-boundary line (true default)
 %   show_implied_note  draw the "implied by rho_i" caveat (true default)
-%   legend_items    subset/order of {'wall','fill','shell','void'|'air','wl','wb'}
+%   legend_items    subset/order of {'wall','ballast','shell','void'|'air','wl','wb'}
 %   legend_cols / legend_pos / fs_legend
 %   xlabel / ylabel / xlim / ylim / xtick / ytick / ytick_labels
 %   fs_label / fs_axis / fs_annot
@@ -657,7 +657,7 @@ function draw_uhpc_from_fraction(ax, prof, P_in_body, vs, cfg, f, ~, ~, ...
 
         solid = f(i) >= 0.999;
         if i == wIdx,     fc = st.fill_palette.solid_material;
-        elseif solid,     fc = st.fill_palette.fill_material;
+        elseif solid,     fc = st.fill_palette.ballast_material;
         else,             fc = st.fill_palette.jacket_material;
         end
         patch(ax, out(:,1), out(:,2), fc,'EdgeColor','none','HandleVisibility','off');
@@ -703,7 +703,7 @@ function draw_uhpc_from_fraction(ax, prof, P_in_body, vs, cfg, f, ~, ~, ...
         if i == wIdx
             lbl = sprintf('S%d: 100%% UHPC (wall)', i);
         elseif solid
-            lbl = sprintf('S%d: 100%% UHPC (solid fill)', i);
+            lbl = sprintf('S%d: 100%% UHPC (solid ballast)', i);
         else
             lbl = sprintf('S%d: %.0f%% UHPC / %.0f%% %s', ...
                           i, 100*f(i), 100*(1-f(i)), void_word);
@@ -735,7 +735,7 @@ function draw_uhpc_from_fraction(ax, prof, P_in_body, vs, cfg, f, ~, ~, ...
         mwecmass.output.figures.style_line(h.wb, st, 'boundary');
     end
     h.wall  = patch(ax,nan,nan,st.fill_palette.solid_material,'DisplayName','UHPC Solid Wall');
-    h.fill  = patch(ax,nan,nan,st.fill_palette.fill_material,'DisplayName','UHPC Solid Fill');
+    h.ballast = patch(ax,nan,nan,st.fill_palette.ballast_material,'DisplayName','UHPC Solid Ballast');
     h.shell = patch(ax,nan,nan,st.fill_palette.jacket_material, ...
                     'DisplayName',get_or(opts,'shell_name','UHPC Shell'));
     h.void  = patch(ax,nan,nan,st.fill_palette.void,'EdgeColor',st.fill_palette.inner_boundary, ...
@@ -758,7 +758,7 @@ function draw_uhpc_from_fraction(ax, prof, P_in_body, vs, cfg, f, ~, ~, ...
         ylabel(ax, get_or(opts,'ylabel','$z$ [m]   (world frame, waterline = 0)'));
     end
 
-    items = get_or(opts,'legend_items',{'wall','fill','shell','void','wl','wb'});
+    items = get_or(opts,'legend_items',{'wall','ballast','shell','void','wl','wb'});
     hv = gobjects(0);
     for q = 1:numel(items)
         if isfield(h, items{q}), hv(end+1) = h.(items{q}); end %#ok<AGROW>
@@ -809,7 +809,7 @@ function gif3_stage3(r, cfg, prof, st, outdir)
 
     keep = true(1,numel(h.iter));
     for k=2:numel(h.iter)
-        keep(k) = ~(abs(h.vs(k)-h.vs(k-1))<1e-12 && abs(h.z_fill(k)-h.z_fill(k-1))<1e-12);
+        keep(k) = ~(abs(h.vs(k)-h.vs(k-1))<1e-12 && abs(h.z_ballast(k)-h.z_ballast(k-1))<1e-12);
     end
     idx = find(keep);  nf = numel(idx);
     fprintf('\n=== GIF 3  Stage 3 UHPC realisation (%d of %d records) ===\n', nf, numel(h.iter));
@@ -838,8 +838,8 @@ function gif3_stage3(r, cfg, prof, st, outdir)
         mwecmass.output.figures.apply_layout_style(tl, st);
 
         ax = nexttile(tl,1,[3 1]);
-        draw_uhpc_section(ax, prof, h.vs(k), h.z_fill(k), cfg, g, is_sol, ...
-                          h.t_strip(:,k), h.V_steel(k), h.V_air(k), st);
+        draw_uhpc_section(ax, prof, h.vs(k), h.z_ballast(k), cfg, g, is_sol, ...
+                          h.t_strip(:,k), h.V_uhpc(k), h.V_air(k), st);
 
         trace_panel(nexttile(tl,2), h.iter(idx), j, ...
             {h.M_total(idx), h.M_buoy(idx)}, {'M_{total}','\rho_w V_{sub}'}, ...
@@ -853,10 +853,10 @@ function gif3_stage3(r, cfg, prof, st, outdir)
         ax = nexttile(tl,6); hold(ax,'on');
         xb = [-0.4 max(h.iter)+0.4];
         band(ax, xb, cfg.T_heave_range, st.fill_palette.waterline,'T_2 band');
-        band(ax, xb, cfg.T_pitch_range, st.fill_palette.fill_level,    'T_3 band');
+        band(ax, xb, cfg.T_pitch_range, st.fill_palette.ballast_level,    'T_3 band');
         plot(ax,h.iter(idx(1:j)),h.T_heave(idx(1:j)),'o-','Color',st.fill_palette.waterline, ...
              'LineWidth',st.line_width.main,'MarkerSize',4.5,'DisplayName','T_2');
-        plot(ax,h.iter(idx(1:j)),h.T_pitch(idx(1:j)),'d-','Color',st.fill_palette.fill_level, ...
+        plot(ax,h.iter(idx(1:j)),h.T_pitch(idx(1:j)),'d-','Color',st.fill_palette.ballast_level, ...
              'LineWidth',st.line_width.main,'MarkerSize',4.5,'DisplayName','T_3');
         xlim(ax,xb); ylim(ax,Tl);
         xlabel(ax,'SQP iterate');
@@ -869,8 +869,8 @@ function gif3_stage3(r, cfg, prof, st, outdir)
 
         dt = 0.85;  if j==1, dt=1.2; elseif j==nf, dt=3.0; end
         append_frame(fig, gif, j==1, dt);
-        fprintf('  frame %d/%d  iter=%d  vs=%+.4f  zf=%+.4f  M=%.1f  T2=%.3f\n', ...
-                j,nf,h.iter(k),h.vs(k),h.z_fill(k),h.M_total(k),h.T_heave(k));
+        fprintf('  frame %d/%d  iter=%d  vs=%+.4f  zbal=%+.4f  M=%.1f  T2=%.3f\n', ...
+                j,nf,h.iter(k),h.vs(k),h.z_ballast(k),h.M_total(k),h.T_heave(k));
     end
     fprintf('  -> %s\n', gif);
 end
@@ -1000,7 +1000,7 @@ function draw_density_section(ax, prof, vs, cfg, rho, cmap, clim_rho, st, opts)
 end
 
 
-function draw_uhpc_section(ax, prof, vs, zf, cfg, g, is_sol, t_strip, Vu, Vv, st)
+function draw_uhpc_section(ax, prof, vs, zbal, cfg, g, is_sol, t_strip, Vu, Vv, st)
 % Mirrors mwecmass.output.figures.plot_modular_precast FIGURE 1.
 %   STEP A  offset the FULL profile inward by t_strip(i) (never a strip-clipped
 %           piece -- offsetting the clipped piece's fake horizontal edges is
@@ -1013,7 +1013,7 @@ function draw_uhpc_section(ax, prof, vs, zf, cfg, g, is_sol, t_strip, Vu, Vv, st
     px = prof(:,1);  pz = prof(:,2) + vs;
 
     zg = g.z(:);  Ao = g.A_outer(:);  Ai = g.A_inner(:);
-    Ai(zg <= zf) = 0;                       % z_fill rule used by integrate_split
+    Ai(zg <= zbal) = 0;                       % z_ballast rule used by integrate_split
 
     % per-strip volumes for the STEP-B area target, and for the labels
     Vu_i = zeros(Ns,1);  Vv_i = zeros(Ns,1);  solid_i = false(Ns,1);
@@ -1023,7 +1023,7 @@ function draw_uhpc_section(ax, prof, vs, zf, cfg, g, is_sol, t_strip, Vu, Vv, st
             Vu_i(i) = trapz(zg(m), max(Ao(m)-Ai(m),0));
             Vv_i(i) = trapz(zg(m), Ai(m));
         end
-        solid_i(i) = is_sol(i) || se(i+1) <= zf;
+        solid_i(i) = is_sol(i) || se(i+1) <= zbal;
     end
 
     % STEP A: cache one inner polygon per unique thickness
@@ -1044,7 +1044,7 @@ function draw_uhpc_section(ax, prof, vs, zf, cfg, g, is_sol, t_strip, Vu, Vv, st
         if size(out,1) < 3, continue; end
 
         if is_sol(i),            fc = st.fill_palette.solid_material;
-        elseif solid_i(i),       fc = st.fill_palette.fill_material;
+        elseif solid_i(i),       fc = st.fill_palette.ballast_material;
         else,                    fc = st.fill_palette.jacket_material;
         end
         patch(ax, out(:,1), out(:,2), fc,'EdgeColor','none','FaceAlpha',1.0, ...
@@ -1080,7 +1080,7 @@ function draw_uhpc_section(ax, prof, vs, zf, cfg, g, is_sol, t_strip, Vu, Vv, st
         if is_sol(i)
             lbl = sprintf('S%d: 100%% UHPC (wall)', i);
         elseif solid_i(i)
-            lbl = sprintf('S%d: 100%% UHPC (solid fill)', i);
+            lbl = sprintf('S%d: 100%% UHPC (solid ballast)', i);
         else
             f = 100*Vu_i(i)/max(Vu_i(i)+Vv_i(i),eps);
             lbl = sprintf('S%d: %.0f%% UHPC / %.0f%% Void   t = %.2f in', ...
@@ -1099,15 +1099,15 @@ function draw_uhpc_section(ax, prof, vs, zf, cfg, g, is_sol, t_strip, Vu, Vv, st
     h_wl = plot(ax, xr,[0 0],'--','Color',st.fill_palette.waterline, ...
                 'DisplayName','Waterline');
     mwecmass.output.figures.style_line(h_wl, st, 'reference');
-    h_zf = plot(ax, xr,[zf+vs zf+vs],'-','Color',st.fill_palette.fill_level, ...
-                'DisplayName','z_{fill}');
-    mwecmass.output.figures.style_line(h_zf, st, 'reference');
+    h_zbal = plot(ax, xr,[zbal+vs zbal+vs],'-','Color',st.fill_palette.ballast_level, ...
+                'DisplayName','z_{ballast}');
+    mwecmass.output.figures.style_line(h_zbal, st, 'reference');
     h_wb = plot(ax, xr,[se(cfg.wall_strip_index)+vs se(cfg.wall_strip_index)+vs], ...
                 '-','Color',st.fill_palette.wall_boundary,'DisplayName','Wall boundary');
     mwecmass.output.figures.style_line(h_wb, st, 'boundary');
 
     hS = patch(ax,nan,nan,st.fill_palette.solid_material,'DisplayName','UHPC Solid Wall');
-    hF = patch(ax,nan,nan,st.fill_palette.fill_material,'DisplayName','UHPC Solid Fill');
+    hF = patch(ax,nan,nan,st.fill_palette.ballast_material,'DisplayName','UHPC Solid Ballast');
     hU = patch(ax,nan,nan,st.fill_palette.jacket_material,'DisplayName','UHPC Shell');
     hV = patch(ax,nan,nan,st.fill_palette.void,'EdgeColor',st.fill_palette.inner_boundary,'LineStyle','--', ...
                'DisplayName','Void (Air)');
@@ -1117,7 +1117,7 @@ function draw_uhpc_section(ax, prof, vs, zf, cfg, g, is_sol, t_strip, Vu, Vv, st
     ylabel(ax,'$z$ [m]   (world frame, waterline = 0)');
     title(ax,sprintf('$d$ = %.3f m,  $V_{UHPC}$ = %.3f m$^3$,  $V_{void}$ = %.3f m$^3$', ...
           abs(cfg.hull_z_min+vs), Vu, Vv));
-    lg = legend(ax,[hS hF hU hV h_wl h_zf h_wb],'Location','southoutside','NumColumns',4);
+    lg = legend(ax,[hS hF hU hV h_wl h_zbal h_wb],'Location','southoutside','NumColumns',4);
     mwecmass.output.figures.style_legend(lg, st);
     mwecmass.output.figures.apply_axes_style(ax, st);
 end

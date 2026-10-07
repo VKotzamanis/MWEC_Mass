@@ -1,7 +1,7 @@
 function fig = plot_steel_solve(config, steel_data)
-%PLOT_STEEL_SOLVE 2D cross-section of realised steel-fill geometry with zones, outline, fill level.
-% Renders solid-steel zone (z≤z_fill), jacket annulus, air cavity with 45° hatching, and
-% outlines (hull, inner offset for thickness, waterline at draft, z_fill cut). Zone
+%PLOT_STEEL_SOLVE 2D cross-section of realised steel-fill geometry with zones, outline, ballast level.
+% Renders solid-steel zone (z≤z_ballast), jacket annulus, air cavity with 45° hatching, and
+% outlines (hull, inner offset for thickness, waterline at draft, z_ballast cut). Zone
 % annotations (ρ values). NaN-resilient: when solver returns
 % infeasible, uses optimiser frame and draws red banner. Uses polygon offset from
 % mwecmass.internal.offset_polygon and silhouette from build_silhouette_profile.
@@ -12,10 +12,10 @@ function fig = plot_steel_solve(config, steel_data)
     if isempty(steel_data) || ~isstruct(steel_data)
         error('plot_steel_solve:NoSteelData', 'steel_data is empty or not a struct.');
     end
-    required = {'t_steel','z_fill','draft','vertical_shift','feasible', ...
+    required = {'t_steel','z_ballast','draft','vertical_shift','feasible', ...
                 'M_steel','M_air','M_total','V_steel','V_air', ...
                 'GM_realised','T_heave_realised','T_pitch_realised', ...
-                'CG_z_world','CB_z_world','rho_steel','rho_air', ...
+                'CG_z_world','CB_z_world','rho_air', ...
                 'targets','residuals','mass_balance_error_pct', ...
                 'vs_optimiser','draft_optimiser','t_min','t_min_active'};
     for k = 1:length(required)
@@ -99,7 +99,7 @@ function fig = plot_steel_solve(config, steel_data)
     profile_world = prof_body + [0, vs_plot];
     px_outer = profile_world(:, 1);
     pz_outer = profile_world(:, 2);
-    z_fill_world = steel_data.z_fill + vs_plot;
+    z_ballast_world = steel_data.z_ballast + vs_plot;
 
     %% ── Inner jacket offset (the THICKNESS visualisation) ────────────
     if isfinite(steel_data.t_steel) && steel_data.t_steel > 1e-6
@@ -110,11 +110,11 @@ function fig = plot_steel_solve(config, steel_data)
     end
     has_inner = length(px_inner) >= 3;
 
-    %% ── Sutherland–Hodgman clips at z_fill (no polyshape) ────────────
-    [x_below_o, z_below_o] = clip_polygon_below_z(px_outer, pz_outer, z_fill_world);
-    [x_above_o, z_above_o] = clip_polygon_above_z(px_outer, pz_outer, z_fill_world);
+    %% ── Sutherland–Hodgman clips at z_ballast (no polyshape) ────────────
+    [x_below_o, z_below_o] = clip_polygon_below_z(px_outer, pz_outer, z_ballast_world);
+    [x_above_o, z_above_o] = clip_polygon_above_z(px_outer, pz_outer, z_ballast_world);
     if has_inner
-        [x_above_i, z_above_i] = clip_polygon_above_z(px_inner, pz_inner, z_fill_world);
+        [x_above_i, z_above_i] = clip_polygon_above_z(px_inner, pz_inner, z_ballast_world);
     else
         x_above_i = [];  z_above_i = [];
     end
@@ -199,7 +199,7 @@ function fig = plot_steel_solve(config, steel_data)
     h_air_proxy    = patch(ax1, NaN, NaN, style.fill_palette.void, ...
                            'EdgeColor', style.fill_palette.hatch, 'LineStyle', '--');
 
-    rho_material_txt = num2str(steel_data.rho_fill, '%.0f');
+    rho_material_txt = num2str(steel_data.rho_ballast, '%.0f');
     shell_thickness_txt = num2str(steel_data.t_steel, '%.4f');
     air_density_txt = num2str(steel_data.rho_air, '%.1f');
     leg_h = [h_solid_proxy, h_jacket_proxy, h_air_proxy, h_wl];

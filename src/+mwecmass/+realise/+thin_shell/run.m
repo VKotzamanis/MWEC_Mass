@@ -1,7 +1,7 @@
 function [results, final_props] = run(config, x_opt, opt_results)
 %RUN Perform thin-shell material realisation after Stage 2.
 %   [results,final_props] = run(config,x_opt,opt_results) solves for steel
-%   thickness/fill when enabled, rebuilds realised properties when feasible,
+%   thickness/ballast level when enabled, rebuilds realised properties when feasible,
 %   and stores steel_data plus realised stage2_3d.properties. x_opt is
 %   [1+N x 1] ([vertical shift; densities]); infeasible solves retain the
 %   optimiser properties as a documented fallback.

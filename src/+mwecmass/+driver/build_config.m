@@ -257,30 +257,26 @@ try
     %  The inverse solve runs once after Stage-2 optimisation converges.
     %  Nothing is computed here — the inverse solve needs final_props.
     %
-    %  config.shell remains empty because shell and fill are applied after optimisation.
+    %  config.shell remains empty because shell and ballast are applied after optimisation.
 
     config.enable_steel_solve      = enable_steel_solve;
     config.rho_steel               = in.materials.thin_shell.rho_shell;
-    config.rho_air                 = in.materials.thin_shell.rho_void;
-    % Two-density extension. config.rho_steel is kept unchanged above (the modular-precast
-    % solve reads the literal name "rho_steel" for its UHPC density -- an unrelated use of the
-    % same string). config.rho_shell is the shell-region density for the thin-shell
-    % two-density split; the input file carries one shell density, not two, so both fields read
-    % in.materials.thin_shell.rho_shell.
+    config.rho_air                 = in.materials.thin_shell.rho_air;
+    % config.rho_shell is the shell-region density of the two-density thin-shell split; the
+    % input file carries one shell density, so both fields read in.materials.thin_shell.rho_shell.
     config.rho_shell                = in.materials.thin_shell.rho_shell;
-    % config.rho_fill defaults to config.rho_shell when the input file leaves rho_fill unset,
-    % so an input struct written without the two-density field keeps working unchanged with
-    % rho_fill = rho_shell.
-    if isfield(in.materials.thin_shell, 'rho_fill') && ~isempty(in.materials.thin_shell.rho_fill)
-        config.rho_fill = in.materials.thin_shell.rho_fill;
+    % config.rho_ballast defaults to config.rho_shell when the input file leaves rho_ballast
+    % unset.
+    if isfield(in.materials.thin_shell, 'rho_ballast') && ~isempty(in.materials.thin_shell.rho_ballast)
+        config.rho_ballast = in.materials.thin_shell.rho_ballast;
     else
-        config.rho_fill = config.rho_shell;
+        config.rho_ballast = config.rho_shell;
     end
     config.steel_t_init            = in.materials.thin_shell.t_init;
     config.steel_t_min             = in.materials.thin_shell.t_min;
     config.steel_max_slope_factor  = in.materials.thin_shell.max_slope_factor;
     config.steel_n_z_grid          = in.materials.thin_shell.n_z_grid;
-    config.shell                   = [];   % shell and fill are applied after optimisation
+    config.shell                   = [];   % shell and ballast are applied after optimisation
 
     % HAMS period-grid forwards (consumed by mwecmass.bem.hams_mrel.default_hams_params
     % via the config-override path).  Optional — defaults apply if absent.
@@ -305,8 +301,8 @@ try
     if config.enable_steel_solve
         fprintf('  Steel-fill solver: ENABLED (post-optimisation, see Stage 3: material realisation)\n');
         % Print the three densities consumed by the two-density thin-shell solve.
-        fprintf('    rho_shell = %.0f kg/m^3   rho_fill = %.0f kg/m^3   rho_air = %.0f kg/m^3\n', ...
-                config.rho_shell, config.rho_fill, config.rho_air);
+        fprintf('    rho_shell = %.0f kg/m^3   rho_ballast = %.0f kg/m^3   rho_air = %.0f kg/m^3\n', ...
+                config.rho_shell, config.rho_ballast, config.rho_air);
         fprintf('    t_steel initial guess: %.4f m (%.2f in)\n', ...
                 config.steel_t_init, config.steel_t_init / 0.0254);
         fprintf('    t_steel min (fabrication floor): %.5f m (%.2f in)\n', ...
@@ -321,7 +317,7 @@ try
 
     config.enable_constructability       = enable_constructability;
     config.constructability_rho_hull     = in.materials.modular_precast.rho_hull;
-    config.constructability_rho_fill     = in.materials.modular_precast.rho_fill;
+    config.constructability_rho_air      = in.materials.modular_precast.rho_air;
     config.constructability_t_min        = in.materials.modular_precast.t_min;
     config.constructability_wall_height  = in.materials.modular_precast.wall_height;
     config.constructability_n_sub        = in.materials.modular_precast.n_sub;
@@ -340,7 +336,7 @@ try
     if config.enable_constructability
         fprintf('  Constructability post-processing: ENABLED\n');
         fprintf('    Hull material:  %.0f kg/m³ (UHPC)\n', config.constructability_rho_hull);
-        fprintf('    Void fill:      %.1f kg/m³ (air)\n', config.constructability_rho_fill);
+        fprintf('    Void air:       %.1f kg/m³\n', config.constructability_rho_air);
         fprintf('    Min thickness:  %.4f m (%.1f in)\n', ...
                 config.constructability_t_min, config.constructability_t_min / 0.0254);
         fprintf('    Wall height:    %.2f m\n', config.constructability_wall_height);
@@ -360,7 +356,7 @@ try
 
         N            = config.num_ballast_sections;
         rho_hull_c   = config.constructability_rho_hull;
-        rho_fill_c   = config.constructability_rho_fill;
+        rho_air_c    = config.constructability_rho_air;
         t_min_c      = config.constructability_t_min;
         w_idx        = config.wall_strip_index;
         % CONTRACT: mirror the realiser's z-sampling density.  The realiser
@@ -468,7 +464,7 @@ try
             %  The realiser uses a UNIFORM s_i across the whole strip, capped
             %  at the GLOBAL MIN of s_max(z) over z-samples.  So this pass's diagnostic
             %  minimum achievable ρ_eff is:
-            %      ρ_min_strip = ρ_hull − s_max_strip² · (ρ_hull − ρ_fill)
+            %      ρ_min_strip = ρ_hull − s_max_strip² · (ρ_hull − ρ_air)
             %  (NOT the volume-weighted local mean — that was wrong.  The
             %  realiser's actual mass formula is uniform: m_strip = V·ρ_eff,
             %  The realiser uses uniform effective strip density.  This diagnostic value has no
@@ -479,7 +475,7 @@ try
             % completely), force solid (s_max=0, rho=rho_hull) to mirror
             % mwecmass.realise.modular_precast.solve_and_extract:451-453.  Without this guard
             % the loop below leaves s_max_strip = 1 and the strip's lb
-            % collapses to rho_fill, the OPPOSITE of the realiser's
+            % collapses to rho_air, the OPPOSITE of the realiser's
             % behaviour.
             valid_mask = (r_min_k_arr > 1e-10) & isfinite(r_min_k_arr);
             if ~any(valid_mask)
@@ -512,7 +508,7 @@ try
             % Replace the homothetic perpendicular-s_max formula with a
             % uniform-thickness offset-shell formula (mirrors the
             % the thin-shell realisation realisation model).  Strip mass at ρ_min:
-            %   V_shell·ρ_hull  +  V_int·ρ_fill
+            %   V_shell·ρ_hull  +  V_int·ρ_air
             % where V_shell is the perpendicular-offset shell volume at
             % t = t_min, V_int = V_strip − V_shell, and r_inner is capped
             % at zero where t·sqrt(1+r'²) ≥ r (locally solid).
@@ -532,7 +528,7 @@ try
                 warning('mwecmass:driver:OffsetShellFailed', ...
                     'Strip %d: compute_perpendicular_shell_volume failed (%s). Falling back to perpendicular-formula ρ_min.', ...
                     i, ME.message);
-                V_shell_at_tmin = V_strip_i_est * (rho_hull_c - rho_fill_c) / rho_hull_c;  % ρ_min ≈ perpendicular fallback
+                V_shell_at_tmin = V_strip_i_est * (rho_hull_c - rho_air_c) / rho_hull_c;  % ρ_min ≈ perpendicular fallback
                 A_outer_i = NaN;
             end
 
@@ -543,9 +539,9 @@ try
                 rho_min_offset = rho_hull_c;     % strip too narrow → solid
             else
                 V_int_i        = V_strip_i_est - V_shell_at_tmin;
-                rho_min_offset = (V_shell_at_tmin * rho_hull_c + V_int_i * rho_fill_c) / V_strip_i_est;
+                rho_min_offset = (V_shell_at_tmin * rho_hull_c + V_int_i * rho_air_c) / V_strip_i_est;
             end
-            rho_min_offset = max(rho_fill_c, min(rho_hull_c, rho_min_offset));
+            rho_min_offset = max(rho_air_c, min(rho_hull_c, rho_min_offset));
 
             per_strip_lb(i) = max(config.ballast_density_bounds(1), rho_min_offset);
 

@@ -8,18 +8,18 @@ function cstr = solve_and_extract(config, x_opt, final_props)
 
     %% RESOLVE UHPC MATERIAL PARAMETERS
     rho_UHPC     = config.constructability_rho_hull;
-    rho_void_mat = config.constructability_rho_fill;
+    rho_air = config.constructability_rho_air;
     t_min_uhpc   = config.constructability_t_min;
 
     % Build opts struct overriding Shell_Offset defaults with UHPC params.
     % opt_or_cfg in Shell_Offset reads opts field first, then config field,
     % so overriding here does NOT require changing config.
     uhpc_opts = struct();
-    uhpc_opts.rho_steel = rho_UHPC;
-    uhpc_opts.rho_air   = rho_void_mat;
+    uhpc_opts.rho_uhpc = rho_UHPC;
+    uhpc_opts.rho_air   = rho_air;
     uhpc_opts.t_min     = t_min_uhpc;
 
-    % Warm-start: UHPC needs ~rho_steel/rho_UHPC times more wall volume
+    % Warm-start: UHPC needs ~config.rho_steel/rho_UHPC times more wall volume
     % than steel for the same mass, so scale t_init proportionally.
     if isfield(config, 'uhpc_t_init') && ~isempty(config.uhpc_t_init)
         uhpc_opts.t_init = config.uhpc_t_init;
@@ -35,8 +35,8 @@ function cstr = solve_and_extract(config, x_opt, final_props)
     end
     % The solve uses range-normalised heave/pitch penalties; mass and GM are constraints.
 
-    fprintf('      rho_UHPC = %.0f kg/m³,  rho_void = %.2f kg/m³\n', ...
-            rho_UHPC, rho_void_mat);
+    fprintf('      rho_UHPC = %.0f kg/m³,  rho_air = %.2f kg/m³\n', ...
+            rho_UHPC, rho_air);
     fprintf('      t_min = %.4f m (%.1f mm),  t_init = %.4f m\n', ...
             t_min_uhpc, t_min_uhpc*1000, uhpc_opts.t_init);
 
@@ -86,7 +86,7 @@ function cstr = solve_and_extract(config, x_opt, final_props)
         config, strip_edges_realize, t_offset_pre, is_solid_pre, n_z_pre, slope_f);
     A_jacket_pre = grids_pre.A_outer - grids_pre.A_inner;
     M_min_uhpc   = rho_UHPC    * trapz(grids_pre.z, A_jacket_pre) + ...
-                   rho_void_mat * trapz(grids_pre.z, grids_pre.A_inner);
+                   rho_air * trapz(grids_pre.z, grids_pre.A_inner);
     M_max_uhpc   = rho_UHPC    * trapz(grids_pre.z, grids_pre.A_outer);
 
     fprintf('      Achievable mass range: [%.0f, %.0f] kg  |  target: %.0f kg\n', ...
@@ -131,8 +131,8 @@ function cstr = solve_and_extract(config, x_opt, final_props)
     %  and the realised_strips substruct in build_realised_properties.
 
     cstr = mwecmass.realise.modular_precast.extract_strip_geometry( ...
-               config, solve_data.t_offset_strip, solve_data.z_fill, ...
-               rho_UHPC, rho_void_mat, solve_data);
+               config, solve_data.t_offset_strip, solve_data.z_ballast, ...
+               rho_UHPC, rho_air, solve_data);
 
     fprintf('    mwecmass.realise.modular_precast.solve_and_extract: done.\n');
 end

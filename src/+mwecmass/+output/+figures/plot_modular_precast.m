@@ -153,7 +153,7 @@ function plot_modular_precast(cstr, config)
         if is_wall(i)
             fc = style.fill_palette.solid_material;
         elseif is_solid(i)
-            fc = style.fill_palette.fill_material;
+            fc = style.fill_palette.ballast_material;
         else
             fc = style.fill_palette.jacket_material;
         end
@@ -234,7 +234,7 @@ function plot_modular_precast(cstr, config)
 
     % Legend proxies
     h_uhpc = patch(ax1, NaN, NaN, style.fill_palette.jacket_material,       'EdgeColor', 'none');
-    h_fs   = patch(ax1, NaN, NaN, style.fill_palette.fill_material, 'EdgeColor', 'none');
+    h_fs   = patch(ax1, NaN, NaN, style.fill_palette.ballast_material, 'EdgeColor', 'none');
     h_wall = patch(ax1, NaN, NaN, style.fill_palette.solid_material,       'EdgeColor', 'none');
     h_void = patch(ax1, NaN, NaN, style.fill_palette.void, ...
                    'EdgeColor', style.fill_palette.inner_boundary, 'LineStyle', '--');
@@ -255,7 +255,7 @@ function plot_modular_precast(cstr, config)
 
     rho_material_txt = num2str(cstr.rho_hull, '%.0f');
     shell_thickness_txt = num2str(t_min_mm, '%.1f');
-    air_density_txt = num2str(cstr.rho_fill, '%.1f');
+    air_density_txt = num2str(cstr.rho_air, '%.1f');
     xlabel(ax1, {'X [m]', ...
         ['Stage 3: Modular Precast Construction, $\rho_{\mathrm{material}} = ' ...
          rho_material_txt '$ [kg/m$^3$]']});
@@ -412,7 +412,7 @@ function plot_modular_precast(cstr, config)
             if is_wall(i)
                 fc = style.fill_palette.solid_material;
             elseif is_solid(i)
-                fc = style.fill_palette.fill_material;
+                fc = style.fill_palette.ballast_material;
             else
                 fc = style.fill_palette.jacket_material;
             end

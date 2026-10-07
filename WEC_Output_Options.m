@@ -87,14 +87,14 @@ out.style.color.series_b = [1.00, 0.00, 0.00];   % RGB: second curve in a two-se
 
 out.style.fill_palette.solid_material = [0.45, 0.46, 0.50]; % RGB: solid structural material.
 out.style.fill_palette.jacket_material = [0.74, 0.76, 0.80]; % RGB: jacket structural material.
-out.style.fill_palette.fill_material = [0.55, 0.55, 0.60]; % RGB: filled strip material.
+out.style.fill_palette.ballast_material = [0.55, 0.55, 0.60]; % RGB: filled strip material.
 out.style.fill_palette.shell = [0.82, 0.82, 0.82]; % RGB: shell annulus material.
 out.style.fill_palette.void = [1.00, 1.00, 1.00]; % RGB: void or air region.
 out.style.fill_palette.hatch = [0.50, 0.52, 0.58]; % RGB: void-region hatch lines.
 out.style.fill_palette.boundary = [0.10, 0.10, 0.10]; % RGB: outer material boundary.
 out.style.fill_palette.inner_boundary = [0.30, 0.30, 0.32]; % RGB: inner shell boundary.
 out.style.fill_palette.waterline = [0.15, 0.55, 0.95]; % RGB: still-water line.
-out.style.fill_palette.fill_level = [0.95, 0.55, 0.10]; % RGB: fill-level line.
+out.style.fill_palette.ballast_level = [0.95, 0.55, 0.10]; % RGB: fill-level line.
 out.style.fill_palette.wall_boundary = [0.80, 0.15, 0.10]; % RGB: precast wall boundary.
 
 out.style.color.dof = [0.12 0.47 0.71; 0.20 0.63 0.17; 0.89 0.10 0.11];           % RGB rows for surge, heave, and pitch.

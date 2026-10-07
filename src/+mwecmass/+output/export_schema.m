@@ -69,15 +69,15 @@ function schema = export_schema()
     schema.final_props_field_count = numel(fp);   % 40, per the spec's own re-derived count
 
     ct = struct('name', {}, 'class', {}, 'size', {});
-    ct = local_add3(ct, 't_steel','double',[1 1]);            ct = local_add3(ct, 'z_fill','double',[1 1]);
+    ct = local_add3(ct, 't_uhpc','double',[1 1]);            ct = local_add3(ct, 'z_ballast','double',[1 1]);
     ct = local_add3(ct, 'draft','double',[1 1]);               ct = local_add3(ct, 'vertical_shift','double',[1 1]);
     ct = local_add3(ct, 'draft_optimiser','double',[1 1]);     ct = local_add3(ct, 'vs_optimiser','double',[1 1]);
-    ct = local_add3(ct, 'rho_steel','double',[1 1]);           ct = local_add3(ct, 'rho_air','double',[1 1]);
+    ct = local_add3(ct, 'rho_uhpc','double',[1 1]);           ct = local_add3(ct, 'rho_air','double',[1 1]);
     ct = local_add3(ct, 't_max','double',[1 1]);               ct = local_add3(ct, 't_min','double',[1 1]);
-    ct = local_add3(ct, 't_min_active','logical',[1 1]);       ct = local_add3(ct, 'V_steel','double',[1 1]);
+    ct = local_add3(ct, 't_min_active','logical',[1 1]);       ct = local_add3(ct, 'V_uhpc','double',[1 1]);
     ct = local_add3(ct, 'V_air','double',[1 1]);               ct = local_add3(ct, 'V_hull','double',[1 1]);
-    ct = local_add3(ct, 'M_steel','double',[1 1]);             ct = local_add3(ct, 'M_air','double',[1 1]);
-    ct = local_add3(ct, 'M_total','double',[1 1]);             ct = local_add3(ct, 'z_cg_steel','double',[1 1]);
+    ct = local_add3(ct, 'M_uhpc','double',[1 1]);             ct = local_add3(ct, 'M_air','double',[1 1]);
+    ct = local_add3(ct, 'M_total','double',[1 1]);             ct = local_add3(ct, 'z_cg_uhpc','double',[1 1]);
     ct = local_add3(ct, 'z_cg_air','double',[1 1]);            ct = local_add3(ct, 'CG_z_body','double',[1 1]);
     ct = local_add3(ct, 'CG_z_world','double',[1 1]);          ct = local_add3(ct, 'Iyy_total_origin','double',[1 1]);
     ct = local_add3(ct, 'Iyy_about_cg','double',[1 1]);        ct = local_add3(ct, 'Ixx_total_origin','double',[1 1]);
@@ -102,7 +102,7 @@ function schema = export_schema()
     ct = local_add3(ct, 'mode','char',[]);                     ct = local_add3(ct, 'Z_max','double',[1 1]);   % this 'mode' = 'constructable_hull' (extract_strip_geometry.m:361), a fixed solver-identity tag, unrelated to the Stage-4 realisation-type selector and never read anywhere in this repository (grep verified) -- not touched by Task S7
     ct = local_add3(ct, 'Z_min','double',[1 1]);               ct = local_add3(ct, 'wall_z_bottom','double',[1 1]);
     ct = local_add3(ct, 'wall_z_top','double',[1 1]);          ct = local_add3(ct, 'rho_hull','double',[1 1]);
-    ct = local_add3(ct, 'rho_fill','double',[1 1]);            ct = local_add3(ct, 'wall_height','double',[1 1]);
+    ct = local_add3(ct, 'wall_height','double',[1 1]);
     ct = local_add3(ct, 't_UHPC','double',[1 1]);              ct = local_add3(ct, 'strip_z_lo','double',[]);
     ct = local_add3(ct, 'strip_z_hi','double',[]);             ct = local_add3(ct, 'strip_rho_eff','double',[]);
     ct = local_add3(ct, 'strip_scale_factor','double',[]);     ct = local_add3(ct, 'strip_V_total','double',[]);
@@ -118,22 +118,22 @@ function schema = export_schema()
     ct = local_add3(ct, 'total_V_hull','double',[1 1]);        ct = local_add3(ct, 'UHPC_volume_fraction','double',[1 1]);
     ct = local_add3(ct, 'feasibility','struct',[1 1]);
     schema.constructability_fields = ct;
-    schema.constructability_field_count = numel(ct);   % 95, per the spec's own re-derived count
+    schema.constructability_field_count = numel(ct);   % 94, per the spec's own re-derived count
 
     sd = struct('name', {}, 'class', {}, 'size', {});
-    sd = local_add3(sd, 't_steel',              'double',  [1 1]); sd = local_add3(sd, 'z_fill',               'double',  [1 1]);
+    sd = local_add3(sd, 't_steel',              'double',  [1 1]); sd = local_add3(sd, 'z_ballast',               'double',  [1 1]);
     sd = local_add3(sd, 'draft',                'double',  [1 1]); sd = local_add3(sd, 'vertical_shift',       'double',  [1 1]);
     sd = local_add3(sd, 'draft_optimiser',      'double',  [1 1]); sd = local_add3(sd, 'vs_optimiser',         'double',  [1 1]);
-    sd = local_add3(sd, 'rho_steel',            'double',  [1 1]); sd = local_add3(sd, 'rho_shell',            'double',  [1 1]);   % two-density model
-    sd = local_add3(sd, 'rho_fill',             'double',  [1 1]); sd = local_add3(sd, 'rho_air',              'double',  [1 1]);   % two-density model
+    sd = local_add3(sd, 'rho_shell',            'double',  [1 1]);   % two-density model
+    sd = local_add3(sd, 'rho_ballast',          'double',  [1 1]); sd = local_add3(sd, 'rho_air',              'double',  [1 1]);   % two-density model
     sd = local_add3(sd, 't_max',                'double',  [1 1]); sd = local_add3(sd, 't_min',                'double',  [1 1]);
     sd = local_add3(sd, 't_min_active',         'logical', [1 1]); sd = local_add3(sd, 'V_steel',              'double',  [1 1]);
     sd = local_add3(sd, 'V_air',                'double',  [1 1]); sd = local_add3(sd, 'V_hull',               'double',  [1 1]);
-    sd = local_add3(sd, 'V_shell',              'double',  [1 1]); sd = local_add3(sd, 'V_fill',               'double',  [1 1]);   % two-density model
+    sd = local_add3(sd, 'V_shell',              'double',  [1 1]); sd = local_add3(sd, 'V_ballast',               'double',  [1 1]);   % two-density model
     sd = local_add3(sd, 'M_steel',              'double',  [1 1]); sd = local_add3(sd, 'M_air',                'double',  [1 1]);
-    sd = local_add3(sd, 'M_shell',              'double',  [1 1]); sd = local_add3(sd, 'M_fill',               'double',  [1 1]);   % two-density model
+    sd = local_add3(sd, 'M_shell',              'double',  [1 1]); sd = local_add3(sd, 'M_ballast',               'double',  [1 1]);   % two-density model
     sd = local_add3(sd, 'M_total',              'double',  [1 1]); sd = local_add3(sd, 'z_cg_steel',           'double',  [1 1]);
-    sd = local_add3(sd, 'z_cg_fill',            'double',  [1 1]); sd = local_add3(sd, 'z_cg_shell',           'double',  [1 1]);   % two-density model
+    sd = local_add3(sd, 'z_cg_ballast',            'double',  [1 1]); sd = local_add3(sd, 'z_cg_shell',           'double',  [1 1]);   % two-density model
     sd = local_add3(sd, 'z_cg_air',             'double',  [1 1]); sd = local_add3(sd, 'CG_z_body',            'double',  [1 1]);
     sd = local_add3(sd, 'CG_z_world',           'double',  [1 1]); sd = local_add3(sd, 'Iyy_total_origin',     'double',  [1 1]);
     sd = local_add3(sd, 'Iyy_about_cg',         'double',  [1 1]); sd = local_add3(sd, 'Ixx_total_origin',     'double',  [1 1]);
@@ -154,10 +154,10 @@ function schema = export_schema()
     sd = local_add3(sd, 'Iyy_inner_grid',       'double',  []);   sd = local_add3(sd, 'strip_rho_eff',         'double',  []);
     sd = local_add3(sd, 'strip_edges',          'double',  []);   sd = local_add3(sd, 'strip_V_env',           'double',  []);
     sd = local_add3(sd, 'strip_V_solid',        'double',  []);   sd = local_add3(sd, 'strip_V_void',          'double',  []);
-    sd = local_add3(sd, 'strip_V_fill',         'double',  []);   sd = local_add3(sd, 'strip_V_shell',         'double',  []);      % two-density model
+    sd = local_add3(sd, 'strip_V_ballast',         'double',  []);   sd = local_add3(sd, 'strip_V_shell',         'double',  []);      % two-density model
     sd = local_add3(sd, 'fill_method',          'char',    []);   sd = local_add3(sd, 'elapsed_seconds',       'double',  [1 1]); % Task S7b: renamed from realisation_mode (see final_props_fields' comment above): 'steel_fill', a fill-method flag, not a realisation type
     schema.steel_data_fields = sd;
-    schema.steel_data_field_count = numel(sd);   % 70 (matches solve.m's own field count exactly, per the block comment above)
+    schema.steel_data_field_count = numel(sd);   % 69 (matches solve.m's own field count exactly, per the block comment above)
 
     fs = struct('name', {}, 'class', {}, 'size', {});
     fs = local_add3(fs, 'CB',                'double', [1 3]);

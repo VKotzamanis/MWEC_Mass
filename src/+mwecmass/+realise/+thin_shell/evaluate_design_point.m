@@ -1,5 +1,5 @@
-function out = evaluate_design_point(vs, t_steel, z_fill, grids, ctx)  %#ok<INUSD>
-%EVALUATE_DESIGN_POINT Evaluate thin-shell properties at (vs,t_steel,z_fill).
+function out = evaluate_design_point(vs, t_steel, z_ballast, grids, ctx)  %#ok<INUSD>
+%EVALUATE_DESIGN_POINT Evaluate thin-shell properties at (vs,t_steel,z_ballast).
 %   Uses the supplied geometry grids without solving for draft. out contains
 %   hydrostatics, mass/CG/inertia, GM, added mass, periods, and the absolute
 %   buoyancy residual; SI units are used throughout. ctx supplies config and
@@ -8,54 +8,54 @@ function out = evaluate_design_point(vs, t_steel, z_fill, grids, ctx)  %#ok<INUS
     cfg = ctx.config;
     out = mwecmass.realise.empty_realised_properties();
 
-    %% --- Split integrals (steel below z_fill, jacket+air above) ---
-    R = mwecmass.realise.thin_shell.integrate_split(grids, z_fill);
+    %% --- Split integrals (steel below z_ballast, jacket+air above) ---
+    R = mwecmass.realise.thin_shell.integrate_split(grids, z_ballast);
 
-    % V_fill is the solid region below z_fill; V_shell is the jacket above it.
+    % V_ballast is the solid region below z_ballast; V_shell is the jacket above it.
     % V_steel and its integrals remain aggregate solid-region quantities.
-    V_fill  = R.V_below_outer;
+    V_ballast  = R.V_below_outer;
     V_shell = R.V_above_jacket;
-    V_steel = V_fill + V_shell;
+    V_steel = V_ballast + V_shell;
     V_air   = R.V_above_inner;
 
-    int_z_x_A_fill  = R.int_zA_below_outer;
+    int_z_x_A_ballast  = R.int_zA_below_outer;
     int_z_x_A_shell = R.int_zA_above_jacket;
-    int_z_x_A_steel = int_z_x_A_fill + int_z_x_A_shell;
+    int_z_x_A_steel = int_z_x_A_ballast + int_z_x_A_shell;
     int_z_x_A_air   = R.int_zA_above_inner;
 
-    int_x2_fill  = R.int_Ix_below_outer;
+    int_x2_ballast  = R.int_Ix_below_outer;
     int_x2_shell = R.int_Ix_above_jacket;
-    int_x2_steel = int_x2_fill + int_x2_shell;
+    int_x2_steel = int_x2_ballast + int_x2_shell;
     int_x2_air   = R.int_Ix_above_inner;
 
-    int_y2_fill  = R.int_Iy_below_outer;
+    int_y2_ballast  = R.int_Iy_below_outer;
     int_y2_shell = R.int_Iy_above_jacket;
-    int_y2_steel = int_y2_fill + int_y2_shell;
+    int_y2_steel = int_y2_ballast + int_y2_shell;
     int_y2_air   = R.int_Iy_above_inner;
 
-    int_z2_A_fill  = R.int_z2A_below_outer;
+    int_z2_A_ballast  = R.int_z2A_below_outer;
     int_z2_A_shell = R.int_z2A_above_jacket;
-    int_z2_A_steel = int_z2_A_fill + int_z2_A_shell;
+    int_z2_A_steel = int_z2_A_ballast + int_z2_A_shell;
     int_z2_A_air   = R.int_z2A_above_inner;
 
     % Compute the per-region masses for the two-density material model.
     M_shell_region = ctx.rho_shell * V_shell;
-    M_fill_region  = ctx.rho_fill  * V_fill;
+    M_ballast_region  = ctx.rho_ballast  * V_ballast;
 
     % Keep the aggregate operation order for the equal-density default; the
-    % difference term supplies the fill-region correction for two densities.
-    M_steel = ctx.rho_shell * V_steel + (ctx.rho_fill - ctx.rho_shell) * V_fill;
+    % difference term supplies the ballast-region correction for two densities.
+    M_steel = ctx.rho_shell * V_steel + (ctx.rho_ballast - ctx.rho_shell) * V_ballast;
     M_air   = ctx.rho_air   * V_air;
     M_total = M_steel + M_air;
 
     out.V_steel = V_steel;
     out.V_air   = V_air;
     out.V_shell = V_shell;
-    out.V_fill  = V_fill;
+    out.V_ballast  = V_ballast;
     out.M_steel = M_steel;
     out.M_air   = M_air;
     out.M_shell = M_shell_region;
-    out.M_fill  = M_fill_region;
+    out.M_ballast  = M_ballast_region;
     out.M_total = M_total;
 
     if M_total <= 0
@@ -67,21 +67,21 @@ function out = evaluate_design_point(vs, t_steel, z_fill, grids, ctx)  %#ok<INUS
     if V_steel > 1e-12
         z_cg_steel = int_z_x_A_steel / V_steel;
     else
-        z_cg_steel = 0.5 * (ctx.hull_z_min + z_fill);
+        z_cg_steel = 0.5 * (ctx.hull_z_min + z_ballast);
     end
     if V_air > 1e-12
         z_cg_air = int_z_x_A_air / V_air;
     else
-        z_cg_air = 0.5 * (z_fill + ctx.hull_z_max);
+        z_cg_air = 0.5 * (z_ballast + ctx.hull_z_max);
     end
     % Per-region centroids, required by the two-density model.
     % Degenerate-volume fallbacks
     % mirror the z_cg_steel/z_cg_air pattern immediately above (same body-frame ranges:
-    % [hull_z_min, z_fill] for fill, [z_fill, hull_z_max] for shell/air).
-    if V_fill > 1e-12
-        z_cg_fill = int_z_x_A_fill / V_fill;
+    % [hull_z_min, z_ballast] for ballast, [z_ballast, hull_z_max] for shell/air).
+    if V_ballast > 1e-12
+        z_cg_ballast = int_z_x_A_ballast / V_ballast;
     else
-        z_cg_fill = 0.5 * (ctx.hull_z_min + z_fill);
+        z_cg_ballast = 0.5 * (ctx.hull_z_min + z_ballast);
     end
     if V_shell > 1e-12
         z_cg_shell = int_z_x_A_shell / V_shell;
@@ -89,34 +89,34 @@ function out = evaluate_design_point(vs, t_steel, z_fill, grids, ctx)  %#ok<INUS
         % Degenerate-volume convention (fires only when V_shell <= 1e-12): a region's centroid
         % is undefined when its volume is zero, so a finite placeholder is assigned rather than
         % left NaN/Inf. The implemented finite value here is the midpoint of the shell's
-        % nominal z-range, 0.5*(z_fill + hull_z_max) -- not z_fill alone. This is inert for
+        % nominal z-range, 0.5*(z_ballast + hull_z_max) -- not z_ballast alone. This is inert for
         % every mass total: int_z_x_A_shell is itself zero when V_shell is (the numerator this
         % centroid would otherwise divide), so CG_z_body's solid_first_moment term picks up no
         % contribution from this branch regardless of what z_cg_shell is set to here.
-        z_cg_shell = 0.5 * (z_fill + ctx.hull_z_max);
+        z_cg_shell = 0.5 * (z_ballast + ctx.hull_z_max);
     end
     % Form the first moment directly by region; equal densities use the aggregate form.
-    if ctx.rho_fill == ctx.rho_shell
+    if ctx.rho_ballast == ctx.rho_shell
         solid_first_moment = M_steel * z_cg_steel;
     else
-        solid_first_moment = ctx.rho_fill * int_z_x_A_fill + ctx.rho_shell * int_z_x_A_shell;
+        solid_first_moment = ctx.rho_ballast * int_z_x_A_ballast + ctx.rho_shell * int_z_x_A_shell;
     end
     CG_z_body = (solid_first_moment + M_air * z_cg_air) / M_total;
 
     % Iyy (pitch axis, body origin):  ∫∫∫ ρ (x² + z²) dV
     % The single-density expression (ctx.rho_shell * combined-region sum) plus a
-    % difference term over the fill-only sub-integral, exactly zero at rho_fill == rho_shell
+    % difference term over the ballast-only sub-integral, exactly zero at rho_ballast == rho_shell
     % (see the M_steel derivation above for the same discipline and its algebraic proof).
     Iyy_total_origin = ctx.rho_shell * (int_x2_steel + int_z2_A_steel) + ...
-                       (ctx.rho_fill - ctx.rho_shell) * (int_x2_fill + int_z2_A_fill) + ...
+                       (ctx.rho_ballast - ctx.rho_shell) * (int_x2_ballast + int_z2_A_ballast) + ...
                        ctx.rho_air   * (int_x2_air   + int_z2_A_air);
     % Ixx (roll axis):                  ∫∫∫ ρ (y² + z²) dV
     Ixx_total_origin = ctx.rho_shell * (int_y2_steel + int_z2_A_steel) + ...
-                       (ctx.rho_fill - ctx.rho_shell) * (int_y2_fill + int_z2_A_fill) + ...
+                       (ctx.rho_ballast - ctx.rho_shell) * (int_y2_ballast + int_z2_A_ballast) + ...
                        ctx.rho_air   * (int_y2_air   + int_z2_A_air);
     % Izz (yaw):                        ∫∫∫ ρ (x² + y²) dV
     Izz_total_origin = ctx.rho_shell * (int_x2_steel + int_y2_steel) + ...
-                       (ctx.rho_fill - ctx.rho_shell) * (int_x2_fill + int_y2_fill) + ...
+                       (ctx.rho_ballast - ctx.rho_shell) * (int_x2_ballast + int_y2_ballast) + ...
                        ctx.rho_air   * (int_x2_air   + int_y2_air);
 
     Iyy_about_cg = max(0, Iyy_total_origin - M_total * CG_z_body^2);
@@ -125,12 +125,12 @@ function out = evaluate_design_point(vs, t_steel, z_fill, grids, ctx)  %#ok<INUS
 
     % Export z_cg_steel as the geometric centroid for equal densities and as
     % the aggregate solid-mass centroid when the two densities differ.
-    if ctx.rho_fill == ctx.rho_shell
+    if ctx.rho_ballast == ctx.rho_shell
         out.z_cg_steel = z_cg_steel;
     else
         out.z_cg_steel = solid_first_moment / M_steel;
     end
-    out.z_cg_fill        = z_cg_fill;
+    out.z_cg_ballast        = z_cg_ballast;
     out.z_cg_shell       = z_cg_shell;
     out.z_cg_air         = z_cg_air;
     out.CG_z_body        = CG_z_body;

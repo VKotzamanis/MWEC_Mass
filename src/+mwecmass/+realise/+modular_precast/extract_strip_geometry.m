@@ -1,10 +1,10 @@
-function cstr = extract_strip_geometry(config, t_offset_arg, z_fill, ...
-                                       rho_UHPC, rho_void, solve_data)
+function cstr = extract_strip_geometry(config, t_offset_arg, z_ballast, ...
+                                       rho_UHPC, rho_air, solve_data)
 %EXTRACT_STRIP_GEOMETRY Extract per-strip UHPC jacket/void contours and volumes.
-% t_offset_arg may be scalar or per-strip; Inf and is_solid_strip mark fully solid strips. z_fill separates
+% t_offset_arg may be scalar or per-strip; Inf and is_solid_strip mark fully solid strips. z_ballast separates
 % solid lower regions from annular jacket/void regions. cstr inherits solve_data and adds visualisation data.
 % See docs/METHODS_ENGINE.md#realise-modular-precast
-    % Inherit all global solve fields (M_total, z_fill, t_steel, etc.)
+    % Inherit all global solve fields (M_total, z_ballast, t_uhpc, etc.)
     cstr = solve_data;
 
     %% UNPACK CONFIG
@@ -46,8 +46,8 @@ function cstr = extract_strip_geometry(config, t_offset_arg, z_fill, ...
 
     %% PER-STRIP UNIFIED LOOP
     %
-    % Classify each z-sample as solid (wall or below z_fill) or annular; trapz
-    % integrates strips that straddle z_fill without a separate split.
+    % Classify each z-sample as solid (wall or below z_ballast) or annular; trapz
+    % integrates strips that straddle z_ballast without a separate split.
 
     if isfield(config, 'wall_position') && strcmp(config.wall_position, 'bottom')
         wall_strip_idx = 1;    % _180: structural wall at hull bottom
@@ -90,7 +90,7 @@ function cstr = extract_strip_geometry(config, t_offset_arg, z_fill, ...
     strip_Iyy_UHPC    = zeros(N, 1);
     strip_Iyy_void    = zeros(N, 1);
     strip_is_wall     = false(N, 1);  % designated structural wall only
-    strip_is_solid    = false(N, 1);  % wall OR entirely below z_fill
+    strip_is_solid    = false(N, 1);  % wall OR entirely below z_ballast
     strip_is_feasible = true(N, 1);
     strip_scale       = zeros(N, 1);
     strip_rho_eff     = zeros(N, 1);
@@ -180,7 +180,7 @@ function cstr = extract_strip_geometry(config, t_offset_arg, z_fill, ...
         %
         %  is_solid_sample: true when the strip is the structural
         %  wall, when Phase 1b upgraded the strip to fully solid,
-        %  OR when the sample elevation is at or below z_fill.
+        %  OR when the sample elevation is at or below z_ballast.
         %  Every other sample gets a UHPC annular jacket + void.
         %
         %  Per-strip jacket thickness:
@@ -193,7 +193,7 @@ function cstr = extract_strip_geometry(config, t_offset_arg, z_fill, ...
             outer_k = conts_i{k};
             A_out_k = A_outer_k(k);
 
-            is_solid_sample = strip_solid || (z_k <= z_fill);
+            is_solid_sample = strip_solid || (z_k <= z_ballast);
 
             if is_solid_sample
                 % ── SOLID UHPC: entire cross-section ────────
@@ -281,7 +281,7 @@ function cstr = extract_strip_geometry(config, t_offset_arg, z_fill, ...
         strip_V_UHPC(i)     = V_UHPC_i;
         strip_V_void(i)     = V_void_i;
         strip_mass_UHPC(i)  = V_UHPC_i * rho_UHPC;
-        strip_mass_void(i)  = V_void_i * rho_void;
+        strip_mass_void(i)  = V_void_i * rho_air;
         strip_mass_total(i) = strip_mass_UHPC(i) + strip_mass_void(i);
         strip_z_cg(i)       = CBz_i;
         % Divide by the envelope built from the SAME integrator as the
@@ -298,7 +298,7 @@ function cstr = extract_strip_geometry(config, t_offset_arg, z_fill, ...
 
         % Wall/solid classification
         strip_is_wall(i)  = (i == wall_strip_idx);
-        strip_is_solid(i) = strip_is_wall(i) || (z_hi <= z_fill) || ...
+        strip_is_solid(i) = strip_is_wall(i) || (z_hi <= z_ballast) || ...
                             t_strip_is_solid_input(i);
 
         % Feasibility (only meaningful for strips with any void)
@@ -314,7 +314,7 @@ function cstr = extract_strip_geometry(config, t_offset_arg, z_fill, ...
             strip_Iyy_UHPC(i) = rho_UHPC * ...
                 mwecmass.internal.integrate_piecewise_cubic( ...
                     spline(z_i, Iyy_UHPC_samp), z_lo, z_hi);
-            strip_Iyy_void(i) = rho_void * ...
+            strip_Iyy_void(i) = rho_air * ...
                 mwecmass.internal.integrate_piecewise_cubic( ...
                     spline(z_i, Iyy_void_samp), z_lo, z_hi);
         end
@@ -326,12 +326,12 @@ function cstr = extract_strip_geometry(config, t_offset_arg, z_fill, ...
     cstr.Z_max             = Z_max;
     cstr.Z_min             = Z_min;
 
-    % Structural wall boundaries (from strip edges, not z_fill)
+    % Structural wall boundaries (from strip edges, not z_ballast)
     cstr.wall_strip_idx    = wall_strip_idx;
     cstr.wall_z_bottom     = strip_edges(wall_strip_idx);
     cstr.wall_z_top        = strip_edges(wall_strip_idx + 1);
     cstr.rho_hull          = rho_UHPC;
-    cstr.rho_fill          = rho_void;
+    cstr.rho_air           = rho_air;
     cstr.t_min             = t_min;
     cstr.wall_height       = strip_edges(wall_strip_idx + 1) - ...
                              strip_edges(wall_strip_idx);
@@ -339,13 +339,13 @@ function cstr = extract_strip_geometry(config, t_offset_arg, z_fill, ...
     % Expose realised Phase 1+1b DOFs explicitly so downstream
     % consumers (visualize, verify) can use them directly.
     % t_UHPC remains scalar for compatibility with existing consumers.
-    if isfield(solve_data, 't_steel')
-        cstr.t_UHPC = solve_data.t_steel;   % global Phase 1a thickness
+    if isfield(solve_data, 't_uhpc')
+        cstr.t_UHPC = solve_data.t_uhpc;   % global Phase 1a thickness
     else
         cstr.t_UHPC = max(t_offset_strip(isfinite(t_offset_strip)));
     end
     cstr.t_offset_strip   = t_offset_strip;   % per-strip thickness (Inf=solid)
-    cstr.z_fill           = z_fill;
+    cstr.z_ballast           = z_ballast;
     cstr.vertical_shift   = solve_data.vertical_shift;
     cstr.draft            = solve_data.draft;
 
@@ -363,7 +363,7 @@ function cstr = extract_strip_geometry(config, t_offset_arg, z_fill, ...
     cstr.strip_r_min          = strip_r_min;
     cstr.strip_z_cg           = strip_z_cg;
     cstr.strip_is_wall        = strip_is_wall;    % structural wall strip only
-    cstr.strip_is_solid       = strip_is_solid;   % wall OR entirely below z_fill
+    cstr.strip_is_solid       = strip_is_solid;   % wall OR entirely below z_ballast
     cstr.strip_is_feasible    = strip_is_feasible;
     cstr.strip_Iyy_UHPC       = strip_Iyy_UHPC;
     cstr.strip_Iyy_void       = strip_Iyy_void;
@@ -372,10 +372,10 @@ function cstr = extract_strip_geometry(config, t_offset_arg, z_fill, ...
     cstr.contours_inner       = contours_inner;
 
     cstr.total_mass           = solve_data.M_total;
-    cstr.total_V_UHPC         = solve_data.V_steel;
+    cstr.total_V_UHPC         = solve_data.V_uhpc;
     cstr.total_V_void         = solve_data.V_air;
     cstr.total_V_hull         = solve_data.V_hull;
-    cstr.UHPC_volume_fraction = solve_data.V_steel / max(solve_data.V_hull, eps);
+    cstr.UHPC_volume_fraction = solve_data.V_uhpc / max(solve_data.V_hull, eps);
 
     % Feasibility count excludes solid strips (they cannot violate t_min)
     n_infeas = sum(~strip_is_feasible & ~strip_is_solid);
@@ -385,9 +385,9 @@ function cstr = extract_strip_geometry(config, t_offset_arg, z_fill, ...
     cstr.feasibility.s_max              = zeros(N, 1);
 
     % Console summary
-    n_solid_fill = sum(strip_is_solid & ~strip_is_wall);
-    fprintf('\n      Per-strip geometry extracted (t_UHPC* = %.4f m, z_fill = %.4f m)\n', ...
-            cstr.t_UHPC, z_fill);
+    n_solid_ballast = sum(strip_is_solid & ~strip_is_wall);
+    fprintf('\n      Per-strip geometry extracted (t_UHPC* = %.4f m, z_ballast = %.4f m)\n', ...
+            cstr.t_UHPC, z_ballast);
     fprintf('        Per-strip t_offset (mm): ');
     for ii_p = 1:N
         if t_strip_is_solid_input(ii_p)
@@ -397,8 +397,8 @@ function cstr = extract_strip_geometry(config, t_offset_arg, z_fill, ...
         end
     end
     fprintf('\n');
-    fprintf('        Wall strip: %d | Solid-fill strips: %d | Annular strips: %d\n', ...
-            1, n_solid_fill, N - 1 - n_solid_fill);
+    fprintf('        Wall strip: %d | Solid-ballast strips: %d | Annular strips: %d\n', ...
+            1, n_solid_ballast, N - 1 - n_solid_ballast);
     fprintf('        V_hull = %.4f m³  V_UHPC = %.4f m³  V_void = %.4f m³\n', ...
             cstr.total_V_hull, cstr.total_V_UHPC, cstr.total_V_void);
     fprintf('        Mass = %.1f kg  GM = %.4f m  T_heave = %.3f s  T_pitch = %.3f s\n', ...
