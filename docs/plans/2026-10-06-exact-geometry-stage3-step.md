@@ -91,8 +91,7 @@ Already in place: `tools/install_toolchain.sh` (verified: Octave 8.4.0, gmsh 4.1
 Files to create: `tests/run_tests.m`; further shims in `tests/octave_shims/` — `contains`,
 `discretize`, `datetime`, `optimoptions` (returns a struct), and `fmincon` implemented on
 Octave's core `sqp` (map `c ≤ 0` to `h = −c ≥ 0`, accept infeasible starts, return MATLAB-style
-`exitflag`/`output`); `tests/step_check.py` (gmsh import: solid count, open boundary edges,
-mesh-divergence volume, bounding box, declared units); `tests/reference/c1_reference.py`
+`exitflag`/`output`); `tests/reference/c1_reference.py`
 (independent Python evaluation of `Input/C1.ms2` — RevSurf as revolved spline, RuledSurf as
 defined — producing reference sections, profile, normals and offset clearances);
 `tests/README.md`. Shims never go on the production path.
