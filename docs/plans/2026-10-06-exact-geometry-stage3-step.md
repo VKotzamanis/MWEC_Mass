@@ -46,7 +46,7 @@ both Stage-3 realisations, the stored contours, the figures and the STEP writer
     SK: T8 and T10.
   - J2: after J1 and lane P, the group T5, T6, T7, T8, T10 merges as one chain in that order; the
     first whole-pipeline runs follow. **Owner checkpoints after T6 and after T10**, on those runs.
-  - Lane G: T11 cleanup, then T12 docs, then T13 final review.
+  - Lane G, after J2: T11 cleanup, then T12 docs, then T13 final review.
   - Before a producer is merged, its consumers test against the stand-ins of SK (contract §3).
     A shared file is edited in the order of the contract's file ownership map (§4), each edit
     after rebasing on the earlier ones.
@@ -207,7 +207,8 @@ outward, continuous across patch seams; exact symmetry under the deck's mirror p
 Contract: implements S1, S1b, S2, S2r, F1, F2, F2b, F3, F3b, F4 and invariants I3, I4, I9; consumes T1
 (`surface_normals`, `outer_rows`) and the SK fixtures. Starts after SK in lane K. Scope per contract F1,
 F2: offset at d = t + eps_fit/2; `offset_kind` checked; creases split along u; tangent v-seams only (a
-C0 v-seam is Open item 1); the cylinder fixture is its join test, the box is not.
+C0 v-seam is Open item 1); `c0_u`/`c0_v` knot rows in S1 and S2; F2 `opts.knots_from` (refit at a
+new t on fixed knots); the cylinder fixture is its join test, the box is not.
 
 Files: `src/+mwecmass/+solid/offset_surface.m`, `trim_fold.m`, `fit_bspline_surface.m`,
 `eval_bspline_surface.m`, `slice_bspline_surface.m`, tests.
@@ -227,7 +228,8 @@ the independent erosion result for module 4 (void 3.548 m³ with the v1.0 module
 
 ### T3 — Kernel C: bodies and exact properties (Sonnet high)
 
-Contract: implements S3–S7, F5, F6, F6b, F7 and invariants I1, I2, I6–I8 (including pole vertices and
+Contract: implements S3–S7, F5, F6, F6b, F7 (lateral faces split at planes and `c0_u`/`c0_v` rows,
+S4) and invariants I1, I2, I6–I8 (including collapsed-row loops and
 a `write_step` + `step_check` import of C1 bodies); consumes F1–F4 (T2), T9 `write_step`/`validate_brep`.
 Methods per contract §3: divergence-theorem surface integrals (F6) and hydrostatics on the cut outer
 patches (F7, including `full`/`none` submersion and `S_wet`) replace the section integration below.
@@ -278,7 +280,7 @@ and the changed quantities are printed.
 ### T4b — Stage-2 floors from the kernel, both modes (Sonnet high)
 
 Contract: implements F8 and `config.hull_solid` (S1b, inside the T0d cache); consumes F1, F2, F5, F6
-(SK stand-ins until J1). Merges after J1. The per-task baseline update below is superseded by contract
+(SK stand-ins until J1; join test on the cylinder fixture). Merges after J1. The per-task baseline update below is superseded by contract
 §6 (baseline regenerated once, after J2).
 
 Files: `src/+mwecmass/+driver/build_config.m`, `src/+mwecmass/+optim/stage2_bounds.m`; delete D1,
@@ -300,8 +302,8 @@ quantities are printed.
 ### T5 — UHPC Stage 3, part a: split, build, check, store (Sonnet high) — needs OD2
 
 Contract: implements S8 and its schema for both modes, F9, F10 and F14 for modular precast (including the
-F11 and F13 calls); consumes F2, F2b, F5–F7 (SK until J1), `config.hull_solid`. Paths of F9, F10 per
-contract §3.
+F11 and F13 calls); consumes F2, F2b, F5–F7 (SK until J1; join test on the cylinder fixture),
+`config.hull_solid`. Paths of F9, F10 per contract §3; `tools/baseline_run.m` reads `results.stage3` (§4).
 
 Files: `src/+mwecmass/+realise/+modular_precast/` (`solve_and_extract.m`, new
 `split_from_stage2.m`, `realise_modules.m`, `check_against_stage2.m`, rewrite of
@@ -334,7 +336,8 @@ table; `final_props` never contains Stage-2 values for this mode.
 ### T6 — UHPC Stage 3, part b: optimisation, spill, closest fail (Sonnet high)
 
 Contract: extends F14 (precast escalation, closest fail) and fills S8 `escalation`, `solver`, `check`;
-consumes S8, F9, F10 (T5), F2, F2b, F5–F7; caching per contract §7; t_max,i = d_close − eps_fit/2 (F2b,
+consumes S8, F9, F10 (T5), F2 (with `opts.knots_from`), F2b, F5–F7 (join test on the cylinder
+fixture); caching per contract §7; t_max,i = d_close − eps_fit/2 (F2b,
 Open item 3).
 
 Files: `src/+mwecmass/+realise/+modular_precast/solve.m` (rewrite), new `stage3_report.m`.
@@ -367,7 +370,8 @@ after T6.**
 ### T7 — Thin-shell rebuild on the kernel (Sonnet high)
 
 Contract: implements F14 for thin shell (S8 with `ballast`, `shell`, `air`, including the F11 and F13
-calls); consumes F2, F2b, F5–F7 (SK until J1), F9 and F10 (SK until J2), `config.hull_solid`; caching per
+calls); consumes F2 (with `opts.knots_from`), F2b, F5–F7 (SK until J1; join test on the cylinder
+fixture), F9 and F10 (SK until J2), `config.hull_solid`; caching per
 contract §7; t_max = d_close − eps_fit/2 (F2b, Open item 3).
 
 Also in T7: evaluate coupled periods in the objective (I20), and replace the fallback to Stage 2
@@ -437,7 +441,8 @@ the analytic value.
 
 ### T10 — Stage-3 STEP exports (Sonnet high)
 
-Contract: implements F11 and `out.save.stage3.step`; consumes S4, S8 (SK `sti_realised`), T9 `write_step`.
+Contract: implements F11 and `out.save.stage3.step` (also in `dispatch.m` `validate_save_flags`, after T8,
+§4); consumes S4, S8 (SK `sti_realised`), T9 `write_step`.
 
 Files: realisation `run.m` files, `WEC_Output_Options.m` (new `out.save.stage3.step_*`
 switches), `src/+mwecmass/+output/+step/` builders.
