@@ -82,7 +82,7 @@ for c = 1:size(cases, 1)
         worst.closure = max(worst.closure, err / reg.V_module(i));
     end
     if isfinite(body.analytic.d(1)) && zb == fx.z(1) + body.analytic.d(1)
-        check_ballast_at_z_lo(body, label, reg, bp, so);
+        check_ballast_at_z_lo(body, label, bp, so);
         n_at_zlo = n_at_zlo + 1;
     end
     hl = sti_closed_form('hull', fx);
@@ -174,7 +174,7 @@ fprintf('F6b side: %d side/height checks, largest |outer above - outer below| %.
 expect_error(@() mwecmass.solid.body_section(body, -0.5, 'left'), 'mwecmass:solid:BadSide');
 end
 
-function check_ballast_at_z_lo(body, label, reg, bp, so)
+function check_ballast_at_z_lo(body, label, bp, so)
 % contract S3, S4: at z_ballast = inner z_lo no inner face lies at that height; the ballast_top
 % faces are the only faces in that plane
 zb = body.design.z_ballast;
@@ -212,7 +212,7 @@ lo = arrayfun(@(k) min(body.brep.surfaces{faces(k).surface}.ctrl(:, 1, 3)), inn)
 hi = arrayfun(@(k) max(body.brep.surfaces{faces(k).surface}.ctrl(:, 1, 3)), inn);
 check(numel(inn) == 4 && all(lo == zb) && all(hi == body.design.edges(2)), ...
     '%s: inner faces of module 1 (%d) do not start at z_ballast (%.17g, lo %s)', label, numel(inn), zb, mat2str(lo, 17));
-% region volumes of module 1: full section below z_ballast, wall of section A - A_in above
+% region volumes of module 1: full section below z_ballast, shell of section A - A_in around the air above
 e = body.design.edges;
 si = sti_closed_form('section', body.analytic.fixture, body.analytic.d(1));
 bound = 16 * eps * so.A * (abs(zb) + abs(e(1)) + abs(e(2)));

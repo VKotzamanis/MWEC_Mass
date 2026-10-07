@@ -4,7 +4,8 @@ function body = build_body(geo, design, inner)
 %   body = mwecmass.solid.build_body(geo, design, inner)
 %
 %   geo: S1b with geo.analytic set (stand-in F1), else mwecmass:standin:NotAnalytic. inner: S2 sets
-%   (stand-in F2 for the cylinder, sti_inner_box for the box), one per distinct t of design.t.
+%   (the F2 stand-in, which returns sti_inner_box for the box, or sti_inner_box directly), one
+%   per distinct t of design.t.
 %   Layout of contract S3 (module air intervals from sti_closed_form 'layout'); faces per mode as
 %   in S4. Every face is built once, edges and vertices are shared by index. Lateral faces are the
 %   u-degree-1 patches cut at their knot rows (c0_u: every interior knot of degree 1) and at the

@@ -3,9 +3,9 @@ function [inner, rep] = offset_surface(model, cache, geo, t, z_range, opts) %#ok
 %
 %   [inner, rep] = mwecmass.solid.offset_surface(model, cache, geo, t, z_range, opts)
 %
-%   geo must carry geo.analytic (stand-in F1 of cylinder.ms2), else mwecmass:standin:NotAnalytic.
-%   opts.t_min sets eps_fit = 0.01 t_min and d = t + eps_fit/2 (contract section 0). The inner
-%   surface is the cylinder of radius R - d between z0 + d and z1 - d: source, the normal offset of
+%   geo must carry geo.analytic (stand-in F1 of cylinder.ms2 or box.ms2), else mwecmass:standin:NotAnalytic.
+%   opts.t_min sets eps_fit = 0.01 t_min and d = t + eps_fit/2 (contract section 0). For the
+%   cylinder, the inner surface is the cylinder of radius R - d between z0 + d and z1 - d: source, the normal offset of
 %   the side by d and of the end disks by d, which meet at the sharp rims (convex creases) without
 %   a fold (contract section 3, Stand-in kit SK). The rims are u-creases, so every quarter patch
 %   gives three crease pieces (bottom disk, side, top disk), each its own patch in the parent's
