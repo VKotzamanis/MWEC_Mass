@@ -207,8 +207,10 @@ outward, continuous across patch seams; exact symmetry under the deck's mirror p
 
 ### SK2 — Stand-ins follow the general-hulls amendment (Sonnet high)
 
-Contract: §3 SK2 and §6. Edits `tests/standins/*` and the SK tests that mirror the changed items
-(`tests/standin_kit/test_sk_outer_nurbs.m`, `test_sk_offset_slice.m`); nothing in `src/`. Runs right
+Contract: §3 SK2 and §6. Edits `tests/standins/*` (among them `fixtures/sti_closed_form.m`, its
+`layout`, and `+mwecmass/+solid/build_body.m`) and the SK tests that mirror the changed items
+(`tests/standin_kit/test_sk_outer_nurbs.m`, `test_sk_offset_slice.m`, `test_sk_body.m`); nothing in
+`src/`. Runs right
 after the general-hulls amendment (owner, 2026-10-07: "No it needs to be generalized.") merges,
 before J1.
 
@@ -223,12 +225,26 @@ before J1.
   carry `flat` (empty).
 - F2 stand-in: the box returns `sti_inner_box(geo, t, opts.t_min)` (the set the real F2 must equal,
   T2a) instead of `FitNotConverged`; that branch and the assertion on it are retired.
+- Ballast at the inner `z_lo` (contract S3, S4: one rule at equality, both modes). In
+  `sti_closed_form`'s `layout`, a module whose air interval starts at a = `z_ballast` = inner `z_lo`
+  gets the bottom `'ballast_top'`, not `'inner'`: outside the precast module-edge branch (which
+  already gives `'ballast_top'` when a = `z_ballast`), the test a == `z_ballast` comes before
+  a == `z_lo`. The `build_body` stand-in then writes no inner bottom disk at that height; in thin
+  shell it splits `ballast_top` into an annulus (ballast/shell) and a disk (ballast/air), in precast
+  it writes the void-bottom disk (uhpc/air) as `ballast_top`. `build_body.m` changes only where it
+  does not already follow from the layout (today it does: it writes the inner disk only for the
+  bottom `'inner'`). `test_sk_body` adds one case per mode with `z_ballast` = inner `z_lo` of module
+  1 (above its bottom edge).
 
 Acceptance: every SK test passes with the field-set assertions extended by the new fields and the
 box assertion replaced by a comparison with `sti_inner_box`; F6b at a module edge of a stand-in
 body gives the module above by default and the module below with `'below'`, the same outer loop;
-`outer_nurbs(model, [], struct())` equals `outer_nurbs(model)` for both fixtures; the SK acceptance
-items of contract §3 still hold.
+`outer_nurbs(model, [], struct())` equals `outer_nurbs(model)` for both fixtures; in the new
+`test_sk_body` cases (cylinder and box, each mode) no face with role `inner` lies at the height
+`z_ballast` (no constant-z inner face there), the faces at that height are, in thin shell, one
+`ballast_top` annulus (ballast/shell) and one `ballast_top` disk (ballast/air) and, in precast, one
+`ballast_top` disk (uhpc/air), every closed shell passes `validate_brep`, and the region volumes
+equal `sti_closed_form` and sum to V_module (I1); the SK acceptance items of contract §3 still hold.
 
 ### T2a — Kernel B, exact path: normal offset, fold trimming, spline surfaces (Sonnet high)
 
@@ -453,6 +469,13 @@ in [t, t + ε], since the outer faces are exact (e = 0), and its difference from
 t_local is printed per face. The test helper's breps of the outer faces and of the inner faces each
 pass `validate_brep`, are written with `write_step` and pass `tests/step_check.py` (one closed
 solid, METRE); the outer volume is printed next to 22.08 m³, the inner volume printed.
+
+Heights (contract F1: heights are compared bitwise, nearby heights are never merged). For C1, both
+SK fixtures and every fixture of this task, with and without `opts.force_general`, the tests print
+the distinct patch-corner and band-end heights of the returned `geo` and every pair of them that
+differ bitwise but lie closer than T1's 16-ulp bound, |h1 − h2| ≤ 16·eps(max(1, |h1|, |h2|)), with
+the source of each height (a corner of entry k, or the band-end rule that set it); printed, not
+asserted (rule 5), so the owner sees any near-coincident heights that would cut a sliver piece.
 
 ### T3 — Kernel C: bodies and exact properties (Sonnet high)
 
@@ -757,8 +780,11 @@ check that no shape-assumption pattern remains (`grep` for `sqrt(.*/pi)`, `pi\s*
 Contract: documents S1–S8 and F1–F14 as implemented; last in the contract §4 order of every doc file.
 
 Rewrite the methods, runtime and schema sections listed under D12; document the kernel, the new
-Stage 3, the status/report fields and the STEP outputs; update `CHANGELOG.md`, `AGENTS.md` and the folders table of `tests/README.md` (`tests/solid/`,
-`tests/standins/`, `tests/standin_kit/`).
+Stage 3, the status/report fields and the STEP outputs; update `CHANGELOG.md`, `AGENTS.md` and the
+folders table of `tests/README.md`: a row for every folder under `tests/` that the table does not
+list yet (at least `solid/`, `standins/`, `standin_kit/` and `realise/`, which T5 and T7 add), and
+the rows of folders whose contents changed since their row was written; last in the contract §4
+order of `tests/README.md`.
 
 ### T13 — Final review (Opus high)
 
