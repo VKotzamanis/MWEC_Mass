@@ -234,7 +234,6 @@ function report_stage2_summary(stage2_data, fids)
     mwecmass.output.emit(fids, '\n=== STAGE 2 SUMMARY ===\n\n');
     mwecmass.output.emit(fids, '  Convergence: %d\n', stage2_data.converged);
     mwecmass.output.emit(fids, '\n  Constraints:\n');
-    mwecmass.output.emit(fids, '    Monotonic density: %d\n', qm.monotonic);
     mwecmass.output.emit(fids, '    Mass balance: %d (error: %.2e kg)\n', qm.mass_balance, qm.mass_balance_error_kg);
     mwecmass.output.emit(fids, '    GM constraint: %d (margin: %.3f m)\n', qm.GM_satisfied, qm.GM_margin);
     mwecmass.output.emit(fids, '\n  Solver:\n');

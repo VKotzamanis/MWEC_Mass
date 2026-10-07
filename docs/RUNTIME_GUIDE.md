@@ -168,7 +168,10 @@ optional post-processing diagnostics
 The default BEM branch loads and validates the WAMIT-format cache. When
 `in.bem.run_HAMS_MREL = true`, the alternative branch creates/updates a cache in the configured
 HAMS workspace before optimisation. Stage 1 generates a warm start; Stage 2 solves the full 3-D
-problem; the selected realiser converts equivalent strip densities to physical material geometry.
+problem from two starts, the Stage-1 result and a bottom-filled design at the Stage-1 draft. Among the
+starts that end within the solver's constraint tolerance it keeps the one with the lower objective; when
+no start ends within it, it keeps the one with the smallest constraint violation. The selected realiser
+converts equivalent strip densities to physical material geometry.
 Output selection occurs after the calculation and does not alter the optimised values.
 
 ## 5. Coordinates, signs, units, and degrees of freedom
@@ -251,8 +254,8 @@ The authoritative definitions are in `WEC_User_Input.m`; propagation and validat
 | `in.materials.thin_shell.rho_shell` | `7500` | positive double scalar | kg/m³ | Structural shell density. |
 | `in.materials.thin_shell.rho_air` | `1.2` | nonnegative double scalar | kg/m³ | Void/air density in the thin-shell model. |
 | `in.materials.thin_shell.rho_ballast` | `rho_shell` | double scalar | kg/m³ | Solid ballast density; must be `>= rho_shell` for the monotone analytic warm-start seed. |
-| `in.materials.thin_shell.t_init` | `0.02` | positive double scalar | m | Initial thickness guess; it may be below `t_min` because it is a numerical seed. |
-| `in.materials.thin_shell.t_min` | `0.025` | positive double scalar | m | Minimum shell thickness. |
+| `in.materials.thin_shell.t_init` | `thin_shell.t_min` (0.0254) | positive double scalar | m | Initial thickness guess; one inch, the same value as `t_min`. |
+| `in.materials.thin_shell.t_min` | `0.0254` | positive double scalar | m | Minimum shell thickness (one inch), set by the user. Used by Stage 3 only; the thin-shell Stage-2 density floors do not use it yet. |
 | `in.materials.thin_shell.max_slope_factor` | `5.0` | positive double scalar | - | Limit controlling thickness taper with hull slope. |
 | `in.materials.thin_shell.n_z_grid` | `300` | positive integer scalar | count | Vertical integration/solve grid. |
 | `in.materials.modular_precast.rho_hull` | `2500` | positive double scalar | kg/m³ | UHPC density. |
@@ -268,7 +271,7 @@ The authoritative definitions are in `WEC_User_Input.m`; propagation and validat
 
 | Field | Default | Type / shape | Units | Allowed values, dependencies, and behavior |
 |---|---:|---|---|---|
-| `in.bounds.ballast_density_bounds` | `[20,2500]` | double `[1x2]` | kg/m³ | Ordered `[lo,hi]` bound applied to every strip; constructability may tighten individual bounds. |
+| `in.bounds.ballast_density_bounds` | `[20,2500]` | double `[1x2]` | kg/m³ | Ordered `[lo,hi]` bound applied to every strip; constructability may tighten individual bounds. The lower value applies in every mode. The upper value applies to `preliminary` only: thin shell takes `thin_shell.rho_ballast` and modular precast takes `modular_precast.rho_hull` as the upper bound. |
 | `in.bounds.max_density_ratio` | `100.0` | double scalar | - | Must be `>=1`; limits each adjacent downward-to-upward ratio using the live guarded expression `rho_i/(rho_(i+1)+1 kg/m^3)`. See `METHODS_ENGINE.md` for the constraint definition. |
 | `in.bounds.vertical_shift_bounds` | `[]` | empty or double `[1x2]` | m | `[]` auto-selects `[-hull_z_max+0.1, -hull_z_min-0.1]`; otherwise an ordered manual `[lo,hi]`. These are shifts, not drafts. |
 | `in.targets.T_heave_goal` | `7.77` | positive double scalar | s | Heave natural-period design target. |
