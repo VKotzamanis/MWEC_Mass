@@ -221,10 +221,11 @@ Files: `src/+mwecmass/+solid/offset_surface.m`, `trim_fold.m`, `fit_bspline_surf
 - Slice the fitted surface at any height into an ordered closed contour.
 
 Acceptance: M1–M3 pass on a dense check grid not used for fitting (report min / max t_local, the
-number of refinement passes and knots per face); creases present where the C1 shoulder fold is
-trimmed; C1 at t = 0.0762 m compared with the Python reference half-widths per height and with
-the independent erosion result for module 4 (void 3.548 m³ with the v1.0 module edges and
-`z_ballast`); a slender-section case (thin-shell neck, t = 0.025 m) passes M3.
+number of refinement passes and knots per face); fold trimming and crease splitting tested where
+folds occur (C1 at t ≥ 0.100 m, and a stand-in fixture with a convex radius below t); C1 at
+t = 0.0762 m compared with the Python reference half-widths per height and with the independent
+erosion result for module 4 (void 3.548 m³ with the v1.0 module edges and `z_ballast`); a
+slender-section case (thin-shell neck, t = 0.025 m) passes M3.
 
 ### T3 — Kernel C: bodies and exact properties (Sonnet high)
 
@@ -338,7 +339,7 @@ table; `final_props` never contains Stage-2 values for this mode.
 Contract: extends F14 (precast escalation, closest fail) and fills S8 `escalation`, `solver`, `check`;
 consumes S8, F9, F10 (T5), F2 (with `opts.knots_from`), F2b, F5–F7 (join test on the cylinder
 fixture); caching per contract §7; t_max,i = d_close − eps_fit/2 (F2b,
-Open item 3).
+contract §8).
 
 Files: `src/+mwecmass/+realise/+modular_precast/solve.m` (rewrite), new `stage3_report.m`.
 
@@ -372,7 +373,7 @@ after T6.**
 Contract: implements F14 for thin shell (S8 with `ballast`, `shell`, `air`, including the F11 and F13
 calls); consumes F2 (with `opts.knots_from`), F2b, F5–F7 (SK until J1; join test on the cylinder
 fixture), F9 and F10 (SK until J2), `config.hull_solid`; caching per
-contract §7; t_max = d_close − eps_fit/2 (F2b, Open item 3).
+contract §7; t_max = d_close − eps_fit/2 (F2b, contract §8).
 
 Also in T7: evaluate coupled periods in the objective (I20), and replace the fallback to Stage 2
 with the closest-fail rule (OD4): flagged status, per-metric report, plotted, stored in

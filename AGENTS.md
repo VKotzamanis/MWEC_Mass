@@ -34,7 +34,8 @@ call a shell a wall.
 3. **Shell thickness is a normal thickness.** The inner surface of the shell is the outer surface
    offset by t along the surface normal n = S_u × S_v / |S_u × S_v|. Build it from offset nodes
    and fit a new spline through them (owner's preferred method). Trim the fold where the offset overlaps itself
-   (convex regions with curvature radius < t, e.g. the C1 shoulder corner, radius ≈ 40 mm).
+   (convex regions with principal curvature radius < t; on C1 only from t = 0.100 m on, at the top
+   arc and the neck ends: the smallest convex radius is 0.100 m, so no fold at 25.4 or 76.2 mm).
 4. **t_min is a floor, not a fixed value.** Per-module shell thickness t_i ≥ t_min stays a design
    variable. Below the ballast level the section is solid and t_min does not apply there.
 5. **No invented tolerances.** Stage-3 acceptance uses `in.pid.mass_acceptable_pct` (10 %).
@@ -349,8 +350,8 @@ their mean (assumes star-shaped sections); CG_x = CG_y = 0 (declared symmetric-b
    insertion and knot removal, after Piegl & Tiller, *The NURBS Book*, 2nd ed., 1997, ch. 5 and 9):
    1. Place initial nodes densely where the outer surface curves sharply or the void is narrow.
    2. Offset the nodes by t + ε/2 along the exact normal, trim the fold, and **split the face
-      along any crease** the trimming leaves (e.g. behind the C1 shoulder corner) instead of
-      forcing one smooth spline across it — a smooth spline across a crease overshoots.
+      along any crease** the trimming leaves instead of forcing one smooth spline across it — a
+      smooth spline across a crease overshoots.
    3. Fit cubic B-splines through the nodes; check them on dense points *between* the nodes.
    4. Metrics the algorithm judges at every check point:
       - **M1 (hard):** local normal thickness t_local ≥ t_min.
