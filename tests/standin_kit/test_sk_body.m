@@ -40,7 +40,12 @@ cases = {
     gc, ic, 'modular_precast', [-3; -3 + d1; -1; 0; 1], [0.1; 0.1; 0.1; NaN], -3, 4, 'cylinder precast, inner z_lo on a module edge'
     gc, ic, 'modular_precast', [-3; -2; 1 - d1; 1], [0.1; 0.1; 0.1], -2.5, [], 'cylinder precast, inner z_hi on a module edge'
     gc, ic, 'modular_precast', [-3; -2; 1 - d2; 1], [0.1; 0.2; 0.1], -2.5, [], 'cylinder precast, thicker lower z_hi on a joint'
+    gc, ic, 'modular_precast', ec, [0.1; 0.1; 0.2; NaN], ic(1).z_lo, 4, 'cylinder precast, z_ballast = inner z_lo of module 1'
+    gc, ic, 'thin_shell', ec, 0.1 * ones(4, 1), ic(1).z_lo, [], 'cylinder thin shell, z_ballast = inner z_lo of module 1'
+    gb, ib, 'modular_precast', eb, [0.1; 0.15; NaN], ib(1).z_lo, 3, 'box precast, z_ballast = inner z_lo of module 1'
+    gb, ib, 'thin_shell', eb, 0.1 * ones(3, 1), ib(1).z_lo, [], 'box thin shell, z_ballast = inner z_lo of module 1'
     };
+n_at_zlo = 0;
 worst = struct('closure', 0, 'hull', 0, 'occ', 0, 'section', 0);
 for c = 1:size(cases, 1)
     [geo, sets, mode, edges, t, zb, solid, label] = cases{c, :};
@@ -75,6 +80,10 @@ for c = 1:size(cases, 1)
         err = abs(Vsum - reg.V_module(i));
         check(err <= bound, '%s: module %d volume closure %.3e > %.3e', label, i, err, bound);
         worst.closure = max(worst.closure, err / reg.V_module(i));
+    end
+    if isfinite(body.analytic.d(1)) && zb == fx.z(1) + body.analytic.d(1)
+        check_ballast_at_z_lo(body, label, reg, bp, so);
+        n_at_zlo = n_at_zlo + 1;
     end
     hl = sti_closed_form('hull', fx);
     err = abs(sum(reg.V_module) - hl.V);
@@ -134,6 +143,7 @@ for c = 1:size(cases, 1)
         end
     end
 end
+check(n_at_zlo == 4, 'expected four cases with z_ballast = inner z_lo, ran %d', n_at_zlo);
 fprintf('largest relative volume closure error per module %.3e, sum of modules vs hull %.3e\n', worst.closure, worst.hull);
 fprintf('largest |OCC getMass - closed form| / closed form %.3e (printed, not asserted)\n', worst.occ);
 fprintf('largest relative difference of F6b void areas from the closed form %.3e\n', worst.section);
@@ -142,6 +152,130 @@ body = mwecmass.solid.build_body(gc, struct('mode', 'thin_shell', 'edges', ec, '
     't', 0.1 * ones(4, 1), 'z_ballast', -2.5, 'solid_modules', []), ic);
 sec = mwecmass.solid.body_section(body, -2.7);
 check(sec.solid && sec.module == 1, 'section below the ballast top is solid');
+
+% F6b side: 'above' is the default and the half-open rule, 'below' the faces and module below
+% a module edge or z_ballast; heights: z_min, z_ballast, module edges, z_max
+designs = {
+    gc, ic, struct('mode', 'modular_precast', 'edges', ec, 'vs', 0.5, 't', [0.1; 0.2; 0.1; NaN], 'z_ballast', -2.5, 'solid_modules', 4)
+    gb, ib, struct('mode', 'modular_precast', 'edges', eb, 'vs', 0.5, 't', [0.1; 0.15; NaN], 'z_ballast', -2, 'solid_modules', 3)
+    gc, ic, struct('mode', 'thin_shell', 'edges', ec, 'vs', 0.5, 't', 0.1 * ones(4, 1), 'z_ballast', -1, 'solid_modules', [])
+    gb, ib, struct('mode', 'thin_shell', 'edges', eb, 'vs', 0.5, 't', 0.15 * ones(3, 1), 'z_ballast', -1, 'solid_modules', [])
+    };
+worst_side = 0;
+n_side = 0;
+for c = 1:size(designs, 1)
+    body = mwecmass.solid.build_body(designs{c, 1}, designs{c, 3}, designs{c, 2});
+    [w, n] = check_sides(body);
+    worst_side = max(worst_side, w);
+    n_side = n_side + n;
+end
+fprintf('F6b side: %d side/height checks, largest |outer above - outer below| %.3e (relative to the section area)\n', ...
+    n_side, worst_side);
+expect_error(@() mwecmass.solid.body_section(body, -0.5, 'left'), 'mwecmass:solid:BadSide');
+end
+
+function check_ballast_at_z_lo(body, label, reg, bp, so)
+% contract S3, S4: at z_ballast = inner z_lo no inner face lies at that height; the ballast_top
+% faces are the only faces in that plane
+zb = body.design.z_ballast;
+faces = body.brep.faces;
+precast = strcmp(body.design.mode, 'modular_precast');
+at = [];
+inner_at = false;
+for k = 1:numel(faces)
+    s = body.brep.surfaces{faces(k).surface};
+    if strcmp(s.type, 'plane')
+        const = s.origin(3) == zb;
+    else
+        const = all(all(s.ctrl(:, :, 3) == zb));
+    end
+    if const
+        at(end + 1) = k; %#ok<AGROW>
+        inner_at = inner_at || strcmp(faces(k).role, 'inner');
+    end
+end
+check(~inner_at, '%s: an inner face lies at z_ballast', label);
+roles = {faces(at).role};
+check(all(strcmp(roles, 'ballast_top')), '%s: faces at z_ballast: %s', label, strjoin(roles, ' '));
+loops = arrayfun(@(k) numel(faces(k).loops), at);
+pair = arrayfun(@(k) [faces(k).inside '/' faces(k).outside], at, 'UniformOutput', false);
+if precast
+    check(numel(at) == 1 && strcmp(pair{1}, 'uhpc/air') && loops == 1, '%s: expected one uhpc/air disk, got %s', label, strjoin(pair, ' '));
+else
+    [~, o] = sort(pair);
+    check(numel(at) == 2 && isequal(pair(o), {'ballast/air', 'ballast/shell'}) && isequal(loops(o), [1 2]), ...
+        '%s: expected a ballast/shell annulus and a ballast/air disk, got %s', label, strjoin(pair, ' '));
+end
+% the lateral inner faces of module 1 start at z_ballast and are whole (one face per patch)
+inn = find(arrayfun(@(f) strcmp(f.role, 'inner') && f.module(1) == 1, faces));
+lo = arrayfun(@(k) min(body.brep.surfaces{faces(k).surface}.ctrl(:, 1, 3)), inn);
+hi = arrayfun(@(k) max(body.brep.surfaces{faces(k).surface}.ctrl(:, 1, 3)), inn);
+check(numel(inn) == 4 && all(lo == zb) && all(hi == body.design.edges(2)), ...
+    '%s: inner faces of module 1 (%d) do not start at z_ballast (%.17g, lo %s)', label, numel(inn), zb, mat2str(lo, 17));
+% region volumes of module 1: full section below z_ballast, wall of section A - A_in above
+e = body.design.edges;
+si = sti_closed_form('section', body.analytic.fixture, body.analytic.d(1));
+bound = 16 * eps * so.A * (abs(zb) + abs(e(1)) + abs(e(2)));
+below = so.A * (zb - e(1));
+if precast
+    check(abs(bp.modules(1).V_uhpc - (below + (so.A - si.A) * (e(2) - zb))) <= bound, '%s: uhpc volume of module 1', label);
+    check(abs(bp.modules(1).V_air - si.A * (e(2) - zb)) <= bound, '%s: air volume of module 1', label);
+else
+    check(abs(bp.modules(1).V_ballast - below) <= bound, '%s: ballast volume of module 1', label);
+    check(abs(bp.modules(1).V_shell - (so.A - si.A) * (e(2) - zb)) <= bound, '%s: shell volume of module 1', label);
+    check(abs(bp.modules(1).V_air - si.A * (e(2) - zb)) <= bound, '%s: air volume of module 1', label);
+end
+fprintf('%-70s faces at z_ballast: %s\n', label, strjoin(pair, ', '));
+end
+
+function [worst, n] = check_sides(body)
+% F6b at the heights where the side matters, against the layout of the closed form
+fx = body.analytic.fixture;
+e = body.design.edges(:);
+N = numel(e) - 1;
+d = body.analytic.d;
+lay = sti_closed_form('layout', fx, body.design, d);
+zs = unique([e; body.design.z_ballast]);
+zs = zs(zs >= e(1) & zs <= e(end))';
+worst = 0;
+n = 0;
+for z = zs
+    for side = {'above', 'below'}
+        s = side{1};
+        sec = mwecmass.solid.body_section(body, z, s);
+        if strcmp(s, 'above')
+            m = find(e(1:N) <= z & z < e(2:N + 1), 1);
+            if isempty(m), m = N; end
+        else
+            m = find(e(1:N) < z & z <= e(2:N + 1), 1);
+            if isempty(m), m = 1; end
+        end
+        check(sec.module == m, 'z = %g %s: module %d, expected %d', z, s, sec.module, m);
+        if strcmp(s, 'above')
+            air = lay(m).air && lay(m).a <= z && z < lay(m).b;
+        else
+            air = lay(m).air && lay(m).a < z && z <= lay(m).b;
+        end
+        check(sec.solid == ~air, 'z = %g %s: solid flag', z, s);
+        so = sti_closed_form('section', fx, 0);
+        check(abs(sec.outer.area - so.A) <= 64 * eps * so.A, 'z = %g %s: outer area', z, s);
+        if air
+            si = sti_closed_form('section', fx, d(m));
+            check(abs(sec.inner.area - si.A) <= 64 * eps * si.A, 'z = %g %s: inner area', z, s);
+        else
+            check(isempty(sec.inner), 'z = %g %s: inner loop of a solid section', z, s);
+        end
+        n = n + 1;
+    end
+    a = mwecmass.solid.body_section(body, z);
+    b = mwecmass.solid.body_section(body, z, 'above');
+    check(isequal(a, b), 'z = %g: the default side is not above', z);
+    below = mwecmass.solid.body_section(body, z, 'below');
+    worst = max(worst, abs(a.outer.area - below.outer.area) / a.outer.area);
+    pa = sortrows(a.outer.pts);
+    pb = sortrows(below.outer.pts);
+    check(isequal(pa, pb), 'z = %g: outer loops of the two sides differ', z);
+end
 end
 
 function n = shared_edges(brep)
@@ -202,6 +336,16 @@ addpath(fullfile(root, 'src'));
 addpath(fullfile(root, 'tests', 'step'));
 addpath(fullfile(root, 'tests', 'standins'), '-end');
 addpath(fullfile(root, 'tests', 'standins', 'fixtures'), '-end');
+end
+
+function expect_error(f, id)
+try
+    f();
+catch err
+    check(strcmp(err.identifier, id), 'expected %s, got %s', id, err.identifier);
+    return
+end
+error('test_sk_body:fail', 'expected error %s', id);
 end
 
 function check(cond, varargin)

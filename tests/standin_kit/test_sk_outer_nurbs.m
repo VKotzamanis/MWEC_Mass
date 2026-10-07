@@ -6,13 +6,21 @@ function test_sk_outer_nurbs()
 root = fileparts(fileparts(fileparts(mfilename('fullpath'))));
 setup(root);
 s1_fields = {'name', 'source', 'type', 'flips', 'surf', 'outward', 'exact', 'z_of_u', 'u_range', ...
-    'z_range', 'offset_kind', 'pole', 'c0_u', 'c0_v', 'seam_u0', 'seam_u1', 'seam_v0', 'seam_v1'};
+    'z_range', 'offset_kind', 'pole', 'c0_u', 'c0_v', 'seam_u0', 'seam_u1', 'seam_v0', 'seam_v1', ...
+    'visible', 'fit', 'swap_uv'};
 for name = {'cylinder', 'box'}
     evalc('model = mwecmass.geometry.MS2Parser.parse(fullfile(root, ''tests'', ''standins'', ''fixtures'', [name{1} ''.ms2'']));');
     geo = mwecmass.solid.outer_nurbs(model);
-    check(isequal(sort(fieldnames(geo))', sort({'hull_name', 'outer', 'z_range', 'analytic'})), 'S1b fields');
+    check(isequal(sort(fieldnames(geo))', sort({'hull_name', 'outer', 'z_range', 'analytic', 'flat'})), 'S1b fields');
     check(isequal(sort(fieldnames(geo.outer))', sort(s1_fields)), 'S1 fields');
     check(strcmp(geo.hull_name, name{1}) && isequal({geo.outer.name}, model.visible_surfs), 'names in visible order');
+    check(isempty(geo.flat), 'flat is empty');
+    check(isequal([geo.outer.visible], 1:numel(geo.outer)) && all(cellfun(@isempty, {geo.outer.fit})) && ...
+        ~any([geo.outer.swap_uv]), 'visible = k, fit empty, swap_uv false');
+    % F1 with cache and opts (the general-path inputs) ignores them
+    check(isequaln(geo, mwecmass.solid.outer_nurbs(model, [], struct())) && ...
+        isequaln(geo, mwecmass.solid.outer_nurbs(model, struct('unused', 1), struct('t_min', 0.1, 'max_passes', 3, 'force_general', true))), ...
+        '%s: outer_nurbs(model, cache, opts) differs from outer_nurbs(model)', name{1});
     fx = geo.analytic;
     hl = sti_closed_form('hull', fx);
     worst_eval = 0;

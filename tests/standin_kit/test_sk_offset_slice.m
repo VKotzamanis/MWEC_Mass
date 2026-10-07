@@ -33,7 +33,9 @@ t = 0.1;
 [inner, rep] = mwecmass.solid.offset_surface(mc, [], gc, t, [-3 1], opts);
 d = t + 0.01 * t_min / 2;
 check(inner.d == d && inner.eps_fit == 0.01 * t_min && numel(inner.patches) == 12, 'F2 set fields');
-check(isequal(sort(fieldnames(inner))', sort({'t', 'd', 'eps_fit', 'z_range', 'z_lo', 'refit', 'patches', 'report'})), 'S2 fields');
+check(isequal(sort(fieldnames(inner))', sort({'t', 'd', 'eps_fit', 'z_range', 'z_lo', 'refit', 'patches', 'flat', 'report'})), 'S2 fields');
+check(isempty(inner.flat) && isequal([inner.patches.visible], ceil((1:12) / 3)) && ...
+    all(cellfun(@isempty, {inner.patches.fit})) && ~any([inner.patches.swap_uv]), 'S2 flat, visible, fit, swap_uv');
 check(isequal(rep, inner.report) && rep.ok && ~rep.cap_reached && all([rep.patches.t_local_min] == d), 'S2r report');
 check(isequal(inner.z_range, [-3 + d, 1 - d]) && inner.z_lo == -3 + d, 'S2 z range');
 Li = mwecmass.solid.slice_bspline_surface(inner.patches, -1);
@@ -68,10 +70,21 @@ fprintf('F2b: cylinder d_close %.17g (R = 1.5, H/2 = 2), box %.17g\n', d_close, 
     mwecmass.solid.void_closing_distance(mb, [], gb, [-2.5 0.5]));
 check(d_close == 1.5 && mwecmass.solid.void_closing_distance(mb, [], gb, [-2.5 0.5]) == 0.75, 'F2b closed form');
 expect_error(@() mwecmass.solid.offset_surface(mc, [], gc, 1.5, [-3 1], opts), 'mwecmass:solid:VoidClosed');
-expect_error(@() mwecmass.solid.offset_surface(mb, [], gb, 0.1, [-2.5 0.5], opts), 'mwecmass:solid:FitNotConverged');
+
+% F2 on the box is sti_inner_box (the set the real F2 must equal)
+ib = sti_inner_box(gb, t, t_min);
+[ibf, ibr] = mwecmass.solid.offset_surface(mb, [], gb, t, [-2.5 0.5], opts);
+check(isequal(ibf, ib) && isequal(ibr, ib.report), 'F2 on the box differs from sti_inner_box');
+ibk = mwecmass.solid.offset_surface(mb, [], gb, t, [-2.5 0.5], setfield(opts, 'knots_from', ib));
+check(ibk.refit && isequal(rmfield(ibk, 'refit'), rmfield(ib, 'refit')), 'F2 on the box with knots_from');
+check(isequal(sort(fieldnames(ib))', sort({'t', 'd', 'eps_fit', 'z_range', 'z_lo', 'refit', 'patches', 'flat', 'report'})) && ...
+    isempty(ib.flat) && isequal([ib.patches.visible], 1:6) && all(cellfun(@isempty, {ib.patches.fit})) && ...
+    ~any([ib.patches.swap_uv]), 'S2 fields of the box set');
+expect_error(@() mwecmass.solid.offset_surface(mb, [], gb, 0.75, [-2.5 0.5], opts), 'mwecmass:solid:VoidClosed');
+expect_error(@() mwecmass.solid.offset_surface(mb, [], gb, 0.1, [-3 0.5], opts), 'mwecmass:solid:ZOutside');
+fprintf('F2 on the box equals sti_inner_box (isequal, bitwise)\n');
 
 % sti_inner_box
-ib = sti_inner_box(gb, t, t_min);
 Lb = mwecmass.solid.slice_bspline_surface(ib.patches, -1);
 check(compare(Lb, sti_closed_form('section', gb.analytic, d)) <= 64 * eps, 'inner box section');
 check(numel(ib.patches) == 6 && all([ib.patches.outward] == ~[gb.outer.outward]), 'inner box patches');

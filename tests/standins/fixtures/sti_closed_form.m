@@ -147,6 +147,7 @@ P = repmat(empty_patch(), 1, numel(names));
 for k = 1:numel(names)
     p = empty_patch();
     p.name = names{k};
+    p.visible = k;
     p.flips = fx.surfs(k).flips;
     p.exact = delta == 0;
     p.z_of_u = true;
@@ -234,7 +235,7 @@ function p = empty_patch()
 p = struct('name', '', 'source', '', 'type', '', 'flips', {{}}, 'surf', [], 'outward', false, ...
     'exact', false, 'z_of_u', false, 'u_range', [], 'z_range', [], 'offset_kind', '', ...
     'pole', [false false], 'c0_u', [], 'c0_v', [], 'seam_u0', [], 'seam_u1', [], ...
-    'seam_v0', [], 'seam_v1', []);
+    'seam_v0', [], 'seam_v1', [], 'visible', [], 'fit', [], 'swap_uv', false);
 end
 
 function fl = flip_mask(flips)
@@ -288,17 +289,19 @@ for i = 1:N
         lay(i).b = b;
         lay(i).air = true;
         % precast: a void end on a module edge is a joint face shared by both modules, so the
-        % joint rule wins over the inner end; thin shell has no joint faces and keeps the inner end
+        % joint rule wins over the inner end; thin shell has no joint faces and keeps the inner
+        % end. At z_ballast = z_lo the inner set is cut like at any higher level (contract S3):
+        % the ballast_top face takes the place of the inner end, so a == zb is tested first.
         if precast && a == e(i)
             if a == zb
                 lay(i).bottom = 'ballast_top';
             else
                 lay(i).bottom = 'joint';
             end
-        elseif a == z_lo
-            lay(i).bottom = 'inner';
         elseif a == zb
             lay(i).bottom = 'ballast_top';
+        elseif a == z_lo
+            lay(i).bottom = 'inner';
         else
             lay(i).bottom = 'joint';
         end

@@ -9,8 +9,13 @@ function body = build_body(geo, design, inner)
 %   in S4. Every face is built once, edges and vertices are shared by index. Lateral faces are the
 %   u-degree-1 patches cut at their knot rows (c0_u: every interior knot of degree 1) and at the
 %   planes by knot insertion with alpha from the closed form z(u) of split_bspline_surface; a
-%   collapsed row (pole) is omitted from the loop. Plane faces (caps, joint_step, ballast_top)
-%   take their loops from the rows of the lateral faces at that height. Joint loops of a fixture
+%   collapsed row (pole) is omitted from the loop. A row cut at a plane takes that height bitwise
+%   (knot insertion moves z by rounding only), so the faces' control rows, their loops and the
+%   F6b comparisons with z agree exactly. Plane faces (caps, joint_step, ballast_top)
+%   take their loops from the rows of the lateral faces at that height. At z_ballast equal to the
+%   inner z_lo of a module the layout gives its void bottom as ballast_top, so no inner end disk is
+%   written there; ballast_top is then the void-bottom disk (precast: uhpc/air) or, in thin shell,
+%   an annulus (ballast/shell) and a disk (ballast/air) (contract S3, S4). Joint loops of a fixture
 %   are concentric, so the joint_step nesting of F5 holds by construction (JointNotNested cannot
 %   occur here).
 %
@@ -82,9 +87,14 @@ for p = 1:numel(geo.outer)
         end
         cuts = planes(planes > min(Za, Zb) & planes < max(Za, Zb));
         us = sort([tk(j); tk(j + 1); arrayfun(@(z) u_of_z(s, z), cuts)]);
+        if Za < Zb
+            hz = [Za; sort(cuts(:)); Zb];
+        else
+            hz = [Za; sort(cuts(:), 'descend'); Zb];
+        end
         for q = 1:numel(us) - 1
-            zm = (row_z(s, us(q)) + row_z(s, us(q + 1))) / 2;
-            add_patch_face(piece(s, us(q), us(q + 1)), 'outer', module_of(zm), P.outward, material(zm, false), 'exterior');
+            zm = (hz(q) + hz(q + 1)) / 2;
+            add_patch_face(piece(s, us(q), us(q + 1), hz(q), hz(q + 1)), 'outer', module_of(zm), P.outward, material(zm, false), 'exterior');
         end
     end
 end
@@ -118,7 +128,11 @@ for i = 1:N
             continue
         end
         us = sort([u_of_z(s, lo), u_of_z(s, hi)]);
-        add_patch_face(piece(s, us(1), us(2)), 'inner', i, Q.outward, solid_name, 'air');
+        hz = [lo hi];
+        if Za > Zb
+            hz = [hi lo];
+        end
+        add_patch_face(piece(s, us(1), us(2), hz(1), hz(2)), 'inner', i, Q.outward, solid_name, 'air');
     end
 end
 
@@ -283,7 +297,7 @@ body = struct('design', design, 'inner_t', inner_t, 'planes', planes(:)', ...
             if all(Z == Z(1)) || z < min(Z) || z > max(Z)
                 continue
             end
-            r = piece(sf, u_of_z(sf, z), u_of_z(sf, z));
+            r = piece(sf, u_of_z(sf, z), u_of_z(sf, z), z, z);
             crv = struct('degree', sf.degree(2), 'ctrl', squeeze(r.ctrl(1, :, :)), 'knots', sf.knots{2}, ...
                 'weights', col(r.weights, 'r', 1));
             segs(end + 1) = edge_for(crv); %#ok<AGROW>
@@ -464,10 +478,15 @@ s_ = a0 * (z - Z(i)) / (a0 * (z - Z(i)) + a1 * (Z(i + 1) - z));
 u = t(i + 1) + s_ * (t(i + 2) - t(i + 1));
 end
 
-function r = piece(s, ua, ub)
-% the patch between u = ua and u = ub inside one knot span, by knot insertion (degree 1 in u)
+function r = piece(s, ua, ub, za, zb)
+% the patch between u = ua and u = ub inside one knot span, by knot insertion (degree 1 in u);
+% with za, zb the height of each row is set to the plane height it was cut at
 [ra, wa] = row_at(s, ua);
 [rb, wb] = row_at(s, ub);
+if nargin > 3
+    ra(:, :, 3) = za;
+    rb(:, :, 3) = zb;
+end
 r = s;
 r.ctrl = cat(1, ra, rb);
 r.knots{1} = [ua ua ub ub];

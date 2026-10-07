@@ -1,5 +1,5 @@
 function [inner, rep] = offset_surface(model, cache, geo, t, z_range, opts) %#ok<INUSL>
-%OFFSET_SURFACE  Stand-in of contract F2: the exact S2 inner set of the cylinder fixture.
+%OFFSET_SURFACE  Stand-in of contract F2: the exact S2 inner set of a stand-in fixture.
 %
 %   [inner, rep] = mwecmass.solid.offset_surface(model, cache, geo, t, z_range, opts)
 %
@@ -11,22 +11,26 @@ function [inner, rep] = offset_surface(model, cache, geo, t, z_range, opts) %#ok
 %   gives three crease pieces (bottom disk, side, top disk), each its own patch in the parent's
 %   parameter, normals into the void. The set covers the whole void [z0 + d, z1 - d]; z_range only
 %   has to lie in the hull. The fit report is exact: t_local = d everywhere, no nodes, no passes.
-%   d >= d_close errors mwecmass:solid:VoidClosed. The box errors mwecmass:solid:FitNotConverged:
-%   its vertical corners are C0 v-seams, outside F2's scope (contract section 9 item 1); its inner
-%   set is sti_inner_box. opts.knots_from keeps the same pieces and knot vectors (refit = true).
+%   d >= d_close errors mwecmass:solid:VoidClosed. For the box the set is sti_inner_box (its six
+%   planar faces shifted inward by d), as the real F2 must build it. Each piece carries the `visible`
+%   of the outer entry it is offset from; flat is empty. opts.knots_from keeps the same pieces and
+%   knot vectors (refit = true).
 
 if ~isstruct(geo) || ~isfield(geo, 'analytic') || isempty(geo.analytic)
     error('mwecmass:standin:NotAnalytic', 'offset_surface stand-in: geo.analytic is empty (not a stand-in fixture)');
 end
 standin_path();
 fx = geo.analytic;
-if strcmp(fx.kind, 'box')
-    error('mwecmass:solid:FitNotConverged', ['offset_surface stand-in: the box corners are C0 v-seams, ' ...
-        'outside F2''s scope; use sti_inner_box']);
-end
 zr = sort(z_range(:)');
 if numel(zr) ~= 2 || zr(1) < fx.z(1) || zr(2) > fx.z(2)
     error('mwecmass:solid:ZOutside', 'offset_surface stand-in: z_range [%g %g] outside the hull', z_range);
+end
+refit = nargin >= 6 && isfield(opts, 'knots_from') && ~isempty(opts.knots_from);
+if strcmp(fx.kind, 'box')
+    inner = sti_inner_box(geo, t, opts.t_min);
+    inner.refit = refit;
+    rep = inner.report;
+    return
 end
 eps_fit = 0.01 * opts.t_min;
 d = t + eps_fit / 2;
@@ -47,6 +51,7 @@ for k = 1:n
         q = f;
         idx = 3 * (k - 1) + p;
         q.name = sprintf('%s_inner%d', f.name, p);
+        q.visible = geo.outer(k).visible;
         q.surf.ctrl = f.surf.ctrl(rows{p}, :, :);
         q.surf.weights = f.surf.weights(rows{p}, :);
         q.surf.knots{1} = u{p}([1 1 2 2]);
@@ -71,7 +76,6 @@ for k = 1:n
         patches(idx) = q;
     end
 end
-refit = nargin >= 6 && isfield(opts, 'knots_from') && ~isempty(opts.knots_from);
 pr = struct('n_nodes', 0, 'n_knots', [6 6], 'n_passes', 0, 'n_removed', 0, 'n_check', 0, ...
     't_local_min', d, 't_local_max', d, 'M1', d >= opts.t_min, 'M2', t <= d && d <= t + eps_fit, ...
     'M3', true, 'M3_reason', '');
@@ -81,7 +85,7 @@ for k = 1:numel(patches)
 end
 rep = struct('patches', pr, 'ok', all([pr.M1]) && all([pr.M2]) && all([pr.M3]), 'cap_reached', false);
 inner = struct('t', t, 'd', d, 'eps_fit', eps_fit, 'z_range', [fx.z(1) + d, fx.z(2) - d], ...
-    'z_lo', fx.z(1) + d, 'refit', refit, 'patches', patches, 'report', rep);
+    'z_lo', fx.z(1) + d, 'refit', refit, 'patches', patches, 'flat', [], 'report', rep);
 end
 
 function standin_path()
