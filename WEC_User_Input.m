@@ -41,8 +41,8 @@ assert(in.materials.thin_shell.rho_ballast >= in.materials.thin_shell.rho_shell,
      'well-posed) when rho_ballast >= rho_shell. A polymer shell with a ', ...
      'steel ballast satisfies this; the thin-shell mode requires this ordering.'], ...
     in.materials.thin_shell.rho_ballast, in.materials.thin_shell.rho_shell);
-in.materials.thin_shell.t_init          = 0.02;   % m, initial shell-thickness guess.
-in.materials.thin_shell.t_min           = 0.025;  % m, minimum shell thickness for splash-zone plate.
+in.materials.thin_shell.t_min           = 0.0254; % m, minimum shell thickness (one inch); also sets the Stage-2 density floors.
+in.materials.thin_shell.t_init          = in.materials.thin_shell.t_min;  % m, initial shell-thickness guess.
 in.materials.thin_shell.max_slope_factor = 5.0;   % dimensionless factor, thickness-taper limit.
 in.materials.thin_shell.n_z_grid        = 300;    % count, z-grid resolution for the shell solve.
 
@@ -57,7 +57,7 @@ in.materials.modular_precast.max_slope_factor = in.materials.thin_shell.max_slop
 in.materials.modular_precast.n_z_grid = in.materials.thin_shell.n_z_grid;
 
 %% ------------------------------------------------------------ bounds ----------------------
-in.bounds.ballast_density_bounds = [20, 2500];  % kg/m^3, [lo, hi] per-strip density bound.
+in.bounds.ballast_density_bounds = [20, 2500];  % kg/m^3, [lo, hi] per-strip density bound; hi applies to 'preliminary' only, thin shell and modular precast take their material's solid density.
 in.bounds.max_density_ratio      = 100.0;       % dimensionless ratio; asserted >=1 downstream.
 in.bounds.vertical_shift_bounds  = [];          % m, [lo, hi] draft-shift bound; [] selects auto.
 

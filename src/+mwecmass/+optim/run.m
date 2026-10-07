@@ -132,14 +132,13 @@ switch stage1_mode
 end
 
 %% STAGE 2: 3-D OPTIMISATION
-% Warm-start fmincon (SQP) from Stage 1; objective and constraints are defined
-% by stage2_objective and stage2_constraints.
+% fmincon (SQP) from two starts: the Stage-1 result and a bottom-filled design at the Stage-1
+% draft. The start whose result has the lower objective is kept and both are logged. Objective and
+% constraints are defined by stage2_objective and stage2_constraints.
 
 fprintf('\n╔══════════════════════════════════════════════════╗\n');
 fprintf('║ STAGE 2: 3-D OPTIMISATION                        ║\n');
 fprintf('╚══════════════════════════════════════════════════╝\n\n');
-
-x0_3d       = x_opt_2d;
 
 % Variable bounds: [vertical_shift, rho_1, ..., rho_N]
 [lb_3d, ub_3d] = mwecmass.optim.stage2_bounds(config);
@@ -160,12 +159,13 @@ else
 end
 fprintf('Stage 2 algorithm: %s\n', stage2_algo);
 
+constraint_tol = 1e-8;
 options_3d = optimoptions('fmincon', ...
     'Algorithm',              stage2_algo, ...
     'Display',                'iter', ...
     'MaxFunctionEvaluations', 50000, ...
     'MaxIterations',          1000, ...
-    'ConstraintTolerance',    1e-8, ...
+    'ConstraintTolerance',    constraint_tol, ...
     'OptimalityTolerance',    1e-8, ...
     'StepTolerance',          1e-10, ...
     'FiniteDifferenceStepSize', 1e-6, ...
@@ -175,73 +175,46 @@ options_3d = optimoptions('fmincon', ...
 obj_fun_3d = @(x) mwecmass.optim.stage2_objective(x, config);
 con_fun_3d = @(x) mwecmass.optim.stage2_constraints(x, config);
 
-%% DENSITY PRE-CONDITIONING
-% If the Stage-1 warm start violates the GM floor, first optimize densities
-% with vertical shift held constant, then use that feasible point for the full solve.
-
-props_x0 = mwecmass.hydrostatics.properties_3d(x0_3d, config);
-
-if props_x0.GM_L < config.gm_min
-
-    fprintf('\n╔──────────────────────────────────────────────────╗\n');
-    fprintf('║ STAGE 2 — Phase A: density pre-conditioning       ║\n');
-    fprintf('╚──────────────────────────────────────────────────╝\n');
-    fprintf('  Warm-start infeasible: GM = %.4f m  (gm_min = %.4f m)\n', ...
-            props_x0.GM_L, config.gm_min);
-    fprintf('  Pinning vs = %+.4f m — settling density only...\n\n', x0_3d(1));
-
-    lb_a    = lb_3d;  lb_a(1) = x0_3d(1);   % freeze vs at warm-start
-    ub_a    = ub_3d;  ub_a(1) = x0_3d(1);   % Route 2 structurally blocked
-
-    opts_a  = optimoptions('fmincon', ...
-        'Algorithm',              'sqp', ...
-        'Display',                'iter', ...
-        'MaxFunctionEvaluations', 500, ...
-        'MaxIterations',          50, ...
-        'ConstraintTolerance',    1e-4, ...
-        'OptimalityTolerance',    1e-4, ...
-        'StepTolerance',          1e-6, ...
-        'ScaleProblem',           true);
-
-    [x_a, fval_a, ef_a] = fmincon(obj_fun_3d, x0_3d, ...
-        [], [], [], [], lb_a, ub_a, con_fun_3d, opts_a);
-
-    props_a = mwecmass.hydrostatics.properties_3d(x_a, config);
-
-    if ef_a > 0 && props_a.GM_L >= config.gm_min
-        fprintf('\n  [Phase A] ✓ Feasibility achieved:\n');
-        fprintf('    GM      = %.4f m  (target ≥ %.4f m)\n', ...
-                props_a.GM_L, config.gm_min);
-        fprintf('    T_heave = %.3f s\n', props_a.periods.heave);
-        fprintf('    T_pitch = %.3f s\n', props_a.periods.pitch);
-        fprintf('    f       = %.4f  (was %.4f at warm-start)\n', fval_a, ...
-                mwecmass.optim.stage2_objective(x0_3d, config));
-        x0_3d = x_a;   % hand density-settled point to Stage 2 (Phase B)
-    else
-        fprintf('\n  [Phase A] ✗ Did not achieve GM ≥ %.4f m ', config.gm_min);
-        fprintf('(ef=%d, GM=%.4f m).\n', ef_a, props_a.GM_L);
-        fprintf('  Possible cause: constructability wall prevents Route 1.\n');
-        fprintf('  Stage 2 will proceed from original warm-start.\n');
-        %  x0_3d unchanged — Stage 2 is no worse than without Phase A
-    end
-
-    fprintf('\n');
+start_x0 = {x_opt_2d, ...
+            mwecmass.optim.stage2_bottom_filled_start(x_opt_2d(1), config, lb_3d, ub_3d)};
+start_labels = {'Stage-1 result', 'bottom-filled'};
+n_starts = numel(start_x0);
+stage2_runs = cell(1, n_starts);
+for k = 1:n_starts
+    fprintf('\n  ── Stage 2 start %d of %d: %s ──\n', k, n_starts, start_labels{k});
+    stage2_runs{k} = solve_stage2_start(start_x0{k}, start_labels{k}, config, ...
+        lb_3d, ub_3d, options_3d, obj_fun_3d, con_fun_3d);
 end
-fprintf('Starting 3D optimisation...\n\n');
-[x_opt_3d, fval_3d, exitflag_3d, output_3d] = fmincon( ...
-    obj_fun_3d, x0_3d, ...
-    [], [], [], [], ...
-    lb_3d, ub_3d, ...
-    con_fun_3d, options_3d);
 
-% Retrieve per-iteration data from base workspace (see assignin note above)
-if evalin('base', 'exist(''stage2_iteration_data_temp'', ''var'')')
-    stage2_iter = evalin('base', 'stage2_iteration_data_temp');
-    evalin('base', 'clear stage2_iteration_data_temp');
+% A start that ends with a constraint violation above the solver's own tolerance does not win
+% on objective; when no start ends feasible, the smallest violation wins.
+run_fval      = cellfun(@(r) r.fval, stage2_runs);
+run_violation = cellfun(@(r) r.output.constrviolation, stage2_runs);
+run_feasible  = run_violation <= constraint_tol;
+if any(run_feasible)
+    candidates = find(run_feasible);
+    [~, j_best] = min(run_fval(candidates));
+    kept = candidates(j_best);
 else
-    warning('WEC:NoIterData', 'Stage 2 iteration data not captured');
-    stage2_iter = struct('x', [], 'props', {{}}, 'errors', []);
+    [~, kept] = min(run_violation);
 end
+
+fprintf('\n  Stage 2 starts (constraint tolerance %.0e)\n', constraint_tol);
+fprintf('  %-15s %12s %12s %9s %12s %6s %10s %8s\n', 'start', 'f(x0)', 'fval', ...
+        'exitflag', 'violation', 'iter', 'mass [kg]', 'GM [m]');
+for k = 1:n_starts
+    r = stage2_runs{k};
+    fprintf('  %-15s %12.5g %12.5g %9d %12.3g %6d %10.1f %8.4f%s\n', r.label, r.f0, r.fval, ...
+            r.exitflag, r.output.constrviolation, r.output.iterations, ...
+            r.props.mass_total, r.props.GM_L, mwecmass.internal.ternary(k == kept, '   <- kept', ''));
+end
+fprintf('\n');
+
+x_opt_3d      = stage2_runs{kept}.x;
+fval_3d       = stage2_runs{kept}.fval;
+exitflag_3d   = stage2_runs{kept}.exitflag;
+output_3d     = stage2_runs{kept}.output;
+stage2_iter   = stage2_runs{kept}.iter;
 
 % Unpack error arrays for results struct
 [mass_errors_3d, gm_errors_3d, heave_errors_3d, pitch_errors_3d] = ...
@@ -317,6 +290,17 @@ for it_t = 1:n_it2
 end
 opt_results.stage2_3d.trajectory = traj;
 
+% One record per Stage-2 start; kept marks the start whose result is reported above.
+stage2_starts = struct('label', start_labels, 'x0', start_x0, ...
+    'f0',             cellfun(@(r) r.f0, stage2_runs, 'UniformOutput', false), ...
+    'x',              cellfun(@(r) r.x, stage2_runs, 'UniformOutput', false), ...
+    'fval',           num2cell(run_fval), ...
+    'exitflag',       cellfun(@(r) r.exitflag, stage2_runs, 'UniformOutput', false), ...
+    'constrviolation', num2cell(run_violation), ...
+    'iterations',     cellfun(@(r) r.output.iterations, stage2_runs, 'UniformOutput', false), ...
+    'kept',           num2cell((1:n_starts) == kept));
+opt_results.stage2_3d.starts = stage2_starts;
+
 opt_results.optimization_time = toc(tic_main);
 
 fprintf('\n╔══════════════════════════════════════════════════╗\n');
@@ -341,6 +325,83 @@ catch ME
 end
 
 end  % run
+
+
+%% STAGE 2 SOLVE FROM ONE START
+
+function r = solve_stage2_start(x0, label, config, lb, ub, options, obj_fun, con_fun)
+% SOLVE_STAGE2_START  Run the Stage-2 fmincon solve from x0 and collect its result.
+%   If x0 violates the GM floor, densities are first settled with the vertical shift pinned
+%   (Phase A) and the full solve starts from that point. r holds the start (label, x0, f0), the
+%   result (x, fval, exitflag, output, props) and the per-iteration data of the solve (iter).
+
+    r = struct('label', label, 'x0', x0, 'f0', obj_fun(x0));
+    props_x0 = mwecmass.hydrostatics.properties_3d(x0, config);
+    fprintf('  start x0: vs = %+.4f m, rho = [%s] kg/m^3, f = %.5g, GM = %.4f m\n', ...
+            x0(1), sprintf(' %.1f', x0(2:end)), r.f0, props_x0.GM_L);
+
+    %% DENSITY PRE-CONDITIONING
+    % If the warm start violates the GM floor, first optimize densities with vertical shift held
+    % constant, then use that feasible point for the full solve.
+    if props_x0.GM_L < config.gm_min
+
+        fprintf('\n╔──────────────────────────────────────────────────╗\n');
+        fprintf('║ STAGE 2 — Phase A: density pre-conditioning       ║\n');
+        fprintf('╚──────────────────────────────────────────────────╝\n');
+        fprintf('  Warm-start infeasible: GM = %.4f m  (gm_min = %.4f m)\n', ...
+                props_x0.GM_L, config.gm_min);
+        fprintf('  Pinning vs = %+.4f m — settling density only...\n\n', x0(1));
+
+        lb_a    = lb;  lb_a(1) = x0(1);   % freeze vs at warm-start
+        ub_a    = ub;  ub_a(1) = x0(1);   % Route 2 structurally blocked
+
+        opts_a  = optimoptions('fmincon', ...
+            'Algorithm',              'sqp', ...
+            'Display',                'iter', ...
+            'MaxFunctionEvaluations', 500, ...
+            'MaxIterations',          50, ...
+            'ConstraintTolerance',    1e-4, ...
+            'OptimalityTolerance',    1e-4, ...
+            'StepTolerance',          1e-6, ...
+            'ScaleProblem',           true);
+
+        [x_a, fval_a, ef_a] = fmincon(obj_fun, x0, ...
+            [], [], [], [], lb_a, ub_a, con_fun, opts_a);
+
+        props_a = mwecmass.hydrostatics.properties_3d(x_a, config);
+
+        if ef_a > 0 && props_a.GM_L >= config.gm_min
+            fprintf('\n  [Phase A] ✓ Feasibility achieved:\n');
+            fprintf('    GM      = %.4f m  (target ≥ %.4f m)\n', ...
+                    props_a.GM_L, config.gm_min);
+            fprintf('    T_heave = %.3f s\n', props_a.periods.heave);
+            fprintf('    T_pitch = %.3f s\n', props_a.periods.pitch);
+            fprintf('    f       = %.4f  (was %.4f at warm-start)\n', fval_a, r.f0);
+            x0 = x_a;   % hand density-settled point to Stage 2 (Phase B)
+        else
+            fprintf('\n  [Phase A] ✗ Did not achieve GM ≥ %.4f m ', config.gm_min);
+            fprintf('(ef=%d, GM=%.4f m).\n', ef_a, props_a.GM_L);
+            fprintf('  Possible cause: constructability wall prevents Route 1.\n');
+            fprintf('  Stage 2 will proceed from original warm-start.\n');
+            %  x0 unchanged — Stage 2 is no worse than without Phase A
+        end
+
+        fprintf('\n');
+    end
+    fprintf('Starting 3D optimisation...\n\n');
+    [r.x, r.fval, r.exitflag, r.output] = fmincon(obj_fun, x0, ...
+        [], [], [], [], lb, ub, con_fun, options);
+    r.props = mwecmass.hydrostatics.properties_3d(r.x, config);
+
+    % Retrieve per-iteration data from base workspace (see assignin note in Stage 2)
+    if evalin('base', 'exist(''stage2_iteration_data_temp'', ''var'')')
+        r.iter = evalin('base', 'stage2_iteration_data_temp');
+        evalin('base', 'clear stage2_iteration_data_temp');
+    else
+        warning('WEC:NoIterData', 'Stage 2 iteration data not captured');
+        r.iter = struct('x', [], 'props', {{}}, 'errors', []);
+    end
+end
 
 
 %% STAGE 2 fmincon OUTPUT CALLBACK

@@ -186,10 +186,6 @@ function [x_optimal, final_props, exitflag, convergence_data] = solve_2d_surroga
 
             %% INEQUALITY CONSTRAINTS (c ≤ 0), all normalized to O(1)
             densities = x(2:end);
-            % When shell is enabled, densities are CORE densities (not bulk).
-            % The ratio and monotonic constraints apply to the core only,
-            % because the shell density is uniform and poses no
-            % manufacturability concern.
 
             % NOTE: k_vol is applied inside properties_2d.
             % No separate mass correction needed in constraint.
@@ -221,31 +217,7 @@ function [x_optimal, final_props, exitflag, convergence_data] = solve_2d_surroga
             % unbiased one there. Documentation-only note, no value change.
             c_gm = 1.0 - props.GM / config.gm_min;
 
-            % 3. Monotonic density (normalized by rho_max)
-            %    Skip wall-platform boundary (wall is pinned, not optimised).
-            rho_max = config.ballast_density_bounds(2);
-            constrained_pairs = [];
-            for i = 1:(length(densities)-1) %#ok<FXUP> -- reused loop index
-                if ~isempty(w_idx) && (i == w_idx || i + 1 == w_idx)
-                    continue;   % skip wall-platform boundary
-                end
-                constrained_pairs(end+1) = i; %#ok<AGROW>
-            end
-            c_monotonic = zeros(length(constrained_pairs), 1);
-            for j = 1:length(constrained_pairs)
-                i = constrained_pairs(j);
-                c_monotonic(j) = (densities(i+1) - densities(i)) / rho_max;
-            end
-
-            % Minimum mass constraint (constructability mode).
-            if isfield(config, 'm_min_constructability') && ...
-                    config.m_min_constructability > 0
-                c_mass_min = 1.0 - props.mass_total / config.m_min_constructability;
-            else
-                c_mass_min = [];
-            end
-
-            c = [c_density_ratio; c_gm; c_monotonic; c_mass_min];
+            c = [c_density_ratio; c_gm];
 
             % Equality constraint: mass/buoyancy - 1 = 0
             % k_vol is applied inside properties_2d, so
@@ -258,15 +230,7 @@ function [x_optimal, final_props, exitflag, convergence_data] = solve_2d_surroga
 
         catch ME
             warning('constraint_func:EvalFailed', 'Constraint evaluation failed: %s', ME.message);
-            n_pairs_fb = max(0, length(densities) - 1);
-            if ~isempty(config.wall_strip_index)
-                n_pairs_fb = max(0, n_pairs_fb - 1);
-            end
-            n_extra = 0;
-            if isfield(config, 'm_min_constructability') && config.m_min_constructability > 0
-                n_extra = 1;
-            end
-            c = ones(2 + n_pairs_fb + n_extra, 1);   % c_density_ratio + c_gm + c_monotonic + c_mass_min
+            c = ones(2, 1);   % c_density_ratio + c_gm
             ceq = 1.0;
         end
     end

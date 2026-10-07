@@ -143,7 +143,7 @@ try
     %  geometry products; the three values below are plain copies.
 
     config.num_ballast_sections   = in.geometry.num_ballast_sections;
-    config.ballast_density_bounds = in.bounds.ballast_density_bounds;
+    config.ballast_density_bounds = mode_density_bounds(in);
     config.max_density_ratio      = in.bounds.max_density_ratio;
 
     %% Thin-shell solver parameters
@@ -159,13 +159,7 @@ try
     % config.rho_shell is the shell-region density of the two-density thin-shell split; the
     % input file carries one shell density, so both fields read in.materials.thin_shell.rho_shell.
     config.rho_shell                = in.materials.thin_shell.rho_shell;
-    % config.rho_ballast defaults to config.rho_shell when the input file leaves rho_ballast
-    % unset.
-    if isfield(in.materials.thin_shell, 'rho_ballast') && ~isempty(in.materials.thin_shell.rho_ballast)
-        config.rho_ballast = in.materials.thin_shell.rho_ballast;
-    else
-        config.rho_ballast = config.rho_shell;
-    end
+    config.rho_ballast             = thin_shell_rho_ballast(in);
     config.steel_t_init            = in.materials.thin_shell.t_init;
     config.steel_t_min             = in.materials.thin_shell.t_min;
     config.steel_max_slope_factor  = in.materials.thin_shell.max_slope_factor;
@@ -245,7 +239,7 @@ try
 
     if config.enable_constructability && ~isempty(config.strip_edges) ...
             && ~isempty(config.per_strip_density_lb)
-        m_min = config.m_min_constructability;
+        m_min = products.report.m_min_constructability;
         m_max = products.report.m_max_constructability;
         % Buoyancy limits: maximum buoyancy = fully submerged hull
         max_buoyancy = config.RHO_WATER * config.total_wec_volume;
@@ -745,7 +739,7 @@ function g = geometry_inputs(in, enable_constructability, wall_position)
     else
         g.aw_table_dz         = [];                        % absent -> the builder's own fallback grid
     end
-    g.ballast_density_bounds  = in.bounds.ballast_density_bounds;
+    g.ballast_density_bounds  = mode_density_bounds(in);
     g.enable_constructability = enable_constructability;
     if enable_constructability
         g.wall_position = wall_position;
@@ -764,10 +758,33 @@ function g = geometry_inputs(in, enable_constructability, wall_position)
     end
 end
 
+function bounds = mode_density_bounds(in)
+%MODE_DENSITY_BOUNDS Per-strip density bounds [lo, hi] of the realisation type.
+% The lower bound is the author input; the upper bound is the solid density of the type's
+% material (steel ballast for thin shell, UHPC for modular precast). Only 'preliminary', which
+% has no material, takes the upper bound from the input.
+    bounds = in.bounds.ballast_density_bounds;
+    switch in.materials.realisation_type
+        case 'thin_shell'
+            bounds(2) = thin_shell_rho_ballast(in);
+        case 'modular_precast'
+            bounds(2) = in.materials.modular_precast.rho_hull;
+    end
+end
+
+function rho_ballast = thin_shell_rho_ballast(in)
+%THIN_SHELL_RHO_BALLAST Solid ballast density; the shell density when the input leaves it unset.
+    if isfield(in.materials.thin_shell, 'rho_ballast') && ~isempty(in.materials.thin_shell.rho_ballast)
+        rho_ballast = in.materials.thin_shell.rho_ballast;
+    else
+        rho_ballast = in.materials.thin_shell.rho_shell;
+    end
+end
+
 function [products, ms2_model] = compute_geometry_products(ms2_file, g)
 %COMPUTE_GEOMETRY_PRODUCTS Run the expensive geometry steps of build_config.
 % Reads the deck and the values in g only. products.config holds the config fields these steps
-% set, products.report the maximum constructable mass, and products.warnings {id, message} rows
+% set, products.report the minimum and maximum constructable mass, and products.warnings {id, message} rows
 % raised by this function itself, re-issued when the products are reloaded. Warnings raised
 % inside the library functions it calls (the hydrostatic tables, the z-crossing search, the
 % midplane profile, the cap contribution) are shown on a fresh build only: lastwarn keeps one
@@ -1158,14 +1175,13 @@ function [products, ms2_model] = compute_geometry_products(ms2_file, g)
     %  Sum canonical 3-D strip volumes times their lower density bounds. build_config compares
     %  the minimum mass with full-submergence buoyancy before solving.
 
-    geo.m_min_constructability = 0;
+    m_min = 0;
     m_max = 0;
     if g.enable_constructability && ~isempty(geo.strip_edges) ...
             && ~isempty(geo.per_strip_density_lb)
 
         fprintf('  Computing minimum achievable mass (V_strip × per_strip_density_lb, offset-shell)...\n');
         N_strips = g.num_ballast_sections;
-        m_min = 0;
 
         for i = 1:N_strips
             z_lo_i = geo.strip_edges(i);
@@ -1188,8 +1204,6 @@ function [products, ms2_model] = compute_geometry_products(ms2_file, g)
             m_min = m_min + V_strip_i * geo.per_strip_density_lb(i);
             m_max = m_max + V_strip_i * g.ballast_density_bounds(2);
         end
-
-        geo.m_min_constructability = m_min;
     end
 
     %% Strip geometry and augmented tables
@@ -1326,6 +1340,7 @@ function [products, ms2_model] = compute_geometry_products(ms2_file, g)
     end
 
     products.config = rmfield(geo, 'ms2_model');
+    products.report.m_min_constructability = m_min;
     products.report.m_max_constructability = m_max;
     products.warnings = notes;
     ms2_model = geo.ms2_model;
