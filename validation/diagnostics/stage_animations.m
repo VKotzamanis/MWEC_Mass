@@ -16,7 +16,7 @@ function stage_animations(result_file, output_folder, which, frames)
     if nargin < 4, frames = []; end
 
     [r, ~] = mwecmass.output.load_results(result_file);
-    cfg = reconstruct_live_config(r.config);   % restores ms2_model, boundary_cache.data (GIF 3)
+    cfg = reconstruct_live_config(r.config);   % restores ms2_model, which builds the hull outline when cfg.hull_solid is absent
     st  = mwecmass.output.figures.presentation_style(cfg);
     st.frames  = frames(:)';   % [] = every iterate; otherwise a subset (GIF 2c)
     st.is_demo = contains(upper(result_file), 'DEMO');

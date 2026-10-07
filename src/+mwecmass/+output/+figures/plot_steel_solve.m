@@ -36,17 +36,15 @@ function fig = plot_steel_solve(realised, config)
                 'FaceAlpha', 1.0, 'HandleVisibility', 'off');
         end
     end
-    for k = 1:numel(data.polygons)
-        p = data.polygons(k);
-        if strcmp(p.role, 'void')
-            patch(ax, p.xz(:, 1), p.xz(:, 2) + vs, style.fill_palette.void, 'EdgeColor', 'none', ...
-                'FaceAlpha', 1.0, 'HandleVisibility', 'off');
-            h_in = plot(ax, p.xz([1:end, 1], 1), p.xz([1:end, 1], 2) + vs, '--', ...
-                'Color', style.fill_palette.inner_boundary, 'HandleVisibility', 'off');
-            mwecmass.output.figures.style_line(h_in, style, 'boundary');
-            mwecmass.output.figures.draw_hatch_strips(ax, p.xz(:, 1), p.xz(:, 2) + vs, ...
-                style.hatch_spacing, style.fill_palette.hatch, style.line_width.hatch);
-        end
+    for k = 1:numel(data.void_outlines)
+        xz = data.void_outlines(k).xz;
+        patch(ax, xz(:, 1), xz(:, 2) + vs, style.fill_palette.void, 'EdgeColor', 'none', ...
+            'FaceAlpha', 1.0, 'HandleVisibility', 'off');
+        h_in = plot(ax, xz([1:end, 1], 1), xz([1:end, 1], 2) + vs, '--', ...
+            'Color', style.fill_palette.inner_boundary, 'HandleVisibility', 'off');
+        mwecmass.output.figures.style_line(h_in, style, 'boundary');
+        mwecmass.output.figures.draw_hatch_strips(ax, xz(:, 1), xz(:, 2) + vs, ...
+            style.hatch_spacing, style.fill_palette.hatch, style.line_width.hatch);
     end
     h_hull = plot(ax, profile([1:end, 1], 1), profile([1:end, 1], 2) + vs, '-', ...
         'Color', style.fill_palette.boundary, 'HandleVisibility', 'off');

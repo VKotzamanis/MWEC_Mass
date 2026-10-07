@@ -36,7 +36,7 @@ function plot_optimised_cross_section(props_3d, config, x_opt, realised)
                     numel(data.omitted), data.omitted(1).z, data.omitted(1).reason);
             end
             profile_body = data.outline.profile;
-            voids = data.polygons(strcmp({data.polygons.role}, 'void'));
+            voids = data.void_outlines;
         else
             if ~isfield(config, 'hull_solid') || isempty(config.hull_solid)
                 error('mwecmass:figures:NoHullSolid', ...

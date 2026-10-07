@@ -1,6 +1,6 @@
 function plot_equivalent_density_2d(props, config, x_opt)
 %PLOT_EQUIVALENT_DENSITY_2D Draw XZ cross-section colour-filled by strip-average equivalent density.
-% Inputs: props (hull properties); config (density_nodes_z, strip_edges, hull_z_min, hull_solid); x_opt (vertical shift, core densities). The hull outline is the exact y = 0 section of config.hull_solid. Waterline at z=0; SI units.
+% Inputs: props (hull properties); config (density_nodes_z, strip_edges, hull_z_min, hull_solid); x_opt (vertical shift, Stage-2 module densities). The hull outline is the exact y = 0 section of config.hull_solid. Waterline at z=0; SI units.
 % Fall back to continuous optimiser densities if props.realised_strip_density is unavailable.
 
     opts  = mwecmass.output.figures.output_options(config);
@@ -13,7 +13,7 @@ function plot_equivalent_density_2d(props, config, x_opt)
         else
             draft_final = x_opt(1);
         end
-        densities_core  = x_opt(2:end);
+        densities_stage2  = x_opt(2:end);
 
         fig_name = 'WEC Equivalent Density (2D)';
         if isfield(props, 'realised_strip_density') && ...
@@ -47,17 +47,17 @@ function plot_equivalent_density_2d(props, config, x_opt)
         node_z_wl = config.density_nodes_z + draft_final;
 
         % --- Compute equivalent densities ---
-        %  Pre-realisation : derive from optimiser's per-node rho_core
-        %  Post-realisation: use the as-built strip rho_eff directly
+        %  Pre-realisation : the Stage-2 module densities x_opt(2:end), drawn as they are
+        %  Post-realisation: the as-built strip rho_eff
         if rho_source_is_realised
             rho_eq = props.realised_strip_density(:);
-            if length(rho_eq) ~= length(densities_core)
+            if length(rho_eq) ~= length(densities_stage2)
                 % Shape mismatch — fall back to the optimiser densities
-                rho_eq = densities_core(:);
+                rho_eq = densities_stage2(:);
                 rho_source_is_realised = false;
             end
         else
-            rho_eq = densities_core(:);
+            rho_eq = densities_stage2(:);
         end
 
         cmap  = mwecmass.output.figures.figure_colormap(style, 256);
@@ -126,12 +126,12 @@ function plot_equivalent_density_2d(props, config, x_opt)
 
         % --- Properties card ---
         % Free-standing text() routed through style_text. The 'T_heave',
-        % 'rho_core', 'rho_eq' strings below carry real underscores; forcing the LaTeX
+        % 'rho_stage2', 'rho_eq' strings below carry real underscores; forcing the LaTeX
         % interpreter (style_text always does, in place of this card's former 'none') needs them
         % escaped to '\_' so they still print literally rather than
         % render as a subscript trigger. The mono-font numeric rows keep style.mono_font_name via
         % style_text's optional font_name override, so the table stays column-aligned; escaping
-        % 'rho_core'/'rho_eq' to 'rho\_core'/'rho\_eq' costs one extra character in that one
+        % 'rho_stage2'/'rho_eq' to 'rho\_stage2'/'rho\_eq' costs one extra character in that one
         % header cell, a minor known misalignment against the %-10s field width below it.
         ax2 = nexttile(t);
         axis(ax2, 'off');
@@ -148,14 +148,14 @@ function plot_equivalent_density_2d(props, config, x_opt)
         ty = ty - 2*lh;
         h_t4 = text(ax2, 0.05, ty, ...
              escape_latex_local(sprintf('%-5s  %-8s  %-10s  %-10s', ...
-                     'Strip', 'Z [m]', 'rho_core', 'rho_eq')), 'FontWeight', 'bold');
+                     'Strip', 'Z [m]', 'rho_stage2', 'rho_eq')), 'FontWeight', 'bold');
         mwecmass.output.figures.style_text(h_t4, style, 'annotation', style.mono_font_name);
         ty = ty - lh;
-        for i = 1:length(densities_core)
+        for i = 1:length(densities_stage2)
             z_node = config.density_nodes_z(i) + draft_final;
             h_row = text(ax2, 0.05, ty, ...
                  sprintf('  %-3d  %+6.3f m  %6.0f kg/m3  %6.0f kg/m3', ...
-                         i, z_node, densities_core(i), rho_eq(i)));
+                         i, z_node, densities_stage2(i), rho_eq(i)));
             mwecmass.output.figures.style_text(h_row, style, 'annotation', style.mono_font_name);
             ty = ty - lh;
             if ty < 0.05, break; end

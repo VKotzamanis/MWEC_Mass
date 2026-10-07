@@ -19,7 +19,12 @@ function data = realised_section_data(realised, z_plan, n_z)
 %   data.polygons(k): module, role ('solid_module' | 'ballast' | 'wall' | 'void'), region
 %   (precast 'uhpc' | 'air'; thin shell 'ballast' | 'shell' | 'air'), z_lo, z_hi, xz [n x 2] = [x z]
 %   counter-clockwise, body frame. A role 'wall' is the material around a void, or the cap above it.
-%   data.outline: z, x_lo, x_hi, profile (closed [x z] polygon). data.omitted: heights where the
+%   data.void_outlines(k): modules (the modules the void passes through), xz [n x 2] counter-clockwise,
+%   body frame: the boundary of the air region as the realised solid has it. The void polygons of
+%   consecutive modules are one outline where both hold air at the module edge and the two modules
+%   have the same t (no face between them: no joint cap, no joint_step), so no segment lies at that
+%   edge; where t differs, or one side is solid, the outlines stay separate and each keeps its face
+%   at the edge. data.outline: z, x_lo, x_hi, profile (closed [x z] polygon). data.omitted: heights where the
 %   kernel gave no usable section (z, module, reason); a section whose outer loop crosses y = 0 at
 %   more than two points errors mwecmass:figures:SectionTopology.
 %
@@ -78,6 +83,7 @@ outline = struct('z', z_o, 'x_lo', xo(:, 1), 'x_hi', xo(:, 2), ...
 [plan, plan_omitted] = plan_sections(body, e, z_ballast, realised.vs, z_plan, margin, solid_modules);
 omitted = [omitted, plan_omitted];
 panels = strip_panel_list(plan, N, solid_modules);
+void_outlines = merge_voids(polygons, e, margin, design.t);
 
 failed = {};
 if isfield(realised.check, 'failed')
@@ -91,7 +97,8 @@ end
 data = struct('hull_name', realised.hull_name, 'mode', realised.mode, 'vs', realised.vs, ...
     'edges', e, 'z_range', [e(1) e(end)], 'z_ballast', z_ballast, ...
     'waterline_z', -realised.vs, 'waterline_in_hull', -realised.vs > e(1) && -realised.vs < e(end), ...
-    'solid_modules', solid_modules, 'polygons', polygons, 'outline', outline, 'plan', plan, ...
+    'solid_modules', solid_modules, 'polygons', polygons, 'void_outlines', void_outlines, ...
+    'outline', outline, 'plan', plan, ...
     'strip_panels', panels, 'omitted', omitted, 'CG', realised.props.CG_total, 'CB', realised.props.CB, ...
     'status', realised.status, 'reason', realised.reason, 'failed', {failed}, 'status_lines', {status_lines});
 end
@@ -315,6 +322,51 @@ elseif strcmp(role, 'wall')
     region = 'shell';
 else
     region = 'ballast';
+end
+end
+
+function outlines = merge_voids(polygons, e, margin, t)
+% One outline per connected air region: the void polygon of module m that reaches the top of the
+% module joins the void polygon of module m + 1 that starts at the bottom of m + 1 when the two
+% x ranges overlap at the edge and t(m) == t(m + 1): the solid then has the same inner surface on both
+% sides of the edge. A polygon is [right side, bottom to top; left side, top to bottom].
+outlines = struct('modules', {}, 'xz', {});
+voids = polygons(strcmp({polygons.role}, 'void'));
+used = false(1, numel(voids));
+[~, order] = sort([voids.z_lo]);
+for a = order
+    if used(a)
+        continue
+    end
+    used(a) = true;
+    chain = voids(a);
+    right = chain.xz(1:size(chain.xz, 1) / 2, :);
+    left = chain.xz(size(chain.xz, 1) / 2 + 1:end, :);
+    modules = chain.module;
+    while true
+        m = modules(end);
+        top = max(right(:, 2));
+        nxt = 0;
+        if m < numel(e) - 1 && top == e(m + 1) - margin && t(m) == t(m + 1)
+            for b = find(~used)
+                q = voids(b);
+                if q.module == m + 1 && q.z_lo == e(m + 1) + margin && ...
+                        max(left(1, 1), q.xz(end, 1)) < min(right(end, 1), q.xz(1, 1))
+                    nxt = b;
+                    break
+                end
+            end
+        end
+        if nxt == 0
+            break
+        end
+        used(nxt) = true;
+        n = size(voids(nxt).xz, 1) / 2;
+        right = [right; voids(nxt).xz(1:n, :)]; %#ok<AGROW>
+        left = [voids(nxt).xz(n + 1:end, :); left]; %#ok<AGROW>
+        modules(end + 1) = voids(nxt).module; %#ok<AGROW>
+    end
+    outlines(end + 1) = struct('modules', modules, 'xz', [right; left]); %#ok<AGROW>
 end
 end
 

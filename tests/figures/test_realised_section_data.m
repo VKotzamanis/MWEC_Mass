@@ -9,6 +9,7 @@ root = fileparts(fileparts(fileparts(mfilename('fullpath'))));
 setup(root);
 
 % {fixture, mode, t [N x 1], z_ballast, solid_modules, vs, t_min}
+I3_BOUND = 1e-7;   % m, contract I3: the kernel's cut at a plane
 cases = {
     'cylinder', 'modular_precast', [0.1; 0.1; 0.1; 0.1], -2.5, [], 0.5, 0.1
     'cylinder', 'modular_precast', [0.1; 0.1; 0.1; NaN], -2.5, 4, 0.5, 0.1
@@ -20,13 +21,13 @@ cases = {
     'box', 'thin_shell', 0.0254 * ones(3, 1), -1.0, [], 0.5, 0.0254
     };
 for c = 1:size(cases, 1)
-    run_case(cases{c, :});
+    run_case(I3_BOUND, cases{c, :});
 end
 test_errors_and_status();
 fprintf('all F12 tests passed\n');
 end
 
-function run_case(name, mode, t, zb, solid, vs, t_min)
+function run_case(I3_BOUND, name, mode, t, zb, solid, vs, t_min)
 config = sti_config(name);
 config.hull_solid = mwecmass.solid.outer_nurbs(config.ms2_model);
 [~, stage2] = sti_stage2(config, vs, [NaN; 250 * ones(numel(t) - 1, 1)]);
@@ -110,7 +111,13 @@ for i = 1:N
         continue
     end
     check(numel(v) == 1, '%s: module %d has %d void polygons', tag, i, numel(v));
-    inner_check(exact_inner, abs(v.z_lo - lay(i).a) <= z_tol && abs(v.z_hi - lay(i).b) <= z_tol, ...
+    tol_lo = z_tol;
+    if lay(i).a == zb
+        % the void starts at the cut of the ballast level, which the kernel places to I3 (1e-7 m)
+        tol_lo = I3_BOUND;
+        fprintf('  module %d void bottom deviates %.2e m from z_ballast\n', i, abs(v.z_lo - zb));
+    end
+    inner_check(exact_inner, abs(v.z_lo - lay(i).a) <= tol_lo && abs(v.z_hi - lay(i).b) <= z_tol, ...
         '%s: module %d void z [%.17g %.17g], closed form [%.17g %.17g]', tag, i, v.z_lo, v.z_hi, lay(i).a, lay(i).b);
     xs = v.xz(:, 1);
     inner_check(exact_inner, max(abs([max(xs) - hw_in(i), min(xs) + hw_in(i)])) <= 8 * eps(hw_out), ...
@@ -118,6 +125,38 @@ for i = 1:N
     wa = data.polygons(strcmp(roles, 'wall') & [data.polygons.module] == i);
     check(numel(wa) >= 2, '%s: module %d has %d wall polygons', tag, i, numel(wa));
 end
+
+% void outlines: one per connected air region; consecutive modules with air up to and from their
+% common edge and equal t are one outline with no segment at that edge, otherwise each keeps its own
+air_to_edge = @(i) lay(i).air && lay(i).b >= e(i + 1) - z_tol;
+air_from_edge = @(i) lay(i).air && lay(i).a <= e(i) + z_tol;
+joined = false(1, N - 1);
+for i = 1:N - 1
+    joined(i) = air_to_edge(i) && air_from_edge(i + 1) && t(i) == t(i + 1);
+end
+vo = data.void_outlines;
+check(numel(vo) == sum([lay.air]) - sum(joined), '%s: %d void outlines, expected %d', tag, numel(vo), ...
+    sum([lay.air]) - sum(joined));
+for k = 1:numel(vo)
+    check(signed_area(vo(k).xz) > 0, '%s: void outline %d orientation', tag, k);
+    xz = vo(k).xz;
+    nxt = circshift(xz, -1);
+    for i = 1:N - 1
+        flat = abs(xz(:, 2) - e(i + 1)) <= margin & abs(nxt(:, 2) - e(i + 1)) <= margin & xz(:, 1) ~= nxt(:, 1);
+        if joined(i) && any(vo(k).modules == i)
+            check(~any(flat), '%s: void outline %d has a segment at the joined edge %d', tag, k, i);
+        end
+    end
+    check(all(diff(vo(k).modules) == 1), '%s: void outline %d modules', tag, k);
+end
+for i = 1:N
+    check(sum(arrayfun(@(o) any(o.modules == i), vo)) == lay(i).air, '%s: module %d in the void outlines', tag, i);
+end
+A_poly = sum(arrayfun(@(p) polyarea(p.xz(:, 1), p.xz(:, 2)), data.polygons(strcmp(roles, 'void'))));
+A_out = sum(arrayfun(@(o) polyarea(o.xz(:, 1), o.xz(:, 2)), vo));
+check(abs(A_out - A_poly) <= 64 * eps * max(A_poly, 1) + 4 * N * margin * 2 * hw_out, ...
+    '%s: void outline areas %.15f, polygons %.15f', tag, A_out, A_poly);
+fprintf('  %d void outlines, %d joined module edges\n', numel(vo), sum(joined));
 
 % a void that closes below the top of its module leaves a cap of wall material up to the top of the
 % hull; a ballast level below the inner keel leaves a wall body between z_ballast and the void
@@ -139,15 +178,10 @@ b = data.polygons(strcmp(roles, 'ballast'));
 if zb > e(1)
     check(~isempty(b), '%s: no ballast polygon', tag);
     top = max([b.z_hi]);
-    % inside a module the top is bisected to the adjacent float below z_ballast; at a module edge
-    % it is the module's last level, one margin below the edge
-    gap = 2 * eps(zb);
-    if any(zb == e)
-        gap = margin;
-    end
-    check(top <= zb && zb - top <= gap, '%s: ballast top %.17g, z_ballast %.17g', tag, top, zb);
+    % the top is where the kernel's section changes from solid to hollow: the ballast cut, placed to I3
+    fprintf('  ballast top deviates %.2e m from z_ballast\n', abs(zb - top));
+    check(abs(zb - top) <= I3_BOUND, '%s: ballast top %.17g, z_ballast %.17g', tag, top, zb);
     check(min([b.z_lo]) == e(1) + margin, '%s: ballast bottom', tag);
-    fprintf('  ballast top %.17g (z_ballast %.17g)\n', top, zb);
 end
 solid_roles = data.polygons(strcmp(roles, 'solid_module'));
 check(isequal(sort(unique([solid_roles.module])), sort(solid(:)')) || (isempty(solid) && isempty(solid_roles)), ...

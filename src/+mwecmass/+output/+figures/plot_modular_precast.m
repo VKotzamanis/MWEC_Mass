@@ -26,7 +26,7 @@ function plot_modular_precast(realised, config)
     ax1 = nexttile(tl1, 2, [3 1]);
     hold(ax1, 'on');
 
-    draw_polygons(ax1, data.polygons, vs, style);
+    draw_polygons(ax1, data.polygons, data.void_outlines, vs, style);
     profile = data.outline.profile;
     h_outline = plot(ax1, profile([1:end, 1], 1), profile([1:end, 1], 2) + vs, '-', ...
         'Color', style.fill_palette.boundary, 'HandleVisibility', 'off');
@@ -139,8 +139,8 @@ function plot_modular_precast(realised, config)
     save_figure(fig2, 'WEC_Constructability_Strips', config);
 end
 
-function draw_polygons(ax, polygons, vs, style)
-% Material first, voids on top with their dashed boundary and hatch.
+function draw_polygons(ax, polygons, void_outlines, vs, style)
+% Material first, then the voids on top with their dashed boundary and hatch.
     for k = 1:numel(polygons)
         p = polygons(k);
         if strcmp(p.role, 'void')
@@ -149,15 +149,12 @@ function draw_polygons(ax, polygons, vs, style)
         patch(ax, p.xz(:, 1), p.xz(:, 2) + vs, role_color(p.role, style), 'EdgeColor', 'none', ...
             'FaceAlpha', 1.0, 'HandleVisibility', 'off');
     end
-    for k = 1:numel(polygons)
-        p = polygons(k);
-        if ~strcmp(p.role, 'void')
-            continue
-        end
-        h = patch(ax, p.xz(:, 1), p.xz(:, 2) + vs, style.fill_palette.void, ...
+    for k = 1:numel(void_outlines)
+        xz = void_outlines(k).xz;
+        h = patch(ax, xz(:, 1), xz(:, 2) + vs, style.fill_palette.void, ...
             'EdgeColor', style.fill_palette.inner_boundary, 'LineStyle', '--', 'HandleVisibility', 'off');
         mwecmass.output.figures.style_line(h, style, 'boundary');
-        mwecmass.output.figures.draw_hatch_strips(ax, p.xz(:, 1), p.xz(:, 2) + vs, ...
+        mwecmass.output.figures.draw_hatch_strips(ax, xz(:, 1), xz(:, 2) + vs, ...
             style.hatch_spacing, style.fill_palette.hatch, style.line_width.hatch);
     end
 end
