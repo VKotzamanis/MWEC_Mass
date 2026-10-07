@@ -33,7 +33,8 @@ both Stage-3 realisations, the stored contours, the figures and the STEP writer
   happens in the cloud container only.
 - **Waves.** Tasks in one wave run in parallel; a wave starts when the previous one is merged.
   - A: T0 harness, T1 kernel rows and normals, T9 STEP writer.
-  - B: T0c parser entity lookups, T0d geometry cache, T2 offset, fold trimming and spline fit.
+  - B: T0c parser entity lookups, T0d geometry cache, T2 offset, fold trimming and spline fit;
+    then T0e Octave fidelity, once T0c and T0d are merged.
   - C: T0b renames, T3 bodies and exact properties. **Owner checkpoint after T3.**
   - D: T4a, then T4b (both edit `build_config.m` and the Stage-2 files).
   - E: T5 then T6 (UHPC Stage 3), in parallel with T7 (thin shell). **Owner checkpoint after T6.**
@@ -42,7 +43,9 @@ both Stage-3 realisations, the stored contours, the figures and the STEP writer
 - **Baseline:** the Octave regression baseline (T0, `tests/baseline/`) may change only in a task
   that intends to change results (T4a, T4b, T5, T6, T7). That task updates the baseline in the
   same commit and prints the changed quantities. Renames (T0b), parser lookups (T0c) and the
-  geometry cache (T0d) leave every number identical.
+  geometry cache (T0d) leave every number identical. T0e re-records it after fixing the Octave
+  `fmincon` shim (production code unchanged). Full-pipeline tests run only with
+  `MWEC_REGRESSION=1` (a C1 run takes 24–94 min in Octave).
 - Checkpoints with the owner report measured numbers, not claims.
 - Deletions happen in the same commit as the code that replaces them. The pipeline must not sit
   in a broken state between tasks.
@@ -157,14 +160,31 @@ under `src/+mwecmass/+internal/`, `WEC_User_Input.m`, `.gitignore`, `tests/run_t
 - Cache folder from a new input `in.files.geometry_cache_dir` (default `Output/cache/`, ignored
   by git); tests use a temporary folder. Later tasks that add expensive geometry steps to
   `build_config` (T4b) put them inside the cached block.
-- `tests/run_tests.m` runs the full-pipeline regression tests only when the environment variable
-  `MWEC_REGRESSION=1` is set. Graders of tasks that must keep numbers (T0b, T0c, T0d) or change
-  them on purpose (T4a, T4b, T5, T6, T7) set it.
 
 Acceptance: a reloaded config equals a freshly built one (`isequal`); changing the `.ms2` file,
 any keyed input, or any keyed source file triggers a rebuild (one test each); the grader checks,
 by reading the cached steps, that every input they read is in the key; the T0 regression
 baseline reproduces exactly; build and load times are printed.
+
+### T0e — Octave reproduces the MATLAB v1.0 Stages 1 and 2 (Sonnet high)
+
+Wave B, after T0c and T0d are merged (fast runs). Files: `tests/octave_shims/`, `tests/baseline/`,
+`tools/`. No production change.
+
+- Recorded by T0: for modular precast, Octave's Stage 1 picks another draft node (vs 0.7786
+  against MATLAB 1.075) and Stage 2 stops with exitflag −2 at vs = 0.409 (MATLAB: 0.983,
+  exitflag 1); the final numbers agree only because today's Stage 3 re-optimises from scratch.
+  Thin shell agrees: same Stage-1 node, and final mass, Z_CG, GM and periods within 1e-6
+  relative.
+- Find why the `fmincon` shim over Octave's `sqp` diverges (options it ignores, such as
+  `MaxFunctionEvaluations` and `ScaleProblem`; bound handling; finite-difference gradients;
+  exit-flag mapping) and fix the shim until both modes pick MATLAB's Stage-1 node and Stage 2
+  converges to MATLAB's optimum.
+- Re-record `tests/baseline/octave_v1_baseline.json`.
+
+Acceptance: in both modes the Stage-1 node and the Stage-2 active set equal MATLAB's and the
+Stage-2 exitflag is positive; every difference to `matlab_v1_reference.json` is printed (report,
+not a gate: AGENTS.md rule 5); the regression test passes against the new baseline.
 
 ### T1 — Kernel A: outer surface rows and normals (Sonnet high)
 
