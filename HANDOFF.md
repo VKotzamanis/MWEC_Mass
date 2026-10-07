@@ -139,7 +139,12 @@ Main `claude/lucid-cray-7o9442` holds the general-kernel amendment (`e7e9114`) a
 
 1. When T2a is accepted: launch T3 and T2b in parallel from `task/T2a` (lane script, mode parallel).
 2. As lanes return: merge T0d and T4a when accepted; T4b after J1; T5–T10 wait for J2.
-3. J1, owner checkpoint after T3 (measured numbers), then J2 with the first whole-pipeline runs,
+3. **Owner (14:50 UTC): "When you get the first REAL cross sections for UHPC, show me the figure and
+   pause your work."** The first is the J1 checkpoint: a C1 UHPC body built by the real kernel
+   (T2a, T2b, T3), XZ (y = 0) and YZ (x = 0) sections with the rule-12 metrics printed beside them.
+   Then stop every running workflow (work is pushed per commit), launch and merge nothing, and wait
+   for the owner's reply.
+   J1, owner checkpoint after T3 (measured numbers), then J2 with the first whole-pipeline runs,
    the baseline regenerated once, owner checkpoints after T6 and T10; then G.
 4. Session resources: the 7-day rate limit was at warning level at 12:20 UTC (reset 21:00 UTC);
    context 688k of 1M used.
