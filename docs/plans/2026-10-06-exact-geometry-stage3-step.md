@@ -217,8 +217,8 @@ on it, below).
 
 Files: `src/+mwecmass/+solid/outer_nurbs.m`, `offset_surface.m`, `trim_fold.m`,
 `fit_bspline_surface.m`, `fit_z_faces.m` (general path, shared by F1 and F2),
-`eval_bspline_surface.m`, `slice_bspline_surface.m`, tests, `tests/solid/fixtures/tilted_revolution.ms2`
-and `tilted_revolution_two_loops.ms2`.
+`eval_bspline_surface.m`, `slice_bspline_surface.m`, tests, `tests/solid/fixtures/tilted_revolution.ms2`,
+`tilted_revolution_two_loops.ms2` and `lying_revolution.ms2`.
 
 - Adaptive, error-bounded fitting as specified in AGENTS.md §5 item 9: initial nodes dense where
   curvature is high or the void is narrow; offset by t + ε/2 along the exact normal; trim the
@@ -228,7 +228,12 @@ and `tilted_revolution_two_loops.ms2`.
 - General path (contract §8): outer patches that are not exact with z monotone in one parameter,
   and inner pieces whose structure is not kept, become untrimmed faces fitted through T1 sections and
   normals, with z as one parameter; outer fitted faces within ε/4 of the exact surface (contract §8
-  derivation); M1–M3 judged between the faces as written.
+  derivation); M1–M3 judged between the faces as written. Where a face's part of a section is a
+  closed loop with no seam or crease point, the face is cut along one z-monotone curve on the exact
+  surface (steepest-ascent line of z), used bitwise as both v-boundaries (self-seam); a band that
+  ends at a single highest or lowest point inside a patch ends in a pole row there. The mirror of a
+  fitted face is its source's face with the control points flipped, exactly 0 in the flipped
+  coordinate on a boundary in the mirror plane (contract §8).
 - Slice the fitted surface at any height into an ordered closed contour.
 
 Acceptance: M1–M3 pass on a dense check grid not used for fitting (report min / max t_local, the
@@ -252,12 +257,38 @@ the distance of any point from the exact outer surface, and t_local, are 2D dist
 in the meridian plane of the axis frame (lines; the inner profile is the 2D offset by d, trimmed at the
 convex corners, with an arc of radius d about N). Asserted: F1 marks every patch fitted; each fitted
 outer face has `fit.dev_max` ≤ ε/4 and the oracle distance at the check points is ≤ ε/4; M1–M3 pass
-for a shell at t = t_min (the offset folds at every convex corner), with t ≤ t_local ≤ t + ε by the
-oracle; every face is `z_of_u` with monotone z and F3b cuts it at a module-edge height; seams pass
+for a shell at t = t_min (the offset folds at every convex corner) as the kernel reports them between
+the written faces (S2r); at the same check points the oracle t_local (to the exact profile) lies in
+[t − e, t + ε + e], e the largest oracle distance of the written outer faces from the exact surface
+(≤ ε/4, asserted above), and its difference from the kernel's t_local is printed per face; every face is `z_of_u` with monotone z and F3b cuts it at a module-edge height; seams pass
 the I2 bitwise test. Printed: deviations, t_local range, passes and knots per face. The same deck with
 N (0.5, 0.6) and S (1.0, 0.5) (`tilted_revolution_two_loops.ms2`) raises `SectionNotClosed`
 (verified: two loops at z = 0.738 m). The box: the real F2 set equals `sti_inner_box` (convex C0
 v-seams, trimmed along parameter lines, structure kept), compared and printed.
+
+Closed loops and poles inside a patch. `tests/solid/fixtures/lying_revolution.ms2`: FramePoints
+A (0, −1, 0), B (0.6, −1, 0), C (0.6, 1, 0), E (0, 1, 0); `BCurve prof` of degree 3 on { A B C E };
+`Line AX` from A to E; `RevSurf hull` of `prof` about AX, 0° to 360° (one patch, format of
+`capped_cylinder.ms2`). A smooth body of revolution about the horizontal y axis: radius
+1.8 s(1 − s) at profile parameter s, poles on the axis at y = ±1 (z = 0); its self-seam (φ = 0) and
+both poles lie at z = 0; its top and bottom, z = ±0.45 (s = 1/2, v = 3/4 and 1/4), are single
+points inside the patch; smallest principal radius 0.253 m, so no fold at t_min. Verified
+2026-10-07: T1 `outer_rows` (grid 60) returns one closed loop on the one patch with no seam point at
+each of 37 heights in [−0.449, 0.449] m. Asserted: two bands, [−0.45, 0] and [0, 0.45]; each face's
+part of a section is the whole loop, so each face has one self-seam (v0 and v1 the same curve
+bitwise, z-monotone, its edge once in each direction in the face's loop, `validate_brep` passes) and
+a pole row at z = ±0.45 (all control points bitwise equal); every face `z_of_u` with monotone z,
+cut by F3b at z = ±0.2; oracle as above (2D distances to the profile in the meridian plane, closest
+point by Newton on the exact cubic; inner profile the 2D offset by d), `fit.dev_max` ≤ ε/4, M1–M3 at
+t = t_min with the oracle check of the previous paragraph. Printed as above.
+
+Horizontal-tangent rows, against the exact path. C1 with `opts.force_general` true (contract F1):
+every patch fitted; band ends at C1's horizontal rows, the shoulder z = −1 (verified 2026-10-07:
+dz/du of `surface1` vanishes there while dr/du does not) and z_max = 1.1 (ridge row of `surface2`,
+top pole of `surface1`), and at the keel z_min = −3.25; the oracle is the exact path's `geo` (exact
+NURBS of the same entities, I9): distance of every fitted face from it ≤ ε/4 at the check points,
+F4 sections, hull volume and CG of both printed side by side; mirrors bitwise in the symmetry
+planes (I2); M1–M3 at t = 0.0762 m between the written faces.
 
 ### T3 — Kernel C: bodies and exact properties (Sonnet high)
 
@@ -483,7 +514,8 @@ switches), `src/+mwecmass/+output/+step/` builders.
 - UHPC: one STEP per module; one STEP with all modules as one connected solid (built directly as
   one B-rep with the cavity as a void shell).
 - Steel: ballast solid = full outer section below `z_ballast`; shell = the exterior parametric
-  surface (exact NURBS) from `z_ballast` to the deck only (no double counting of the plate);
+  surface (exact NURBS where the patch takes the exact path, fitted faces otherwise, contract §8)
+  from `z_ballast` to the deck only (no double counting of the plate);
   combined file with both bodies sharing the identical junction curve at `z_ballast`. For C1 the
   split at `z_ballast` is exact (z depends only on the profile parameter of the RevSurf and the
   RuledSurf, so the cut is an iso-parameter line found by knot insertion).
