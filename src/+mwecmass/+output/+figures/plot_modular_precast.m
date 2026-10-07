@@ -140,22 +140,25 @@ function plot_modular_precast(realised, config)
 end
 
 function draw_polygons(ax, polygons, void_outlines, vs, style)
-% Material first, then the voids on top with their dashed boundary and hatch.
+% Material, then the void polygons (they tile the air exactly, so a material island inside the air
+% keeps its material fill), the hatch of each air region less its holes, and every loop of the region
+% dashed.
     for k = 1:numel(polygons)
         p = polygons(k);
-        if strcmp(p.role, 'void')
-            continue
-        end
         patch(ax, p.xz(:, 1), p.xz(:, 2) + vs, role_color(p.role, style), 'EdgeColor', 'none', ...
             'FaceAlpha', 1.0, 'HandleVisibility', 'off');
     end
     for k = 1:numel(void_outlines)
-        xz = void_outlines(k).xz;
-        h = patch(ax, xz(:, 1), xz(:, 2) + vs, style.fill_palette.void, ...
-            'EdgeColor', style.fill_palette.inner_boundary, 'LineStyle', '--', 'HandleVisibility', 'off');
-        mwecmass.output.figures.style_line(h, style, 'boundary');
-        mwecmass.output.figures.draw_hatch_strips(ax, xz(:, 1), xz(:, 2) + vs, ...
-            style.hatch_spacing, style.fill_palette.hatch, style.line_width.hatch);
+        loops = cellfun(@(L) [L(:, 1), L(:, 2) + vs], [{void_outlines(k).xz}, void_outlines(k).holes], ...
+            'UniformOutput', false);
+        mwecmass.output.figures.draw_hatch_strips(ax, loops{1}(:, 1), loops{1}(:, 2), ...
+            style.hatch_spacing, style.fill_palette.hatch, style.line_width.hatch, loops(2:end));
+        for q = 1:numel(loops)
+            L = loops{q};
+            h = plot(ax, L([1:end, 1], 1), L([1:end, 1], 2), '--', ...
+                'Color', style.fill_palette.inner_boundary, 'HandleVisibility', 'off');
+            mwecmass.output.figures.style_line(h, style, 'boundary');
+        end
     end
 end
 

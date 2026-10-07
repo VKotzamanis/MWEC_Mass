@@ -11,27 +11,32 @@ function data = realised_section_data(realised, z_plan, n_z)
 %   on the two sides of a module edge end at rounding-level offsets from the edge plane, so the
 %   section exactly at the plane is not reliable.
 %
-%   Elevation (y = 0 plane). Each module is sampled between its two edges and at the ballast level;
-%   wherever the section changes between two heights from solid to hollow or in the number of
-%   intervals the void has along y = 0, the height of the change is bisected to adjacent
-%   floating-point numbers, and again from there up to the next sampled height, so every change in
-%   the cell is found. The ballast top, the closing of the void at its poles and the splitting of the
-%   void are exact, no polygon leaves a gap, and the cells next to a change get more heights. The x
-%   of every crossing of y = 0 is found on the exact curves (section_y0_crossings).
+%   Elevation (y = 0 plane). Each module is sampled at n_z heights between its two edges and at the
+%   ballast level. Where two consecutive sampled heights differ in type (solid or hollow, and the
+%   number of intervals the void has along y = 0), the height of the change is bisected to adjacent
+%   floating-point numbers, and every later change up to the next sampled height is found the same
+%   way; the cells next to a change get more heights. A feature that starts and ends inside one cell
+%   between two sampled heights of the same type is not resolved; n_z sets that resolution. The
+%   ballast top, the closing of the void at its poles and the changes of the void's interval count
+%   that are found are exact, and no polygon leaves a gap. The x of every crossing of y = 0 is found
+%   on the exact curves (section_y0_crossings).
 %   data.polygons(k): module, role ('solid_module' | 'ballast' | 'shell' | 'void'), region
 %   (precast 'uhpc' | 'air'; thin shell 'ballast' | 'shell' | 'air'), z_lo, z_hi, xz [n x 2] = [x z]
 %   counter-clockwise, body frame. A role 'shell' is the shell around the air: the material around a
 %   void, its top and bottom layers included.
-%   data.void_outlines(k): modules (the modules the void passes through), xz [n x 2] counter-clockwise,
-%   body frame: one closed outline per connected air region, drawn only where the realised solid has
-%   a boundary. Void polygons that abut with overlapping x ranges, at a module edge or at the height
-%   inside a module where the number of void intervals changes, are one region: the segment of
-%   their common edge is kept only over the x that is air on one side and material on the other.
-%   Where t is the same on both sides of a module edge nothing lies there; where it differs the
-%   outline keeps only the jog between the two inner sections (the joint_step annulus). Where the
-%   void splits in two at a height inside a module, the horizontal boundary is the part of each
-%   interval that the other side does not cover. Separate outlines remain where one side of the
-%   edge is solid (the joint cap or the disk above a void) or the void closes inside a module.
+%   data.void_outlines(k): modules (the modules the void passes through), xz [n x 2] the outer loop,
+%   counter-clockwise, holes (cell of [n x 2] loops, clockwise: material islands inside the air),
+%   body frame: one outer loop per connected air region, drawn only where the realised solid has a
+%   boundary. The void polygons tile the air exactly: the area of xz minus the areas of the holes is
+%   the area of the region's void polygons. Void polygons that abut with overlapping x ranges, at a
+%   module edge or at the height inside a module where the number of void intervals changes, are one
+%   region: the segment of their common edge is kept only over the x that is air on one side and
+%   material on the other. Where t is the same on both sides of a module edge nothing lies there;
+%   where it differs the outline keeps only the jog between the two inner sections (the joint_step
+%   annulus). Where the void splits in two at a height inside a module, the horizontal boundary is the
+%   part of each interval that the other side does not cover; where the two parts join again, the
+%   material between them is a hole. Separate regions remain where one side of the edge is solid (the
+%   joint cap or the disk above a void) or the void closes inside a module.
 %   data.outline: z, x_lo, x_hi, profile (closed [x z] polygon). data.omitted: heights where the
 %   kernel gave no usable section (z, module, reason); a section whose outer loop crosses y = 0 at
 %   more than two points errors mwecmass:figures:SectionTopology.
@@ -349,13 +354,13 @@ end
 end
 
 function outlines = merge_voids(polygons, e, margin, seams)
-% One outline per connected air region. Void polygon q lies above void polygon p when q is in the next
-% module and the two meet at the module edge (p ends at e - margin, q starts at e + margin), or both are
-% in one module and meet at a seam of its level groups; they are one region when their x ranges overlap
-% on the common edge. The outline of a region is the closed chain of the polygon sides and of the parts
-% of the common edges that the other side does not cover. A polygon is [right side, bottom to top; left
-% side, top to bottom].
-outlines = struct('modules', {}, 'xz', {});
+% One outer loop, with its holes, per connected air region. Void polygon q lies above void polygon p
+% when q is in the next module and the two meet at the module edge (p ends at e - margin, q starts at
+% e + margin), or both are in one module and meet at a seam of its level groups; they are one region
+% when their x ranges overlap on the common edge. The boundary of a region is the closed chains of the
+% polygon sides and of the parts of the common edges that the other side does not cover. A polygon is
+% [right side, bottom to top; left side, top to bottom].
+outlines = struct('modules', {}, 'xz', {}, 'holes', {});
 voids = polygons(strcmp({polygons.role}, 'void'));
 nv = numel(voids);
 if nv == 0
@@ -398,18 +403,26 @@ while changed
         end
     end
 end
-found = struct('modules', {}, 'xz', {}, 'key', {});
+found = struct('modules', {}, 'xz', {}, 'holes', {}, 'key', {});
 for r = unique(region)
     idx = find(region == r);
     loops = region_loops(voids, idx, links);
-    modules = unique([voids(idx).module]);
-    for k = 1:numel(loops)
-        found(end + 1) = struct('modules', modules, 'xz', loops{k}, ...
-            'key', [min(loops{k}(:, 2)), min(loops{k}(:, 1))]); %#ok<AGROW>
+    area = cellfun(@signed_area, loops);
+    outer = find(area > 0);
+    if numel(outer) ~= 1
+        error('mwecmass:figures:OutlineTopology', ...
+            'realised_section_data: a connected air region has %d counter-clockwise boundary loops', numel(outer));
     end
+    xz = loops{outer};
+    found(end + 1) = struct('modules', unique([voids(idx).module]), 'xz', xz, ...
+        'holes', {loops(area < 0)}, 'key', [min(xz(:, 2)), min(xz(:, 1))]); %#ok<AGROW>
 end
 [~, order] = sortrows(vertcat(found.key));
 outlines = rmfield(found(order), 'key');
+end
+
+function a = signed_area(xz)
+a = 0.5 * sum(xz(:, 1) .* xz([2:end, 1], 2) - xz([2:end, 1], 1) .* xz(:, 2));
 end
 
 function x = top_edge(v)
@@ -432,9 +445,9 @@ for i = idx
     v = voids(i);
     n = size(v.xz, 1) / 2;
     kz = v.xz(:, 2);
-    lower = links(links(:, 2) == i, 1);
-    if ~isempty(lower)
-        kz([1, 2 * n]) = voids(lower(1)).z_hi;
+    below_idx = links(links(:, 2) == i, 1);
+    if ~isempty(below_idx)
+        kz([1, 2 * n]) = voids(below_idx(1)).z_hi;
     end
     for j = [1:n - 1, n + 1:2 * n - 1]
         S(end + 1, :) = [v.xz(j, 1), kz(j)]; %#ok<AGROW>

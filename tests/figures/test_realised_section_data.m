@@ -147,6 +147,8 @@ end
 check(numel(vo) == n_cavities, '%s: %d void outlines, body has %d cavities', tag, numel(vo), n_cavities);
 for k = 1:numel(vo)
     check(signed_area(vo(k).xz) > 0, '%s: void outline %d orientation', tag, k);
+    check(isempty(vo(k).holes), '%s: void region %d has %d holes; the stand-in voids have no island', tag, k, ...
+        numel(vo(k).holes));
     xz = vo(k).xz;
     nxt = circshift(xz, -1);
     for i = 1:N - 1

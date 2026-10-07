@@ -29,22 +29,24 @@ function fig = plot_steel_solve(realised, config)
     hold(ax, 'on');
     axis(ax, 'equal');
 
+    % The void polygons tile the air exactly, so a material island inside the air keeps its fill;
+    % each air region is hatched less its holes and every loop of it is dashed.
     for k = 1:numel(data.polygons)
         p = data.polygons(k);
-        if ~strcmp(p.role, 'void')
-            patch(ax, p.xz(:, 1), p.xz(:, 2) + vs, role_color(p.role, style), 'EdgeColor', 'none', ...
-                'FaceAlpha', 1.0, 'HandleVisibility', 'off');
-        end
+        patch(ax, p.xz(:, 1), p.xz(:, 2) + vs, role_color(p.role, style), 'EdgeColor', 'none', ...
+            'FaceAlpha', 1.0, 'HandleVisibility', 'off');
     end
     for k = 1:numel(data.void_outlines)
-        xz = data.void_outlines(k).xz;
-        patch(ax, xz(:, 1), xz(:, 2) + vs, style.fill_palette.void, 'EdgeColor', 'none', ...
-            'FaceAlpha', 1.0, 'HandleVisibility', 'off');
-        h_in = plot(ax, xz([1:end, 1], 1), xz([1:end, 1], 2) + vs, '--', ...
-            'Color', style.fill_palette.inner_boundary, 'HandleVisibility', 'off');
-        mwecmass.output.figures.style_line(h_in, style, 'boundary');
-        mwecmass.output.figures.draw_hatch_strips(ax, xz(:, 1), xz(:, 2) + vs, ...
-            style.hatch_spacing, style.fill_palette.hatch, style.line_width.hatch);
+        loops = cellfun(@(L) [L(:, 1), L(:, 2) + vs], [{data.void_outlines(k).xz}, data.void_outlines(k).holes], ...
+            'UniformOutput', false);
+        mwecmass.output.figures.draw_hatch_strips(ax, loops{1}(:, 1), loops{1}(:, 2), ...
+            style.hatch_spacing, style.fill_palette.hatch, style.line_width.hatch, loops(2:end));
+        for q = 1:numel(loops)
+            L = loops{q};
+            h_in = plot(ax, L([1:end, 1], 1), L([1:end, 1], 2), '--', ...
+                'Color', style.fill_palette.inner_boundary, 'HandleVisibility', 'off');
+            mwecmass.output.figures.style_line(h_in, style, 'boundary');
+        end
     end
     h_hull = plot(ax, profile([1:end, 1], 1), profile([1:end, 1], 2) + vs, '-', ...
         'Color', style.fill_palette.boundary, 'HandleVisibility', 'off');
@@ -122,6 +124,8 @@ function c = role_color(role, style)
             c = style.fill_palette.solid_material;
         case 'shell'
             c = style.fill_palette.jacket_material;
+        case 'void'
+            c = style.fill_palette.void;
         otherwise
             error('mwecmass:figures:UnknownRole', 'Unknown section role ''%s'' for a thin-shell figure.', role);
     end

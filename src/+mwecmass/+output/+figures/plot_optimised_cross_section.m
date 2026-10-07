@@ -67,12 +67,16 @@ function plot_optimised_cross_section(props_3d, config, x_opt, realised)
 
         h_void = [];
         for k = 1:numel(voids)
-            h_v = plot(ax1, voids(k).xz([1:end, 1], 1), voids(k).xz([1:end, 1], 2) + draft_final, '--', ...
-                'Color', style.fill_palette.inner_boundary, 'LineWidth', style.line_width.boundary);
-            if isempty(h_void)
-                h_void = h_v;
-            else
-                set(h_v, 'HandleVisibility', 'off');
+            loops = [{voids(k).xz}, voids(k).holes];
+            for q = 1:numel(loops)
+                L = loops{q};
+                h_v = plot(ax1, L([1:end, 1], 1), L([1:end, 1], 2) + draft_final, '--', ...
+                    'Color', style.fill_palette.inner_boundary, 'LineWidth', style.line_width.boundary);
+                if isempty(h_void)
+                    h_void = h_v;
+                else
+                    set(h_v, 'HandleVisibility', 'off');
+                end
             end
         end
 
