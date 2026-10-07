@@ -7,9 +7,11 @@ function [rows, grids] = outer_rows(model, cache, z, grids)
 %
 %   Every source patch is traced on the parameter grid cache.u_samples (n x n)
 %   by marching squares on z(u,v) - z_k. Each crossing of a grid edge is
-%   refined on the exact surface until |z - z_k| <= 16 ulp, and its (u,v) is
-%   known. Where the surface is horizontal (dz = 0 to first order along it) the in-plane
-%   position is accurate only to about sqrt(16 ulp / |z_uu|), e.g. 5.5e-8 m at
+%   refined on the exact surface until |z - z_k| <= 16 ulp of max(1,|z_k|), or
+%   until the parameter stops changing (2 ulp); then |z - z_k| is bounded by
+%   |dz/du| times the parameter spacing. Its (u,v) is known. Where the surface
+%   is horizontal (dz = 0 to first order along it) the in-plane position is
+%   accurate only to about sqrt(16 ulp / |z_ss|) (s = in-plane arc length), e.g. 5.5e-8 m at
 %   C1's shoulder z = -1. Features between grid nodes (extremes of z, narrow
 %   necks) are not resolved; the sampled z range of all patches is returned in
 %   grids.z_range. Mirror patches are the source pieces with the coordinate
@@ -26,10 +28,10 @@ function [rows, grids] = outer_rows(model, cache, z, grids)
 %     patch, u, v   [n x 1] source: index into model.visible_surfs and parameters
 %     seam          [n x 1] logical, point lies on a joint between two patches
 %     patch2,u2,v2  [n x 1] the same point as seen from the other patch (0, NaN at non-seams)
-%     area          enclosed area [m^2] (> 0)
+%     area          area of the polygon pts (shoelace) [m^2] (> 0); its vertices lie on the exact section
 %     seam_gap      largest distance between two endpoints identified at a joint [m]
 %     degenerate    true if z is not inside the open range grids.z_range of the
-%                   sampled grid z values (then n = 0 and pts is empty)
+%                   sampled grid z values, or if no patch crosses z (then n = 0 and pts is empty)
 
     if nargin < 4 || isempty(grids)
         grids = build_grids(model, cache);
@@ -347,7 +349,7 @@ end
 function x = solve_edge(fun, a, b, fa, fb, tolz, x0)
 % Root of fun on [a,b] (fun(a) = fa, fun(b) = fb of opposite sign, zero counts as >= 0).
 % Illinois regula falsi; an optional start x0 (a root of a neighbouring edge) is tried first.
-% It stops when successive iterates agree to 2 ulp: the z evaluation has a rounding floor above tolz.
+% It also stops when successive iterates agree to 2 ulp, for patches whose z changes by more than tolz per parameter ulp.
     if fa == 0, x = a; return; end
     if fb == 0, x = b; return; end
     if ~isnan(x0) && x0 > a && x0 < b

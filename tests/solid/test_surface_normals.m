@@ -25,7 +25,7 @@ function test_surface_normals
     ult = cellfun(@(nm) ultimate_source(cache, nm), names, 'UniformOutput', false);
 
     normals = cell(numel(rows), 1);
-    d_unit = 0; d_rev = 0; d_horiz = 0; max_step = 0; max_seam_mirror = 0; max_seam_other = 0;
+    d_unit = 0; d_rev = 0; max_step = 0; max_seam_mirror = 0; max_seam_other = 0;
     n_pts = 0; n_limit = 0; n_horiz = 0;
     for k = 1:numel(rows)
         r = rows(k);
