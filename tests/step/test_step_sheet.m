@@ -15,4 +15,7 @@ fprintf('sheet: volumes %d, surfaces %d, open mesh edges (the sheet boundary) %d
 if r.n_volumes ~= 0 || r.n_surfaces ~= 4
     error('test_step_sheet: expected 0 volumes and 4 surfaces');
 end
+if r.open_edges == 0
+    error('test_step_sheet: an open sheet must report boundary edges');
+end
 end

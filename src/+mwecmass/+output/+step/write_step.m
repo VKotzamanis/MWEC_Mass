@@ -101,7 +101,7 @@ fprintf(fid_out, 'FILE_DESCRIPTION((''MWEC_Mass B-rep''),''2;1'');\n');
 fprintf(fid_out, 'FILE_NAME(%s,''%s'',(''MWEC_Mass''),(''''),''mwecmass.output.step.write_step'','''','''');\n', ...
     quote([base ext]), datestr(now, 'yyyy-mm-ddTHH:MM:SS'));
 fprintf(fid_out, 'FILE_SCHEMA((''AUTOMOTIVE_DESIGN''));\nENDSEC;\nDATA;\n');
-fprintf(fid_out, '%s\n', lines{1:nl});
+fprintf(fid_out, '%s\n', strjoin(lines(1:nl), newline));
 fprintf(fid_out, 'ENDSEC;\nEND-ISO-10303-21;\n');
 fclose(fid_out);
 
