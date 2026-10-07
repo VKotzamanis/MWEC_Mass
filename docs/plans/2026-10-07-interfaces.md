@@ -286,8 +286,8 @@ Where the plan's task sections differ, this contract wins:
   the precast module-edge branch, the test a == `z_ballast` before a == `z_lo`), so the F5 stand-in
   writes no inner disk there and, in thin shell, splits `ballast_top` into an annulus
   (ballast/shell) and a disk (ballast/air), in precast writes the void-bottom disk (uhpc/air) as
-  `ballast_top`; `tests/standin_kit/test_sk_body.m` adds one case per mode at `z_ballast` = inner
-  `z_lo`, asserting that no inner face lies at that height and that the `ballast_top` faces are
+  `ballast_top`; `tests/standin_kit/test_sk_body.m` adds one case per fixture and mode (cylinder and
+  box, thin shell and precast: four cases) with `z_ballast` = inner `z_lo` of module 1, asserting that no inner face lies at that height and that the `ballast_top` faces are
   these (plan SK2: files `sti_closed_form.m`, `build_body.m`, `test_sk_body.m`).
 
 ## 4. File ownership map (files more than one task edits; order of edits)

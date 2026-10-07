@@ -233,14 +233,15 @@ before J1.
   shell it splits `ballast_top` into an annulus (ballast/shell) and a disk (ballast/air), in precast
   it writes the void-bottom disk (uhpc/air) as `ballast_top`. `build_body.m` changes only where it
   does not already follow from the layout (today it does: it writes the inner disk only for the
-  bottom `'inner'`). `test_sk_body` adds one case per mode with `z_ballast` = inner `z_lo` of module
-  1 (above its bottom edge).
+  bottom `'inner'`). `test_sk_body` adds one case per fixture and mode (cylinder and box, thin shell
+  and precast: four cases) with `z_ballast` = inner `z_lo` of module 1 (above its bottom edge).
 
 Acceptance: every SK test passes with the field-set assertions extended by the new fields and the
 box assertion replaced by a comparison with `sti_inner_box`; F6b at a module edge of a stand-in
 body gives the module above by default and the module below with `'below'`, the same outer loop;
 `outer_nurbs(model, [], struct())` equals `outer_nurbs(model)` for both fixtures; in the new
-`test_sk_body` cases (cylinder and box, each mode) no face with role `inner` lies at the height
+`test_sk_body` cases (one per fixture and mode: cylinder and box, thin shell and precast: four
+cases, `z_ballast` = inner `z_lo` of module 1) no face with role `inner` lies at the height
 `z_ballast` (no constant-z inner face there), the faces at that height are, in thin shell, one
 `ballast_top` annulus (ballast/shell) and one `ballast_top` disk (ballast/air) and, in precast, one
 `ballast_top` disk (uhpc/air), every closed shell passes `validate_brep`, and the region volumes
