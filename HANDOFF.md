@@ -1,6 +1,6 @@
 # HANDOFF — MWEC_Mass exact-geometry refactor
 
-Updated 2026-10-07 13:50 UTC on `claude/lucid-cray-7o9442`. Process file for agents: the
+Updated 2026-10-07 14:00 UTC on `claude/lucid-cray-7o9442`. Process file for agents: the
 orchestrator updates it at every milestone and at least every 100k tokens; delete it in T12.
 
 ## 1. Goal
@@ -33,7 +33,7 @@ Main `claude/lucid-cray-7o9442` holds the general-kernel amendment (`e7e9114`) a
 | T5 | UHPC Stage 3 a: split, build, check, store | U | round 3 grading | r1 –, r2 8 | task/T5 `4a9bffa` |
 | T6 | UHPC Stage 3 b: optimisation, spill, closest fail | U | queued after T5 | — | — |
 | T7 | thin-shell rebuild | S | round 3 grading | r2 7 | task/T7 `c9626ec` |
-| T8 | figures from the realised solid | O | round 5 grading (void outlines at module edges) | r1–r4 8 | task/T8 `5dc35c2` |
+| T8 | figures from the realised solid | O | rounds 7–8 (`wf_04b5da50-26a`): role 'wall' → 'shell'; gap where a void's y = 0 interval count changes | r1–r4 8, r5–r6 6 | task/T8 `63810a6` |
 | T10 | Stage-3 STEP exports | O | accepted, waits for J2 | 9 (3) | `07856a2` |
 | T0d | geometry cache of `build_config` | P | round 2 grading | r1 8 | task/T0d `158d77d` |
 | T4a | Stage-2 changes (delete `c_mono`, `c_mass_min`; bottom-filled start; bounds) | P | queued after T0d | — | — |
