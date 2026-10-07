@@ -148,7 +148,7 @@ if ~check.pass && ~isempty(k) && (~isfield(opts, 'escalate') || opts.escalate)
     notes = [notes, sol.notes];
     [props, check, ev, hs] = evaluate(ctx, design, [], geo, config, stage2, TOL_EQ);
     if ~check.pass && strcmp(sol.closest, 'optimum')
-        notes{end + 1} = sprintf(['closest fail: the %s optimum meets the equalities and fails the ' ...
+        notes{end + 1} = sprintf(['closest fail: the %s result meets the equalities and fails the ' ...
             'mass_acceptable_pct check'], escalation);
     end
 end

@@ -19,8 +19,12 @@ function [sol, ctx] = solve(ctx, start, P)
 %     spill        only when the equalities are not met: the same ballast variable, its upper bound
 %                  widened to the top of k*+1 (k*+1 must exist and be hollow);
 %     draft_free   only when flotation (mass balance) is still not met: vs is a variable too.
-%   Every step ends when the F10 check passes (accepted) or the equalities hold (the optimum is the
-%   closest fail: it minimises the deviation, and a failed check does not release the draft).
+%   Each step first reaches the equalities from its start point (fmincon with a zero objective)
+%   when the start violates them, then minimises the objective from there. When the solver ends
+%   off the equalities, or stops on its own failure, the step ends at its evaluated point with the
+%   smallest equality violation (then the smallest objective).
+%   The escalation ends when the F10 check passes (accepted) or the equalities hold (the optimum is
+%   the closest fail: it minimises the deviation, and a failed check does not release the draft).
 %   When no step meets the equalities, the closest fail is the evaluated design with the smallest
 %   equality violation max(|flotation|, |GM|) over every step; the solver only exposes its
 %   evaluations portably, so every point evaluated (iterates, their finite-difference neighbours
@@ -28,8 +32,9 @@ function [sol, ctx] = solve(ctx, start, P)
 %   rebuilt on its adaptive fit before it is stored.
 %   A kernel error named in contract F5 and section 8 (VoidClosed, JointNotNested,
 %   FitNotConverged) is a failed evaluation: objective and equality residuals Inf, which the SQP
-%   line search rejects; when one leaves the solver without a gradient, the step ends at its start
-%   point. It never stops Stage 3.
+%   line search rejects; when one leaves the solver without a gradient, the step ends at its best
+%   evaluated point (above). It never stops Stage 3; an error of any other kind raised while a
+%   design is evaluated is a defect and is raised.
 %   Inner surfaces keep their knot vectors during a solve (F2 opts.knots_from, the adaptive sets
 %   of the step's start point); the step's optimum is rebuilt on its adaptive fit, and when that
 %   fit has another knot structure the step restarts there (contract section 7 item 4) until the
@@ -42,7 +47,8 @@ function [sol, ctx] = solve(ctx, start, P)
 store = containers.Map();
 store('ctx') = ctx;
 store('hs') = struct('vs', {}, 'hs', {});
-store('hist') = struct('step', {}, 'x', {}, 'free_vs', {}, 'viol', {});
+store('hist') = struct('step', {}, 'x', {}, 'free_vs', {}, 'viol', {}, 'f', {});
+store('defect') = [];
 store('seen') = containers.Map();
 store('failed') = {};
 
@@ -130,6 +136,9 @@ if free_vs
     lb(end + 1) = P.vs_bounds(1);
     ub(end + 1) = P.vs_bounds(2);
 end
+% The solver works on q = (x - lb) ./ w in [0, 1]: metres of ballast level and of shell
+% thickness then weigh alike in its relative step and stopping tests.
+w = ub - lb;
 notes = {};
 opts = optimoptions('fmincon', 'Algorithm', 'sqp', 'Display', 'iter', ...
     'ConstraintTolerance', P.tol_eq, 'OptimalityTolerance', 1e-6, 'StepTolerance', 1e-8, ...
@@ -151,19 +160,33 @@ while true
     ctx.knots_from = base;
     store('ctx') = ctx;
     store('seen') = containers.Map();
+    obj = @(q) objective(store, P, lb + w .* q);
+    con = @(q) constraints(store, P, lb + w .* q);
+    q01 = {zeros(size(x)), ones(size(x))};
     try
-        [x, ~, flag, out] = fmincon(@(xx) objective(store, P, xx), x, [], [], [], [], lb, ub, ...
-            @(xx) constraints(store, P, xx), opts);
+        v = cached(store, P, x);
+        if max(abs(v(2:end))) > P.tol_eq
+            % Phase 1: reach the equalities first (zero objective), then minimise from there.
+            [xi, ~, ~, out] = fmincon(@(q) 0, (x - lb) ./ w, [], [], [], [], q01{:}, con, opts);
+            x = lb + w .* xi;
+            iterations = iterations + out.iterations;
+        end
+        [xi, ~, flag, out] = fmincon(obj, (x - lb) ./ w, [], [], [], [], q01{:}, con, opts);
+        x = lb + w .* xi;
         iterations = iterations + out.iterations;
     catch err
-        % A failed evaluation inside a finite-difference gradient leaves the solver no direction;
-        % the step ends at its last start point. Any other solver error is a defect.
-        if isempty(store('failed'))
-            rethrow(err);
+        % An error raised while evaluating a design is a defect; the solver's own failures (a
+        % failed evaluation inside a finite-difference gradient, a failed QP subproblem) end the
+        % step at its best evaluated point below.
+        if ~isempty(store('defect'))
+            rethrow(store('defect'));
         end
         flag = NaN;
-        notes{end + 1} = sprintf('step %s: the solver stopped after failed evaluations (%s)', ...
-            name, err.message); %#ok<AGROW>
+        notes{end + 1} = sprintf('step %s: the solver stopped (%s)', name, err.message); %#ok<AGROW>
+    end
+    v = cached(store, P, x);
+    if max(abs(v(2:end))) > P.tol_eq
+        x = best_of_step(store, name, x, max(abs(v(2:end))), v(1));
     end
     ctx = store('ctx');
     ctx.knots_from = [];
@@ -220,9 +243,27 @@ if isKey(seen, key)
     v = seen(key);
     return
 end
-r = evaluate(store, P, x, false);
+try
+    r = evaluate(store, P, x, false);
+catch err
+    store('defect') = err;
+    rethrow(err);
+end
 v = [r.f; r.res(:)];
 seen(key) = v;
+end
+
+function x = best_of_step(store, name, x, viol, f)
+% The point of this step with the smallest equality violation (then the smallest objective),
+% when it improves on x.
+hist = store('hist');
+for h = hist(strcmp({hist.step}, name))
+    if numel(h.x) == numel(x) && (h.viol < viol || (h.viol == viol && h.f < f))
+        x = h.x;
+        viol = h.viol;
+        f = h.f;
+    end
+end
 end
 
 function r = evaluate(store, P, x, adaptive)
@@ -261,7 +302,7 @@ r.viol = max(abs(r.res));
 r.check = check;
 r.inner = ev.inner;
 hist = store('hist');
-hist(end + 1) = struct('step', P.step, 'x', x, 'free_vs', P.free_vs, 'viol', r.viol);
+hist(end + 1) = struct('step', P.step, 'x', x, 'free_vs', P.free_vs, 'viol', r.viol, 'f', r.f);
 store('hist') = hist;
 end
 

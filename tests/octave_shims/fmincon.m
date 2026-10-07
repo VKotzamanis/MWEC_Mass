@@ -30,6 +30,7 @@ function [x, fval, exitflag, output, lambda] = fmincon(fun, x0, A, b, Aeq, beq, 
 %   here), stepsize (NaN), firstorderopt (NaN: sqp does not report it), algorithm, message, info
 %   (the raw sqp code).
 %   lambda: eqlin, eqnonlin, ineqlin, ineqnonlin, lower, upper, in MATLAB's sign convention.
+%   When sqp returns no multipliers (its last QP subproblem failed), lambda holds empty and zero fields.
 %
 %   OutputFcn is called with state 'init' (iteration 0, at x0) and 'done' (at the solution).
 %   Per-iteration ('iter') calls are not available because sqp has no callback.
@@ -215,6 +216,11 @@ function lam = split_lambda(l, nl, xs, Aeq, A, lbc, ubc)
   up_idx = find(isfinite(ubc));
   counts = [numel(ceq), rows(Aeq), numel(c), rows(A), numel(lo_idx), numel(up_idx)];
   l = l(:);
+  if isempty(l)
+    % sqp returns no multipliers when its last QP subproblem failed (qp gives a 0x0 lambda).
+    lam = empty_lambda(n);
+    return;
+  end
   if numel(l) ~= sum(counts)
     error('fmincon:lambdaSize', 'sqp returned %d multipliers for %d constraints.', numel(l), sum(counts));
   end
