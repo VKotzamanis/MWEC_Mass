@@ -18,6 +18,8 @@ eb = [-2.5; -1.5; -0.5; 0.5];
 ic = [mwecmass.solid.offset_surface(mc, [], gc, 0.1, [-3 1], opts), ...
       mwecmass.solid.offset_surface(mc, [], gc, 0.2, [-3 1], opts)];
 ib = [sti_inner_box(gb, 0.1, t_min), sti_inner_box(gb, 0.15, t_min)];
+d1 = ic(1).d;
+d2 = ic(2).d;
 
 % {geo, inner sets, mode, edges, t, z_ballast, solid_modules, label}
 cases = {
@@ -35,6 +37,9 @@ cases = {
     gb, ib, 'thin_shell', eb, 0.15 * ones(3, 1), -2.45, [], 'box thin shell, ballast below the inner z_lo'
     gb, [], 'modular_precast', eb, NaN(3, 1), -2.5, 1:3, 'box precast, every module solid (no inner set)'
     gc, [], 'modular_precast', ec, NaN(4, 1), -2, 1:4, 'cylinder precast, every module solid (no inner set)'
+    gc, ic, 'modular_precast', [-3; -3 + d1; -1; 0; 1], [0.1; 0.1; 0.1; NaN], -3, 4, 'cylinder precast, inner z_lo on a module edge'
+    gc, ic, 'modular_precast', [-3; -2; 1 - d1; 1], [0.1; 0.1; 0.1], -2.5, [], 'cylinder precast, inner z_hi on a module edge'
+    gc, ic, 'modular_precast', [-3; -2; 1 - d2; 1], [0.1; 0.2; 0.1], -2.5, [], 'cylinder precast, thicker lower z_hi on a joint'
     };
 worst = struct('closure', 0, 'hull', 0, 'occ', 0, 'section', 0);
 for c = 1:size(cases, 1)

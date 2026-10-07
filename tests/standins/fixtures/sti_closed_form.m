@@ -272,6 +272,7 @@ N = numel(e) - 1;
 d = d(:);
 lay = struct('a', cell(N, 1), 'b', [], 'air', false, 'bottom', '', 'top', '');
 zb = design.z_ballast;
+precast = strcmp(design.mode, 'modular_precast');
 for i = 1:N
     lay(i).a = NaN;
     lay(i).b = NaN;
@@ -286,14 +287,22 @@ for i = 1:N
         lay(i).a = a;
         lay(i).b = b;
         lay(i).air = true;
-        if a == z_lo
+        % precast: a void end on a module edge is a joint face shared by both modules, so the
+        % joint rule wins over the inner end; thin shell has no joint faces and keeps the inner end
+        if precast && a == e(i)
+            if a == zb
+                lay(i).bottom = 'ballast_top';
+            else
+                lay(i).bottom = 'joint';
+            end
+        elseif a == z_lo
             lay(i).bottom = 'inner';
         elseif a == zb
             lay(i).bottom = 'ballast_top';
         else
             lay(i).bottom = 'joint';
         end
-        if b == z_hi
+        if b == z_hi && ~(precast && b == e(i + 1))
             lay(i).top = 'inner';
         else
             lay(i).top = 'joint';
