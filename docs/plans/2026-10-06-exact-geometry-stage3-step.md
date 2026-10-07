@@ -282,6 +282,11 @@ patches exact, contract §3; `outer_nurbs(model)` and `outer_nurbs(model, cache,
 `geo`). The box: the real F2 set equals `sti_inner_box` (convex C0 v-seams, trimmed along parameter
 lines, structure kept), compared and printed.
 
+Column vertices (contract F1). `tests/solid/fixtures/split_wall_box.ms2`: SK's `box.ms2` with the wall
+y = 0.75 drawn as two RuledSurfs split at z = −1 (one loop per section). Asserted: F1 splits the walls
+x = ±1 and y = −0.75 at z = −1 into exact pieces with the shared rows bitwise; the seam fields pair up
+(I2); the brep of the test helper passes `validate_brep` and `step_check.py` with volume 9 m³.
+
 Exact-path additions (contract F1). `stepped_spar.ms2` (format of SK's `cylinder.ms2`): FramePoints
 K (0, 0, −3), P1 (1.5, 0, −3), P2 (1.5, 0, −1), P3 (0.75, 0, −1), P4 (0.75, 0, 1), T (0, 0, 1); a
 PolyCurve2 of the Lines K–P1, P1–P2, P2–P3, P3–P4, P4–T revolved 0° to 90° about the Line K–T;
