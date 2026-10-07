@@ -313,7 +313,7 @@ function t_c = curve_end(ctx, vs)
 % Largest t of the flotation curve at this draft: where flotation needs no ballast. The mass
 % rises with t; its upper bracket is searched by halving the distance to t_max (where the void
 % closes and the kernel cannot evaluate), so no step size is chosen. When even the last
-% representable t below t_max floats with no ballast, that t ends the curve.
+% representable t below t_max still needs ballast to float, that t ends the curve.
 r = @(t) flotation_of(ctx, [vs, t, ctx.geo.z_range(1)]);
 t = ctx.t_min;
 if r(t) >= 0
