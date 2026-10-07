@@ -1,8 +1,8 @@
 function test_step_export_stage3()
-%TEST_STEP_EXPORT_STAGE3  export_stage3 (F11) on the stand-in bodies (box, cylinder), both modes.
+%TEST_STEP_EXPORT_STAGE3  export_stage3 (F11) on the fixture bodies (box, cylinder), both modes.
 %   Per file: gmsh/OpenCASCADE import by tests/step_check.py (METRE, solid count, no open mesh edge on a
 %   solid, a sheet's boundary as the only open edges), imported volumes against the kernel volumes
-%   (S6 of the stand-in F6) and against sti_closed_form, which is the independent oracle. The box is
+%   (S6 of F6, through sti_realised) and against sti_closed_form, which is the independent oracle. The box is
 %   planar, so its volumes are asserted to the bound of test_step_cube (OCC rounding only); the
 %   cylinder's rational faces are compared and printed. The offset distance of the closed form is
 %   d = t + 0.01 t_min / 2 (contract section 0).
