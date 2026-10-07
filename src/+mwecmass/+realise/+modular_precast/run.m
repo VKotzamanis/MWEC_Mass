@@ -24,7 +24,7 @@ if ~has_out || config.output.save.stage3.precast_midplane || config.output.save.
 end
 if ~has_out || config.output.save.stage3.step
     realised.step_files = mwecmass.output.step.export_stage3(realised, ...
-        fullfile(mwecmass.output.output_dir('modular_precast'), 'step'));
+        mwecmass.output.output_dir('modular_precast'));
 end
 
 results = opt_results;

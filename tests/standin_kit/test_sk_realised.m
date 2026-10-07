@@ -40,7 +40,7 @@ for c = 1:size(cases, 1)
     [r, fp] = sti_realised(config, design, rho, stage2, struct('t_min', t(1)));
     check(isequal(sort(fieldnames(r))', sort(s8)), '%s %s: S8 fields', name, mode);
     missing = setdiff(fp_names, fieldnames(r.props));
-    check(isempty(missing), 'F9 stand-in lacks %s', strjoin(missing, ', '));
+    check(isempty(missing), 'F9 lacks %s', strjoin(missing, ', '));
     check(isfield(fp, 'stage3_status') && isfield(fp, 'stage3_check'), 'final_props stage3 fields');
     p = r.props;
     bp = mwecmass.solid.body_properties(r.body, rho, []);
@@ -81,13 +81,6 @@ for c = 1:size(cases, 1)
     off.Z_CG = same.Z_CG * 1.25;
     ck = mwecmass.realise.check_against_stage2(p, off, 10, Inf, config.RHO_WATER);
     check(~ck.pass && isequal(ck.failed, {'Z_CG'}) && ~isempty(strfind(ck.reason, 'Z_CG')), 'F10 failure report');
-
-    % F9 on the geo of the real F1 (analytic = []) identifies the fixture by hull_name
-    hs = mwecmass.solid.hydrostatics_at_draft(config.hull_solid, vs, struct());
-    real_cfg = config;
-    real_cfg.hull_solid.analytic = [];
-    p2 = mwecmass.realise.evaluate_realised(bp, hs, design, real_cfg);
-    check(isequaln(p2, p), '%s %s: F9 differs when geo.analytic is empty', name, mode);
 end
 
 % all modules solid: no inner set

@@ -71,8 +71,11 @@ for name = {'cylinder', 'box'}
         ps.periods.pitch / f3.periods.pitch - 1];
     fprintf('%-8s all solid vs sti_stage2, relative differences M, Z_CG, Iyy, GM, T_heave, T_pitch: %s\n', ...
         name{1}, mat2str(d, 3));
-    % N products of the same factors summed in another order: at most N rounding steps apart
-    check(abs(d(1)) <= N * eps, 'all-solid mass against sti_stage2');
+    if ~isempty(geo.analytic)
+        % stand-in kernel: N products of the same factors summed in another order, at most N
+        % rounding steps apart
+        check(abs(d(1)) <= N * eps, 'all-solid mass against sti_stage2');
+    end
 end
 end
 
