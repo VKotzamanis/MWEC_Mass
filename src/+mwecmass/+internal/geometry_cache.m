@@ -106,7 +106,7 @@ function b = serialise(v)
         parts = {tag('struct', size(v))};
         for k = 1:numel(v)
             for f = 1:numel(names)
-                parts{end+1, 1} = uint8(names{f}(:)); %#ok<AGROW>
+                parts{end+1, 1} = frame_name(names{f}); %#ok<AGROW>
                 parts{end+1, 1} = serialise(v(k).(names{f})); %#ok<AGROW>
             end
         end
@@ -127,6 +127,10 @@ function b = serialise(v)
         error('mwecmass:internal:GeometryCacheKeyType', ...
               'Cannot serialise a value of class %s into the key.', class(v));
     end
+end
+
+function b = frame_name(name)
+    b = [typecast(uint64(numel(name)), 'uint8').'; uint8(name(:))];
 end
 
 function b = tag(name, sz)

@@ -2,7 +2,7 @@ function test_geometry_cache_reload()
 %TEST_GEOMETRY_CACHE_RELOAD A config reloaded from the geometry cache equals a freshly built one.
 %   Both realisation paths of build_config (modular precast with the wall-pinned layout and the
 %   per-strip bounds; thin shell with the uniform layout) on the stand-in cylinder deck: first
-%   call computes and saves, second reloads. Equality is exact (identity of two code paths).
+%   call computes and saves, second reloads. Equality is isequaln (NaN equal to NaN; z_cg_target is NaN), exact by identity of two code paths.
 %   config.hydro_cache is left out: empty_hydro_cache stamps the wall-clock time into it, outside
 %   the cached block. The saved file must hold plain data only.
   repo_root = fileparts(fileparts(fileparts(mfilename('fullpath'))));
@@ -33,8 +33,9 @@ function test_geometry_cache_reload()
       error('%s: reload still ran the per-strip bounds', modes{m});
     end
 
-    where = first_difference(rmfield(fresh, 'hydro_cache'), rmfield(loaded, 'hydro_cache'));
-    if ~isempty(where)
+    if ~isequaln(rmfield(fresh, 'hydro_cache'), rmfield(loaded, 'hydro_cache'))
+      where = first_difference(rmfield(fresh, 'hydro_cache'), rmfield(loaded, 'hydro_cache'));
+      if isempty(where), where = '(no field named; isequaln still false)'; end
       error('%s: reloaded config differs from the fresh one at %s', modes{m}, where);
     end
 

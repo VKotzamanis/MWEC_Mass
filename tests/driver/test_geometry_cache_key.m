@@ -41,6 +41,12 @@ function test_geometry_cache_key()
     error('removing an input did not change the key');
   end
 
+  % Field names are framed: names that differ only where a name ends and the value begins.
+  if strcmp(cache('key', deck, struct('xu', int8(5)), src_root), ...
+            cache('key', deck, struct('x', uint8(5)), src_root))
+    error('two different inputs serialise to the same key');
+  end
+
   % Deck bytes.
   deck_copy = fullfile(work, 'cylinder.ms2');
   copyfile(deck, deck_copy);
@@ -74,7 +80,7 @@ function test_geometry_cache_key()
     if strcmp(cache('key', deck, inputs, copy_root), key0)
       error('changing %s did not change the key', relative{k});
     end
-    restore_size(files{k}, fullfile(src_root, '+mwecmass', relative{k}));
+    restore_file(files{k}, fullfile(src_root, '+mwecmass', relative{k}));
   end
   if ~strcmp(cache('key', deck, inputs, copy_root), key0)
     error('the key did not return after restoring the sources');
@@ -127,8 +133,7 @@ function test_geometry_cache_key()
   while ~isempty(pending)
     text = pending{end};
     pending(end) = [];
-    if ~isempty(regexp(text, '\<(feval|str2func|eval|evalc|evalin|assignin|import|run)\s*[(\s]', 'once')) ...
-            && ~isempty(regexp(text, '\<(feval|str2func|eval|evalc|evalin|assignin|import)\s*[(\s]', 'once'))
+    if ~isempty(regexp(text, '\<(feval|str2func|eval|evalc|evalin|assignin|import|run)\s*[(\s]', 'once'))
       error('a file in the call graph calls by name or imports; the text search cannot follow it');
     end
     refs = regexp(text, 'mwecmass(\.\+?\w+)+', 'match');
@@ -206,7 +211,7 @@ function append_text(file, text)
   fclose(fid);
 end
 
-function restore_size(copy, original)
+function restore_file(copy, original)
   copyfile(original, copy);
 end
 

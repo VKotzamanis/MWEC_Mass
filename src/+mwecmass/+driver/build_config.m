@@ -768,8 +768,11 @@ function [products, ms2_model] = compute_geometry_products(ms2_file, g)
 %COMPUTE_GEOMETRY_PRODUCTS Run the expensive geometry steps of build_config.
 % Reads the deck and the values in g only. products.config holds the config fields these steps
 % set, products.report the maximum constructable mass, and products.warnings {id, message} rows
-% raised on the way, re-issued when the products are reloaded. Everything in products is a plain
-% array or struct; the parsed model is returned separately.
+% raised by this function itself, re-issued when the products are reloaded. Warnings raised
+% inside the library functions it calls (the hydrostatic tables, the z-crossing search, the
+% midplane profile, the cap contribution) are shown on a fresh build only: lastwarn keeps one
+% warning and evalc would hide the progress output of a long build. Everything in products is a
+% plain array or struct; the parsed model is returned separately.
 
     geo = struct();
     notes = cell(0, 2);
@@ -943,7 +946,7 @@ function [products, ms2_model] = compute_geometry_products(ms2_file, g)
         t_min_c      = g.t_min;
         w_idx        = geo.wall_strip_index;
         % CONTRACT: mirror the realiser's z-sampling density.  The realiser
-        % uses g.n_sub (default 100) per strip — if
+        % uses config.constructability_n_sub (g.n_sub here, default 100) per strip — if
         % we sample more sparsely the realiser will find a tighter s_max
         % that the optimiser bound never saw, re-opening the relaxed-vs-
         % true feasibility-set gap this whole subsystem closes.
