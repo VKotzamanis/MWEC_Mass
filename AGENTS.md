@@ -88,9 +88,9 @@ call a shell a wall.
   2500 kg/m³ (thin shell has no wall module).
 - Stage-2 objective: range penalties on GM (to `gm_target`), heave and pitch periods.
   Constraints: flotation equality, GM ≥ `gm_min`, adjacent density ratio, bottom-heavy
-  monotonicity (`c_mono`, `optim/stage2_constraints.m`; copy `c_monotonic` in
-  `optim/solve_2d_surrogate.m`), and for modular precast a minimum constructable mass
-  (`c_mass_min`, same two files).
+  monotonicity (`c_mono`, `optim/stage2_constraints.m`), and for modular precast a minimum
+  constructable mass (`c_mass_min`, same file). The Stage-1 2-D surrogate solver
+  (`optim/solve_2d_surrogate.m`) holds a Stage-1 copy of each: `c_monotonic` and `c_mass_min`.
 - For modular precast, each module's density has a lower bound ("floor") meant to equal the
   density of that module built with a t_min UHPC shell and an air void
   (`build_config.m` ≈ 355–556 → `config.per_strip_density_lb`). **This floor is computed on a
@@ -300,7 +300,7 @@ Figures: `WEC_Constructability_XZ`, `WEC_Constructability_Strips` (precast), `St
 | I19 | More material-name traps: the UHPC path passes UHPC density as `rho_steel` and stores UHPC volume and thickness as `V_steel`, `t_steel`; thin shell stores the fill density in `steel_data.rho_steel` | `modular_precast/solve_and_extract.m:18`, `solve.m`, `thin_shell/solve.m` packaging | — |
 | I20 | Stage 3 optimises **uncoupled** periods, while Stage 2 and the reported results use coupled periods | `modular_precast/evaluate_design_point.m:119–126`, `thin_shell/evaluate_design_point.m:200–207` vs `properties_3d.m:254–257`, `build_realised_properties.m` | Pitch only (heave identical): precast 4.960 s optimised vs 4.907 s reported; thin shell 3.890 s optimised (the target) vs 3.813 s reported. A15²/(M+A11) = 2.1 % and 3.9 % of the pitch inertia |
 | I21 | C1 floats with ≈95 % of its volume submerged (V_sub 20.16 of 21.16 m³). Mass balance therefore cannot carry a percentage tolerance | hydrostatics of C1 | From the C1 tables: +1 % mass raises the waterline 160 mm; +5 % submerges the hull completely; −10 % lowers the waterline 256 mm |
-| I22 | The monotonic density constraint `c_mono` makes Stage 2 infeasible for thin shell with the true floors, and over-constrains UHPC | `optim/stage2_constraints.m:35,39,51,64`; copy `c_monotonic` in `optim/solve_2d_surrogate.m:226–248,266–269` | Python estimate on the exact C1 sections. Thin shell (25.4 mm steel shell, air inside): module floors ≈ 722/268/451/2009/2217 kg/m³, so `c_mono` forces every module to ≥ 2217 kg/m³: minimum mass 46 934 kg against 21 702 kg displaced with the hull fully submerged (9 318 kg without `c_mono`); no feasible point. UHPC (76.2 mm): floors ≈ 608/284/211/610 (wall module 2500); `c_mono` lifts modules 1–3 to ≥ 610 kg/m³, ≈ 3.1 t more in module 3 than its floor requires |
+| I22 | The monotonic density constraint `c_mono` makes Stage 2 infeasible for thin shell with the true floors, and over-constrains UHPC | `optim/stage2_constraints.m:35,39,51,64`; Stage-1 copy `c_monotonic` in `optim/solve_2d_surrogate.m:224–238,248,261–264,269` | Python estimate on the exact C1 sections. Thin shell (25.4 mm steel shell, air inside): module floors ≈ 722/268/451/2009/2217 kg/m³, so `c_mono` forces every module to ≥ 2217 kg/m³: minimum mass 46 934 kg against 21 702 kg displaced with the hull fully submerged; no feasible point. UHPC (76.2 mm): floors ≈ 608/284/211/610 (wall module 2500); `c_mono` lifts modules 1–3 to ≥ 610 kg/m³, ≈ 3.1 t more in module 3 than its floor requires |
 | I23 | The UHPC Stage-3 pre-check uses invented factors and aborts instead of returning the closest design | `modular_precast/solve_and_extract.m:63–106` (factors 0.95 at line 95, 1.05 at line 101; errors `MassTooLight`, `MassTooHeavy`) | Rule 5 allows no further numeric gate; §3 item 7 requires the closest-fail rule; the check is redundant once the Stage-2 floors from the kernel exist |
 
 Known approximations **not** in scope (report, do not change without approval): linear
