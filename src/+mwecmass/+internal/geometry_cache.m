@@ -8,7 +8,7 @@ function varargout = geometry_cache(action, varargin)
 % src_root is the folder that holds +mwecmass; inputs is the struct of every author input the
 % cached steps read. The key is the SHA-256 (hex) of the deck bytes, the serialised inputs, the
 % runtime version and the bytes of every source file in 'sources': the whole of +geometry,
-% +hydrostatics and +internal, and the driver files that build the products. A missing source
+% +hydrostatics, +internal and +solid, and the driver files that build the products. A missing source
 % file is an error. A saved file holds plain arrays and structs only; a containers.Map is stored
 % as its keys and values and rebuilt on load, any other object is an error.
 
@@ -28,9 +28,9 @@ end
 
 function files = source_files(src_root)
     pkg = fullfile(src_root, '+mwecmass');
-    folders = {'+geometry', '+hydrostatics', '+internal'};
+    folders = {'+geometry', '+hydrostatics', '+internal', '+solid'};
     driver_files = {'build_config.m', 'build_hydrostatic_tables.m', ...
-                    'build_strip_geometry_tables.m', 'parse_hull_deck.m'};
+                    'build_strip_geometry_tables.m', 'density_floors.m', 'parse_hull_deck.m'};
     files = {};
     for k = 1:numel(folders)
         folder = fullfile(pkg, folders{k});

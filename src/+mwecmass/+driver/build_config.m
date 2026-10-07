@@ -232,13 +232,12 @@ try
         fprintf('  Constructability post-processing: DISABLED\n');
     end
 
-    %% Minimum constructable mass
+    %% Minimum buildable mass
     %
-    %  The strip volumes times their lower density bounds were summed with the geometry products.
+    %  The module volumes times their lower density bounds were summed with the density floors.
     %  Compare this minimum mass with full-submergence buoyancy before solving.
 
-    if config.enable_constructability && ~isempty(config.strip_edges) ...
-            && ~isempty(config.per_strip_density_lb)
+    if ~isempty(config.per_strip_density_lb)
         m_min = products.report.m_min_constructability;
         m_max = products.report.m_max_constructability;
         % Buoyancy limits: maximum buoyancy = fully submerged hull
@@ -250,18 +249,21 @@ try
 
         % Feasibility check: can the hull float at all?
         if m_min > max_buoyancy
+            if config.enable_constructability
+                remedy = sprintf(['Reduce wall_height (currently %.2f m), reduce t_min ' ...
+                                  '(currently %.4f m),\n  or increase hull volume (currently %.4f m^3).'], ...
+                                 config.constructability_wall_height, config.constructability_t_min, ...
+                                 config.total_wec_volume);
+            else
+                remedy = sprintf(['Reduce t_min (currently %.4f m),\n' ...
+                                  '  or increase hull volume (currently %.4f m^3).'], ...
+                                 config.steel_t_min, config.total_wec_volume);
+            end
             error('WEC:Infeasible', ...
-                ['Constructability minimum mass (%.1f kg) exceeds maximum ' ...
+                ['Minimum buildable mass (%.1f kg) exceeds maximum ' ...
                  'buoyancy (%.1f kg = rho_water × V_total).\n' ...
-                 '  The hull cannot float with these constructability ' ...
-                 'constraints.\n' ...
-                 '  Reduce wall_height (currently %.2f m), reduce t_min ' ...
-                 '(currently %.4f m),\n' ...
-                 '  or increase hull volume (currently %.4f m^3).'], ...
-                m_min, max_buoyancy, ...
-                config.constructability_wall_height, ...
-                config.constructability_t_min, ...
-                config.total_wec_volume);
+                 '  The hull cannot float with these minimum-thickness shells.\n  %s'], ...
+                m_min, max_buoyancy, remedy);
         end
 
         % Tight feasibility warning
@@ -270,7 +272,7 @@ try
             warning('WEC:TightFeasibility', ...
                 ['Buoyancy margin is only %.1f%%. ' ...
                  'Convergence may be difficult. ' ...
-                 'Consider relaxing constructability constraints.'], ...
+                 'Consider relaxing the minimum-thickness shells.'], ...
                 buoyancy_margin);
         end
 
@@ -604,8 +606,8 @@ try
         min(config.ballast_density_bounds(2), config.initial_densities));
     config.initial_densities = config.initial_densities(:)';
 
-    % Clamp to per-strip density lower bounds (constructability realisation type)
-    if config.enable_constructability && ~isempty(config.per_strip_density_lb)
+    % Clamp to the per-strip density floors (both shell realisation types)
+    if ~isempty(config.per_strip_density_lb)
         for i = 1:length(config.initial_densities)
             config.initial_densities(i) = max(config.initial_densities(i), ...
                                               config.per_strip_density_lb(i));
@@ -731,7 +733,8 @@ end
 function g = geometry_inputs(in, enable_constructability, wall_position)
 %GEOMETRY_INPUTS The author inputs compute_geometry_products reads, and nothing else.
 % The wall inputs exist only for the modular-precast realisation; the wall position (read off the
-% deck's file name) only matters with them.
+% deck's file name) only matters with them. g.floors holds the shell inputs of the density floors
+% (mode, minimum thickness, solid and air densities), [] for the preliminary realisation.
     g.num_ballast_sections    = in.geometry.num_ballast_sections;
     g.n_z_levels              = in.geometry.n_z_levels;
     if isfield(in.geometry, 'aw_table_dz')
@@ -741,20 +744,24 @@ function g = geometry_inputs(in, enable_constructability, wall_position)
     end
     g.ballast_density_bounds  = mode_density_bounds(in);
     g.enable_constructability = enable_constructability;
-    if enable_constructability
-        g.wall_position = wall_position;
-        g.wall_height   = in.materials.modular_precast.wall_height;
-        g.rho_hull      = in.materials.modular_precast.rho_hull;
-        g.rho_air       = in.materials.modular_precast.rho_air;
-        g.t_min         = in.materials.modular_precast.t_min;
-        g.n_sub         = in.materials.modular_precast.n_sub;
-    else
-        g.wall_position = '';
-        g.wall_height   = [];
-        g.rho_hull      = [];
-        g.rho_air       = [];
-        g.t_min         = [];
-        g.n_sub         = [];
+    g.wall_position = '';
+    g.wall_height   = [];
+    g.rho_hull      = [];
+    g.floors        = [];
+    switch in.materials.realisation_type
+        case 'modular_precast'
+            g.wall_position = wall_position;
+            g.wall_height   = in.materials.modular_precast.wall_height;
+            g.rho_hull      = in.materials.modular_precast.rho_hull;
+            g.floors = struct('mode', 'modular_precast', ...
+                              't_min', in.materials.modular_precast.t_min, ...
+                              'rho_solid', in.materials.modular_precast.rho_hull, ...
+                              'rho_air', in.materials.modular_precast.rho_air);
+        case 'thin_shell'
+            g.floors = struct('mode', 'thin_shell', ...
+                              't_min', in.materials.thin_shell.t_min, ...
+                              'rho_solid', in.materials.thin_shell.rho_shell, ...
+                              'rho_air', in.materials.thin_shell.rho_air);
     end
 end
 
@@ -947,265 +954,6 @@ function [products, ms2_model] = compute_geometry_products(ms2_file, g)
                 g.ballast_density_bounds(1), g.ballast_density_bounds(2));
     end
 
-    %% Per-strip constructability bounds
-    %
-    %  Platform strips use a perpendicular offset shell of thickness t_min.
-    %  The shell volume and effective-density lower bound are evaluated pointwise;
-    %  a zero inner radius represents a locally solid section.
-    %  The perpendicular s_max is retained for diagnostic reporting.
-
-    if g.enable_constructability
-        fprintf('  Computing per-strip density bounds from hull geometry...\n');
-
-        N            = g.num_ballast_sections;
-        rho_hull_c   = g.rho_hull;
-        rho_air_c    = g.rho_air;
-        t_min_c      = g.t_min;
-        w_idx        = geo.wall_strip_index;
-        % CONTRACT: mirror the realiser's z-sampling density.  The realiser
-        % uses config.constructability_n_sub (g.n_sub here, default 100) per strip — if
-        % we sample more sparsely the realiser will find a tighter s_max
-        % that the optimiser bound never saw, re-opening the relaxed-vs-
-        % true feasibility-set gap this whole subsystem closes.
-        n_rmin_sub   = g.n_sub;
-
-        per_strip_lb         = ones(N, 1) * g.ballast_density_bounds(1);
-        per_strip_rmin       = zeros(N, 1);
-        per_strip_smax       = zeros(N, 1);
-        per_strip_m_min      = zeros(N, 1);
-        per_strip_V_shell    = zeros(N, 1);  % at t_min, perpendicular offset
-        per_strip_A_outer    = zeros(N, 1);  % lateral surface area
-
-        for i = 1:N
-            if i == w_idx
-                % Wall strip: pinned to rho_hull, no geometry scan needed
-                per_strip_lb(i)         = rho_hull_c;
-                per_strip_rmin(i)       = Inf;
-                per_strip_smax(i)       = 0;
-                per_strip_V_shell(i)    = NaN;  % wall is solid — no shell concept
-                per_strip_A_outer(i)    = NaN;
-                continue;
-            end
-
-            z_lo = geo.strip_edges(i);
-            z_hi = geo.strip_edges(i + 1);
-
-            % Mirror the realiser's z-sampling EXACTLY
-            % Include
-            % both endpoints, with the top sample nudged 1mm below z_hi to
-            % avoid the wall-strip surface that starts exactly at z_hi.
-            % Including endpoints captures tight
-            % shoulders at the strip boundary and made the central-
-            % difference r' use different neighbours than the realiser.
-            n_rmin_sub_i = max(n_rmin_sub, ceil((z_hi - z_lo) / 0.01));
-            z_samples = linspace(z_lo, z_hi, n_rmin_sub_i);
-            z_samples(end) = z_hi - 1e-3;
-
-            % ── Pass 1: collect r_min_k and A_k at each z-sample ────
-            %  We keep the global r_min purely as a diagnostic output
-            %  (per_strip_rmin).  s_max is now computed via the
-            %  PERPENDICULAR formula below — strictly tighter than the
-            %  radial 1−t_min/r while accounting for the profile slope r'.
-            n_k     = length(z_samples);
-            r_min_k_arr  = zeros(n_k, 1);
-            A_k_arr      = zeros(n_k, 1);
-            r_min_i      = Inf;
-
-            for k = 1:n_k
-                [r_k, ~] = mwecmass.geometry.compute_rmin_at_z( ...
-                        geo.ms2_model, z_samples(k), 100, ...
-                        geo.boundary_cache);
-
-                if r_k > 1e-10 && r_k < r_min_i
-                    r_min_i = r_k;
-                end
-
-                r_min_k_arr(k) = r_k;
-                A_k_arr(k) = max(0, interp1(geo.Aw_table_z, ...
-                                 geo.Aw_table, z_samples(k), ...
-                                 'linear', 0));
-            end
-
-            per_strip_rmin(i) = r_min_i;
-
-            % ── Pass 2: profile slope rp(z) via central differences ──
-            % Use endpoint and central finite differences for the profile slope.
-            %  Required by the perpendicular wall-thickness formula below.
-            rp_k_arr = zeros(n_k, 1);
-            if n_k >= 2
-                for k_rp = 1:n_k
-                    if k_rp == 1
-                        dz_rp = z_samples(2) - z_samples(1);
-                        rp_k_arr(k_rp) = (r_min_k_arr(2) - r_min_k_arr(1)) / dz_rp;
-                    elseif k_rp == n_k
-                        dz_rp = z_samples(n_k) - z_samples(n_k-1);
-                        rp_k_arr(k_rp) = (r_min_k_arr(n_k) - r_min_k_arr(n_k-1)) / dz_rp;
-                    else
-                        dz_rp = z_samples(k_rp+1) - z_samples(k_rp-1);
-                        rp_k_arr(k_rp) = (r_min_k_arr(k_rp+1) - r_min_k_arr(k_rp-1)) / dz_rp;
-                    end
-                end
-            end
-            % Dome-tip correction: zero rp at samples where r is below t_min
-            % (the surface has effectively reached its closing point and the
-            % one-sided finite difference produces a spurious large |r'|).
-            % Suppress the finite-difference spike at the dome tip.
-            rp_k_arr(r_min_k_arr < t_min_c) = 0;
-
-            % The exported lower bound uses the offset-shell rule computed below.
-            % Pass 3's own output, s_max_strip / per_strip_smax(i), feeds only the diagnostic
-            % console table below and is not read by any bound; the ρ_min_strip formula shown
-            % below is therefore not the value geo.per_strip_density_lb takes.
-            % ── Pass 3: per-z perpendicular s_max → strip s_max → ρ_min (diagnostic only) ──
-            %  PERPENDICULAR wall thickness on a revolution profile:
-            %      t_perp(z) = (1 − s)·r·sqrt(1 + r'²) / (1 + s·r'²)
-            %  Setting t_perp = t_min and solving for s:
-            %      s_max(z) = (r·L − t_min) / (r·L + t_min·r'²),  L = √(1+r'²)
-            % Apply the perpendicular-thickness constraint.
-            %  At r' = 0 this reduces to the radial 1 − t_min/r.
-            %
-            %  The realiser uses a UNIFORM s_i across the whole strip, capped
-            %  at the GLOBAL MIN of s_max(z) over z-samples.  So this pass's diagnostic
-            %  minimum achievable ρ_eff is:
-            %      ρ_min_strip = ρ_hull − s_max_strip² · (ρ_hull − ρ_air)
-            %  (NOT the volume-weighted local mean — that was wrong.  The
-            %  realiser's actual mass formula is uniform: m_strip = V·ρ_eff,
-            %  The realiser uses uniform effective strip density.  This diagnostic value has no
-            %  consumer: geo.per_strip_density_lb is set below from the offset-shell rule,
-            %  not from this formula.
-            % Degenerate-strip guard: if no valid r samples exist (the
-            % B-spline evaluator found no surface or the strip closes
-            % completely), force solid (s_max=0, rho=rho_hull) to mirror
-            % mwecmass.realise.modular_precast.solve_and_extract:451-453.  Without this guard
-            % the loop below leaves s_max_strip = 1 and the strip's lb
-            % collapses to rho_air, the OPPOSITE of the realiser's
-            % behaviour.
-            valid_mask = (r_min_k_arr > 1e-10) & isfinite(r_min_k_arr);
-            if ~any(valid_mask)
-                s_max_strip = 0;
-            else
-                s_max_strip = 1.0;
-                for k = 1:n_k
-                    r_k  = r_min_k_arr(k);
-                    rp_k = rp_k_arr(k);
-
-                    if r_k < 1e-10 || ~isfinite(r_k)
-                        continue;   % degenerate sample — does not constrain s
-                    end
-
-                    L_k = r_k * sqrt(1 + rp_k^2);
-                    if L_k <= t_min_c
-                        s_max_k = 0;
-                    else
-                        s_max_k = (L_k - t_min_c) / (L_k + t_min_c * rp_k^2);
-                    end
-                    s_max_k = max(0, min(1, s_max_k));
-
-                    s_max_strip = min(s_max_strip, s_max_k);
-                end
-            end
-
-            per_strip_smax(i) = s_max_strip;
-
-            % ── Offset-shell lower density ──────────────
-            % Replace the homothetic perpendicular-s_max formula with a
-            % uniform-thickness offset-shell formula (mirrors the
-            % the thin-shell realisation realisation model).  Strip mass at ρ_min:
-            %   V_shell·ρ_hull  +  V_int·ρ_air
-            % where V_shell is the perpendicular-offset shell volume at
-            % t = t_min, V_int = V_strip − V_shell, and r_inner is capped
-            % at zero where t·sqrt(1+r'²) ≥ r (locally solid).
-            %
-            % This is strictly looser than the homothetic ρ_min for any
-            % strip whose worst z forces s_max(strip) → 0 — the dominant
-            % bottleneck on hulls with sharp shoulders.  See
-            % mwecmass.hydrostatics.compute_perpendicular_shell_volume for
-            % the derivation and accuracy claim.
-            V_strip_i_est = trapz(z_samples(:), A_k_arr(:));
-            try
-                [V_shell_at_tmin, A_outer_i, ~] = ...
-                    mwecmass.hydrostatics.compute_perpendicular_shell_volume( ...
-                        geo.ms2_model, z_lo, z_hi, t_min_c, ...
-                        n_rmin_sub_i, geo.boundary_cache);
-            catch ME
-                notes(end+1, :) = {'mwecmass:driver:OffsetShellFailed', sprintf( ...
-                    'Strip %d: compute_perpendicular_shell_volume failed (%s). Falling back to perpendicular-formula ρ_min.', ...
-                    i, ME.message)};
-                V_shell_at_tmin = V_strip_i_est * (rho_hull_c - rho_air_c) / rho_hull_c;  % ρ_min ≈ perpendicular fallback
-                A_outer_i = NaN;
-            end
-
-            per_strip_V_shell(i) = V_shell_at_tmin;
-            per_strip_A_outer(i) = A_outer_i;
-
-            if V_shell_at_tmin >= V_strip_i_est
-                rho_min_offset = rho_hull_c;     % strip too narrow → solid
-            else
-                V_int_i        = V_strip_i_est - V_shell_at_tmin;
-                rho_min_offset = (V_shell_at_tmin * rho_hull_c + V_int_i * rho_air_c) / V_strip_i_est;
-            end
-            rho_min_offset = max(rho_air_c, min(rho_hull_c, rho_min_offset));
-
-            per_strip_lb(i) = max(g.ballast_density_bounds(1), rho_min_offset);
-
-            % Diagnostic: minimum strip mass at this lower bound
-            per_strip_m_min(i) = per_strip_lb(i) * V_strip_i_est;
-        end
-
-        geo.per_strip_density_lb       = per_strip_lb(:)';
-        % Diagnostic arrays remain local; only the density lower bound is exported.
-        fprintf('    Strip   z_lo     z_hi    A_outer[m²]  V_shell[m³]  rho_min[kg/m3]   (offset-shell @ t_min)\n');
-        fprintf('    %s\n', repmat('-', 1, 80));
-        for i = 1:N
-            if i == w_idx
-                fprintf('    %-5d  %+6.3f   %+6.3f   WALL (pinned to %.0f kg/m³)\n', ...
-                        i, geo.strip_edges(i), geo.strip_edges(i+1), rho_hull_c);
-            else
-                fprintf('    %-5d  %+6.3f   %+6.3f   %10.4f   %10.4f   %10.1f\n', ...
-                        i, geo.strip_edges(i), geo.strip_edges(i+1), ...
-                        per_strip_A_outer(i), per_strip_V_shell(i), per_strip_lb(i));
-            end
-        end
-    else
-        geo.per_strip_density_lb       = [];
-    end
-
-    %% Minimum constructable mass
-    %
-    %  Sum canonical 3-D strip volumes times their lower density bounds. build_config compares
-    %  the minimum mass with full-submergence buoyancy before solving.
-
-    m_min = 0;
-    m_max = 0;
-    if g.enable_constructability && ~isempty(geo.strip_edges) ...
-            && ~isempty(geo.per_strip_density_lb)
-
-        fprintf('  Computing minimum achievable mass (V_strip × per_strip_density_lb, offset-shell)...\n');
-        N_strips = g.num_ballast_sections;
-
-        for i = 1:N_strips
-            z_lo_i = geo.strip_edges(i);
-            z_hi_i = geo.strip_edges(i + 1);
-
-            if z_hi_i <= z_lo_i + 1e-10
-                continue;
-            end
-
-            % Strip volume via the divergence theorem, matching the realiser's compute_strip call.
-            strip_i = mwecmass.hydrostatics.compute_strip( ...
-                geo.ms2_model, z_lo_i, z_hi_i, ...
-                struct('n_quad', 16, ...
-                       'Aw_table_z', geo.Aw_table_z, ...
-                       'Aw_table', geo.Aw_table));
-            V_strip_i = strip_i.V;
-
-            % Offset-shell ρ_min is uniform across the strip, so use the
-            % divergence-theorem volume for m_strip_min.
-            m_min = m_min + V_strip_i * geo.per_strip_density_lb(i);
-            m_max = m_max + V_strip_i * g.ballast_density_bounds(2);
-        end
-    end
-
     %% Strip geometry and augmented tables
     %  mwecmass.driver.build_strip_geometry_tables evaluates the waterplane area exactly at every
     %  strip boundary, inserts those points into the z-tables, rebuilds V_sub and CB_z on the
@@ -1234,6 +982,48 @@ function [products, ms2_model] = compute_geometry_products(ms2_file, g)
     geo.strip_Iyy      = strips.strip_Iyy;    % [m^5]
     geo.strip_Ixx      = strips.strip_Ixx;    % [m^5]
     geo.strip_Izz      = strips.strip_Izz;    % [m^5]
+
+    %% Density floors
+    %  The lowest density a module can have is that of the module built with a shell of the
+    %  mode's minimum thickness around air (modular precast: UHPC shell, the wall module solid;
+    %  thin shell: steel shell, no wall module). mwecmass.driver.density_floors builds that
+    %  module on the exact geometry kernel from the outer patches of the deck (hull_solid), so
+    %  the floors, the Stage-3 realisation and the STEP files share one geometry. Preliminary has
+    %  no material, no shell and no floors.
+
+    geo.hull_solid = [];
+    geo.density_floors = [];
+    geo.per_strip_density_lb = [];
+    m_min = 0;
+    m_max = 0;
+    if ~isempty(g.floors)
+        fprintf('  Computing per-strip density floors on the exact geometry (%s, t_min = %.4f m)...\n', ...
+                g.floors.mode, g.floors.t_min);
+        geo.hull_solid = mwecmass.solid.outer_nurbs(geo.ms2_model);
+        fl = mwecmass.driver.density_floors(geo.ms2_model, geo.boundary_cache, geo.hull_solid, ...
+                 geo.strip_edges, g.floors.t_min, g.floors.rho_solid, g.floors.rho_air, ...
+                 geo.wall_strip_index, struct('mode', g.floors.mode));
+        geo.density_floors = fl;
+        geo.per_strip_density_lb = max(g.ballast_density_bounds(1), fl.rho_min(:))';
+
+        %  Minimum and maximum constructable mass: module volumes times the lower and upper
+        %  density bounds; build_config compares the minimum with full-submergence buoyancy.
+        m_min = sum(fl.V(:) .* geo.per_strip_density_lb(:));
+        m_max = sum(fl.V) * g.ballast_density_bounds(2);
+
+        fprintf('    Module   z_lo     z_hi     V[m^3]  V_solid[m^3]  V_air[m^3]  rho_min[kg/m3]\n');
+        fprintf('    %s\n', repmat('-', 1, 76));
+        for i = 1:numel(fl.rho_min)
+            if any(geo.wall_strip_index == i)
+                fprintf('    %-6d  %+6.3f   %+6.3f   %7.4f   WALL (solid, %.0f kg/m3)\n', ...
+                        i, geo.strip_edges(i), geo.strip_edges(i+1), fl.V(i), g.floors.rho_solid);
+            else
+                fprintf('    %-6d  %+6.3f   %+6.3f   %7.4f   %10.4f   %10.4f   %10.1f\n', ...
+                        i, geo.strip_edges(i), geo.strip_edges(i+1), fl.V(i), ...
+                        fl.V_solid(i), fl.V_air(i), fl.rho_min(i));
+            end
+        end
+    end
 
     %% Two-dimensional surrogate
     %  The effective width matches each 3-D cross-sectional area.

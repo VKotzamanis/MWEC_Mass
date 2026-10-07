@@ -5,7 +5,8 @@ function config = stage2_test_config(mode)
   repo_root = fileparts(fileparts(fileparts(mfilename('fullpath'))));
   deck = fullfile(repo_root, 'tests', 'standins', 'fixtures', 'cylinder.ms2');
   addpath(fullfile(repo_root, 'tests', 'driver'));
-  cleanup = onCleanup(@() rmpath(fullfile(repo_root, 'tests', 'driver')));
+  addpath(fullfile(repo_root, 'tests', 'standins'), '-end');   % kernel stand-ins until the real one is merged
+  cleanup = onCleanup(@() rmpath(fullfile(repo_root, 'tests', 'driver'), fullfile(repo_root, 'tests', 'standins')));
   in = deck_input(deck, mode, '');
   evalc('config = mwecmass.driver.build_config(in, [], struct());');
   config.hydro_drafts = 0;

@@ -1,6 +1,8 @@
 function test_stage2_bounds()
 %TEST_STAGE2_BOUNDS The upper density bound of a mode is the solid density of its material input,
 %   rho_air is 1.2 in both modes, and the thin-shell minimum thickness is the one-inch input.
+%   Both shell modes raise the lower bound of every module to its density floor
+%   (config.per_strip_density_lb, from the kernel); the wall module of modular precast is pinned.
 %   Expected values are read from the author inputs (WEC_User_Input), not from the config.
   repo_root = fileparts(fileparts(fileparts(mfilename('fullpath'))));
   addpath(fullfile(repo_root, 'tests', 'optim'));
@@ -14,8 +16,16 @@ function test_stage2_bounds()
   if ~isequal(ub(2:end), expect_ub * ones(1, N)) || expect_ub ~= 7500
     error('thin shell: ub = %s, expected %g for every module', mat2str(ub(2:end)), expect_ub);
   end
-  if ~isequal(lb(2:end), in.bounds.ballast_density_bounds(1) * ones(1, N))
-    error('thin shell: lb = %s', mat2str(lb(2:end)));
+  if isempty(config.per_strip_density_lb) || numel(config.per_strip_density_lb) ~= N ...
+      || ~isempty(config.wall_strip_index)
+    error('thin shell: no per-module floors or a wall module is set');
+  end
+  if ~isequal(lb(2:end), max(in.bounds.ballast_density_bounds(1), config.per_strip_density_lb))
+    error('thin shell: lb = %s is not the floors %s', mat2str(lb(2:end)), mat2str(config.per_strip_density_lb));
+  end
+  if any(lb(2:end) <= in.bounds.ballast_density_bounds(1))
+    error('thin shell: floors %s do not exceed the input lower bound %g', mat2str(lb(2:end)), ...
+          in.bounds.ballast_density_bounds(1));
   end
   if config.rho_air ~= 1.2 || config.rho_air ~= in.materials.thin_shell.rho_air
     error('thin shell: config.rho_air = %g', config.rho_air);
@@ -28,8 +38,8 @@ function test_stage2_bounds()
     error('thin shell: t_min = %g, t_init = %g (config %g, %g)', in.materials.thin_shell.t_min, ...
           in.materials.thin_shell.t_init, config.steel_t_min, config.steel_t_init);
   end
-  fprintf('thin_shell: ub = %g, lb = %g kg/m^3, rho_air = %g, t_min = t_init = %g m\n', ...
-          ub(2), lb(2), config.rho_air, config.steel_t_min);
+  fprintf('thin_shell: ub = %g, lb = %s kg/m^3, rho_air = %g, t_min = t_init = %g m\n', ...
+          ub(2), mat2str(lb(2:end), 5), config.rho_air, config.steel_t_min);
 
   % modular precast: UHPC, wall module pinned
   config = stage2_test_config('modular_precast');
@@ -43,9 +53,8 @@ function test_stage2_bounds()
   if lb(1 + w) ~= rho_uhpc || ub(1 + w) ~= rho_uhpc
     error('modular precast: wall module %d not pinned to %g', w, rho_uhpc);
   end
-  if any(lb(1 + free) < config.per_strip_density_lb(free)) ...
-      || any(lb(1 + free) < in.bounds.ballast_density_bounds(1))
-    error('modular precast: lb %s below the floors', mat2str(lb(2:end)));
+  if ~isequal(lb(1 + free), max(in.bounds.ballast_density_bounds(1), config.per_strip_density_lb(free)))
+    error('modular precast: lb %s is not the floors %s', mat2str(lb(2:end)), mat2str(config.per_strip_density_lb));
   end
   if config.constructability_rho_air ~= 1.2 ...
       || config.constructability_rho_air ~= in.materials.modular_precast.rho_air
