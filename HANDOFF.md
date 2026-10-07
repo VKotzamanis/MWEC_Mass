@@ -1,6 +1,6 @@
 # HANDOFF — MWEC_Mass exact-geometry refactor
 
-Updated 2026-10-07 16:05 UTC on `claude/lucid-cray-7o9442`. Process file for agents: the
+Updated 2026-10-07 16:40 UTC on `claude/lucid-cray-7o9442`. Process file for agents: the
 orchestrator updates it at every milestone and at least every 100k tokens; delete it in T12.
 
 ## 1. Goal
@@ -77,6 +77,12 @@ Main `claude/lucid-cray-7o9442` = `f52e232`: general-kernel amendment, AGENTS ru
   `octave --no-gui --quiet tests/run_tests.m` (24 pass, ~210 s). Owner: no whole-pipeline run before
   J2; `MWEC_REGRESSION=1` enables the pipeline regression (24–94 min per mode in Octave).
 - A workflow runs at most 2 agents at once (4 CPUs − 2); run several workflows for parallelism.
+- **Owner (16:35 UTC): one Octave process per core, never shared, never spread across CPUs.**
+  `docs/plans/orchestration/octave_one_core.sh` is installed as `/usr/bin/octave` (original moved to
+  `/usr/bin/octave.real`): each run takes a free core (lock `/tmp/octave-core-<k>.lock`, held until it
+  exits), is pinned there with `taskset`, runs single-threaded BLAS, and waits while all 4 cores are
+  busy. Check it after a container restart (`taskset -cp` on a running `octave-cli`). Lane rule 16.
+  Bitwise tests recorded under multi-threaded BLAS: if one fails only now, check the thread count first.
 
 ## 4. Decisions not yet in the merged contract
 

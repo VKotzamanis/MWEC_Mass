@@ -35,6 +35,7 @@ Before writing code read, in your worktree: AGENTS.md (all), the contract ${CONT
 13. Long runs: up to 10 minutes in the foreground; longer ones in the background, and wait for them before reporting. Leave no process running.
 14. Commit after each completed deliverable.
 15. Judge by metrics (AGENTS section 1 rule 12): every claim in your report is a number you computed from the code's outputs, with the command that produced it. Never judge a result, a figure included, by how it looks; a figure is judged by its section data.
+16. Owner rule: one Octave process per core. /usr/bin/octave gives each run its own core (pinned, single-threaded BLAS) and waits while every core is busy. Run one Octave process at a time; never start parallel Octave runs.
 Your final answer goes to the orchestrator: fill the schema factually. List every test command you ran with its key printed numbers, and every minor finding you defer, with the reason (nothing is dropped silently). Never claim anything you did not run or read.`
 
 const IMPL_SCHEMA = { type: 'object', properties: {
