@@ -80,7 +80,7 @@ function [V_env, V_mat, V_void, V_ballast, V_shell] = strip_partition_volumes( .
         %     the modular-precast strip extraction, which resolves the same
         %     degeneracy the same way.  Reporting it as void instead
         %     yields a plausible-looking but physically impossible
-        %     rho_eff that PASSES the [rho_ballast, rho_hull] invariant
+        %     rho_eff that PASSES the [rho_air, rho_hull] invariant
         %     test, so it must be loud.
         %
         % (b) ZERO-AREA HULL TIPS -- A_outer == A_inner == 0 at the keel
