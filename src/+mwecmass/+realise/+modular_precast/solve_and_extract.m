@@ -103,7 +103,7 @@ else
     end
 end
 
-[ev, ctx] = mwecmass.realise.modular_precast.realise_modules(ctx, design); %#ok<ASGLU>
+ev = mwecmass.realise.modular_precast.realise_modules(ctx, design);
 props = mwecmass.realise.evaluate_realised(ev.bp, hs, design, config);
 check = mwecmass.realise.check_against_stage2(props, stage2, config.mass_acceptable_pct, TOL_EQ, ...
     config.RHO_WATER);

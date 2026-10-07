@@ -5,10 +5,10 @@ function test_precast_stage3()
 %   After J1 the same cases run on the real kernel (join test); the hull-volume sum against the
 %   closed form is then printed only (rational faces, Gauss quadrature).
 %   Asserted: S8 layout, final_props from the realised body, volume closure (rule 11; z_ballast
-%   inside k*, and at a module edge below the inner z_lo in case E), shell and
-%   ballast bounds, flotation held to the Stage-3 constraint tolerance 1e-6 (AGENTS OD10), the
-%   status rule, the restart of the shell root search on a changed knot structure. Root-finding
-%   residuals and Stage-2 deviations are printed.
+%   inside k*, at the hull bottom e(1) below the inner z_lo in case E, at the interior joint
+%   e(k*+1) in case E2), shell and ballast bounds, flotation held to the Stage-3 constraint
+%   tolerance 1e-6 (AGENTS OD10), the status rule, the restart of the shell root search on a
+%   changed knot structure. Root-finding residuals and Stage-2 deviations are printed.
 
 root = fileparts(fileparts(fileparts(mfilename('fullpath'))));
 setup(root);
@@ -77,6 +77,21 @@ fprintf('box, flotation out of reach: mass %.3f kg vs displaced %.3f kg; reason:
 inner_e = sti_inner_box(config.hull_solid, r.design.t(1), config.constructability_t_min);
 check(r.design.z_ballast == r.design.edges(1) && r.design.z_ballast < inner_e.z_lo, 'case E positions');
 closure(r, config, 'box, flotation out of reach');
+
+% E2: too light even with k* full: the ballast is kept at the interior joint e(k*+1) (I1 module edge)
+config_l = fixture_config('box', [], 1200);
+[f3, s2] = sti_stage2(config_l, 0, [1000; 210; 285]);
+[r, fp] = mwecmass.realise.modular_precast.solve_and_extract(config_l, [0; s2.rho], f3, ...
+    inner_opts(config_l));
+k = r.k_star;
+m = r.modules(k);
+check(r.design.z_ballast == r.design.edges(k + 1) && k + 1 < numel(r.design.edges), 'joint position');
+check(m.V_air == 0 && isnan(m.t) && m.h_ballast == m.z_hi - m.z_lo, 'k* full of ballast');
+check(strcmp(r.status, 'failed') && any(strcmp(r.check.failed, 'flotation')) && ...
+    r.solver.exitflag == -2 && strcmp(fp.stage3_status, 'failed'), 'too light reported');
+fprintf('box, too light: k* = %d, z_ballast %.6f m = e(%d); mass %.3f kg vs displaced %.3f kg\n', ...
+    k, r.design.z_ballast, k + 1, r.props.mass_total, r.props.mass_buoyant_force);
+closure(r, config_l, 'box, ballast at the joint e(k*+1)');
 
 % F: the adaptive fit above t_thr carries an extra knot, so the root found on the t_min knots has
 % another knot structure and the search restarts on it (contract section 7 item 4). t_thr lies

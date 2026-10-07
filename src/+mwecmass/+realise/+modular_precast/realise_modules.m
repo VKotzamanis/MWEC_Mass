@@ -14,9 +14,9 @@ function [ev, ctx] = realise_modules(ctx, design)
 %   ctx.rho), ev.inner: the S2 sets the body uses.
 
 N = numel(design.edges) - 1;
-open = true(N, 1);
-open(design.solid_modules) = false;
-ts = unique(design.t(open & isfinite(design.t(:))));
+has_void = true(N, 1);
+has_void(design.solid_modules) = false;
+ts = unique(design.t(has_void & isfinite(design.t(:))));
 inner = [];
 for k = 1:numel(ts)
     [set, ctx] = inner_set(ctx, ts(k));
