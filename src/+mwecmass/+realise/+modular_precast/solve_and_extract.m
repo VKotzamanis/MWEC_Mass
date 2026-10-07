@@ -32,9 +32,10 @@ function [realised, final_props] = solve_and_extract(config, x_opt, final3d, opt
 %   3. k* has the shell t_k* = t_min above its ballast (OD13). The ballast level in k* is the root
 %      of M(z_ballast) = rho_w V_sub at the Stage-2 draft (flotation, OD10). When no level inside
 %      k* reaches it, the module end with the smaller residual is kept and flotation fails.
-%   4. The body (F5, F6) and the hydrostatics (F7) at the Stage-2 draft give final_props (F9); F10
-%      checks Z_CG, GM, coupled T_heave and T_pitch against Stage 2 with mass_acceptable_pct and
-%      flotation against TOL_EQ (escalation 'split').
+%   4. The body (F5, F6) and the hydrostatics (F7, called once per draft and shared with solve)
+%      at the Stage-2 draft give final_props (F9); F10 checks Z_CG, GM, coupled T_heave and
+%      T_pitch against Stage 2 with mass_acceptable_pct and flotation against TOL_EQ (escalation
+%      'split').
 %   5. When that check fails, solve optimises from the split (fixed_draft, then spill, then
 %      draft_free; see solve) and returns the accepted design or the closest fail.
 %   status is 'accepted' when F10 passes on the stored design, else 'failed' with the failing
@@ -116,7 +117,7 @@ if any(split.hollow)
 end
 
 solver = struct('step', 'split', 'exitflag', NaN, 'iterations', 0, 'fval', NaN, ...
-    'max_eq_violation', NaN);
+    'max_eq_violation', NaN, 'fval_phase2_start', NaN);
 if isempty(k)
     notes{end + 1} = 'every module is solid UHPC, so no ballast level can restore flotation';
 else
@@ -140,13 +141,20 @@ if ~check.pass && ~isempty(k) && (~isfield(opts, 'escalate') || opts.escalate)
     end
     P = struct('k', k, 'hollow', find(split.hollow)', 't_min', t_min, 't_max', t_max, ...
         'vs_bounds', vsb, 'stage2', stage2, 'config', config, 'pct', config.mass_acceptable_pct, ...
-        'tol_eq', TOL_EQ, 'hs_fn', @(v) mwecmass.solid.hydrostatics_at_draft(geo, v, struct()));
+        'tol_eq', TOL_EQ, 'hs_fn', @(v) mwecmass.solid.hydrostatics_at_draft(geo, v, struct()), ...
+        'hs_cache', struct('vs', vs, 'hs', hs));
     [sol, ctx] = mwecmass.realise.modular_precast.solve(ctx, design, P);
     design = sol.design;
     solver = [solver, sol.solver];
     escalation = sol.escalation;
     notes = [notes, sol.notes];
-    [props, check, ev, hs] = evaluate(ctx, design, [], geo, config, stage2, TOL_EQ);
+    hs = [];
+    for j = 1:numel(sol.hs_cache)
+        if isequal(sol.hs_cache(j).vs, design.vs)
+            hs = sol.hs_cache(j).hs;
+        end
+    end
+    [props, check, ev, hs] = evaluate(ctx, design, hs, geo, config, stage2, TOL_EQ);
     if ~check.pass && strcmp(sol.closest, 'optimum')
         notes{end + 1} = sprintf(['closest fail: the %s result meets the equalities and fails the ' ...
             'mass_acceptable_pct check'], escalation);

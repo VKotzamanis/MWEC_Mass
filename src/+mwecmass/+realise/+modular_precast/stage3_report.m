@@ -8,7 +8,8 @@ function stage3_report(realised, notes)
 %   the split targets, densities), the ballast level and mass, every metric of the F10 check
 %   (value, Stage-2 value, deviation, limit, pass), the equality residuals (flotation enters the
 %   check; GM is the solver's equality, reported beside it), every escalation step run (exit flag,
-%   iterations, objective, largest equality residual), the notes and the status with its reason.
+%   iterations, objective, largest equality residual, objective where phase 2 started), the notes
+%   and the status with its reason.
 
 r = realised;
 fprintf('      realised modules (body frame), escalation %s, vs = %.6f m, draft %.6f m:\n', ...
@@ -35,10 +36,11 @@ for q = r.check.equalities
     fprintf('      %-9s equality residual %11.3g (tol %.3g, %s), pass %d\n', q.name, q.residual, q.tol, ...
         role, q.pass);
 end
-fprintf('      %-12s %9s %11s %14s %16s\n', 'step', 'exitflag', 'iterations', 'objective', 'max|eq residual|');
+fprintf('      %-12s %9s %11s %14s %16s %16s\n', 'step', 'exitflag', 'iterations', 'objective', ...
+    'max|eq residual|', 'phase-2 start');
 for s = r.solver
-    fprintf('      %-12s %9g %11d %14.6g %16.3g\n', s.step, s.exitflag, s.iterations, s.fval, ...
-        s.max_eq_violation);
+    fprintf('      %-12s %9g %11d %14.6g %16.3g %16.6g\n', s.step, s.exitflag, s.iterations, s.fval, ...
+        s.max_eq_violation, s.fval_phase2_start);
 end
 for k = 1:numel(notes)
     fprintf('      note: %s\n', notes{k});
