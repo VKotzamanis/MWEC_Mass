@@ -1,38 +1,33 @@
 function [results, final_props] = run(config, x_opt, opt_results)
-%RUN Execute modular-precast UHPC/void realisation after Stage 2.
-% x_opt is the Stage-2 design vector and opt_results contains un-realised Final3D properties.
-% The solve/extraction result updates results.constructability and results.stage2_3d.properties;
-% results.Final3D remains the optimiser result. Outputs are results and realised final_props.
-    % Reuse the optimiser design and pre-realisation properties supplied by the caller.
-    x_opt_3d = x_opt;
-    final_props_optimiser = opt_results.Final3D;
-    final_props = final_props_optimiser;
+%RUN  Modular-precast Stage 3 (contract F14): realise the Stage-2 solution in UHPC modules.
+%
+%   [results, final_props] = mwecmass.realise.modular_precast.run(config, x_opt, opt_results)
+%
+%   x_opt = [vs; rho_1 ... rho_N] and opt_results.Final3D are the Stage-2 solution; it is split,
+%   built and checked by solve_and_extract. results = opt_results with results.stage3 (S8) and
+%   results.stage2_3d.properties = final_props; results.Final3D stays the Stage-2 design.
+%   final_props always describes the realised design, accepted or failed. The figures
+%   (plot_modular_precast) and the STEP files (mwecmass.output.step.export_stage3 into
+%   Output/modular_precast/step) are produced for every status; config.output switches them off
+%   (stage3.precast_midplane, stage3.precast_strips, stage3.step), and a config without output
+%   options produces both.
 
-    if config.enable_constructability
-        fprintf('\n╔══════════════════════════════════════════════════╗\n');
-        fprintf('║ CONSTRUCTABILITY POST-PROCESSING                 ║\n');
-        fprintf('╚══════════════════════════════════════════════════╝\n\n');
+fprintf('\n╔══════════════════════════════════════════════════╗\n');
+fprintf('║ STAGE 3: MODULAR PRECAST (UHPC) REALISATION      ║\n');
+fprintf('╚══════════════════════════════════════════════════╝\n');
+[realised, final_props] = mwecmass.realise.modular_precast.solve_and_extract(config, x_opt, ...
+    opt_results.Final3D);
 
-        constructability = mwecmass.realise.modular_precast.solve_and_extract( ...
-            config, x_opt_3d, final_props_optimiser);
-        % The constructability view writes two images, the midplane elevation and the per-strip
-        % plan view; the call is made when either is wanted. A configuration carrying no
-        % output options -- a caller that invokes this realisation directly rather than through
-        % mwecmass.driver.run -- keeps the unconditional draw.
-        if ~isfield(config, 'output') || config.output.save.stage3.precast_midplane || ...
-                config.output.save.stage3.precast_strips
-            mwecmass.output.figures.plot_modular_precast(constructability, config);
-        end
-        final_props = mwecmass.realise.modular_precast.build_realised_properties( ...
-            final_props_optimiser, constructability, config);
+has_out = isfield(config, 'output');
+if ~has_out || config.output.save.stage3.precast_midplane || config.output.save.stage3.precast_strips
+    mwecmass.output.figures.plot_modular_precast(realised, config);
+end
+if ~has_out || config.output.save.stage3.step
+    realised.step_files = mwecmass.output.step.export_stage3(realised, ...
+        fullfile(mwecmass.output.output_dir('modular_precast'), 'step'));
+end
 
-        fprintf('\n  Constructability realization complete.\n');
-    else
-        constructability = [];
-    end
-
-    % Preserve Final3D and replace only constructability and realised Stage-2 properties.
-    results = opt_results;
-    results.constructability = constructability;
-    results.stage2_3d.properties = final_props;
+results = opt_results;
+results.stage3 = realised;
+results.stage2_3d.properties = final_props;
 end
