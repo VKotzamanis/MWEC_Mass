@@ -47,6 +47,7 @@ opts = struct('t_min', 0.0762);
 
 calls = {
     'outer_nurbs', @() mwecmass.solid.outer_nurbs(model)
+    'outer_nurbs (3 inputs)', @() mwecmass.solid.outer_nurbs(model, cache, opts)
     'offset_surface', @() mwecmass.solid.offset_surface(model, cache, geo, 0.0762, [-3.25 1.1], opts)
     'void_closing_distance', @() mwecmass.solid.void_closing_distance(model, cache, geo, [-2.8 0.65])
     'split_bspline_surface', @() mwecmass.solid.split_bspline_surface(patch, -1)
@@ -54,6 +55,7 @@ calls = {
     'build_body', @() mwecmass.solid.build_body(geo, design, [])
     'body_properties', @() mwecmass.solid.body_properties(body, struct('uhpc', 2500, 'air', 1.2), struct())
     'body_section', @() mwecmass.solid.body_section(body, -1)
+    'body_section (below)', @() mwecmass.solid.body_section(body, -1, 'below')
     'hydrostatics_at_draft', @() mwecmass.solid.hydrostatics_at_draft(geo, 0.9828, struct())
     'evaluate_realised', @() mwecmass.realise.evaluate_realised(struct(), struct(), design, config)
     'check_against_stage2', @() mwecmass.realise.check_against_stage2(props, stage2, 10, 1e-6, 1025)

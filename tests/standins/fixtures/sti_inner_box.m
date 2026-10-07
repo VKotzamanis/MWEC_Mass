@@ -7,8 +7,8 @@ function inner = sti_inner_box(geo, t, t_min)
 %   d = t + eps_fit/2, eps_fit = 0.01 t_min (contract section 0), and trimmed to each other: the
 %   inner box [x0+d, x1-d] x [y0+d, y1-d] x [z0+d, z1-d] (source: the normal offset of a plane is
 %   the parallel plane; contract section 3, Stand-in kit SK). Same patch layout, parameters and
-%   seams as the outer faces, normals into the void (closed void). d >= d_close errors
-%   mwecmass:solid:VoidClosed.
+%   seams as the outer faces, normals into the void (closed void); each patch carries the
+%   `visible` of the outer face it is offset from. d >= d_close errors mwecmass:solid:VoidClosed.
 
 fx = sti_closed_form('fixture', geo);
 if ~strcmp(fx.kind, 'box')
@@ -30,5 +30,5 @@ pr = struct('n_nodes', 0, 'n_knots', [4 4], 'n_passes', 0, 'n_removed', 0, 'n_ch
 pr = repmat(pr, 1, numel(patches));
 rep = struct('patches', pr, 'ok', pr(1).M1 && pr(1).M2, 'cap_reached', false);
 inner = struct('t', t, 'd', d, 'eps_fit', eps_fit, 'z_range', [fx.z(1) + d, fx.z(2) - d], ...
-    'z_lo', fx.z(1) + d, 'refit', false, 'patches', patches, 'report', rep);
+    'z_lo', fx.z(1) + d, 'refit', false, 'patches', patches, 'flat', [], 'report', rep);
 end
