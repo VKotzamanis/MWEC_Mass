@@ -14,40 +14,46 @@ function [sol, ctx] = solve(ctx, start, P)
 %   of ((X - X2) / X2)^2. Equalities: flotation M / (rho_w V_sub) - 1 = 0 and GM / GM2 - 1 = 0.
 %   Bounds: t_min <= t <= t_max,i; z_ballast from the bottom of k* to the top of k* (or of k*+1).
 %   Modules wholly below z_ballast are solid (t = NaN).
+%
+%   Each step solves in two phases with fmincon (sqp): phase 1 minimises (GM / GM2 - 1)^2 with
+%   flotation as its equality, so it reaches both equalities when it can and otherwise ends at the
+%   design that holds flotation with GM closest to GM2; phase 2 runs from a phase-1 point that
+%   meets both equalities and minimises the objective with both. The step's point is the best
+%   design it evaluated, ranked: both equalities held (smallest objective), then flotation held
+%   (smallest |GM residual|), then neither (smallest largest residual); ties by the objective.
+%   Flotation ranks first because it must hold in every reported state (AGENTS section 3 item 32).
 %   Escalation (AGENTS section 3 items 6, 20, 31; OD6 option ii):
 %     fixed_draft  vs = Stage-2 value, ballast within k*;
-%     spill        only when the equalities are not met: the same ballast variable, its upper bound
-%                  widened to the top of k*+1 (k*+1 must exist and be hollow);
+%     spill        only when the two equalities are not both met: the same ballast variable, its
+%                  upper bound widened to the top of k*+1 (k*+1 must exist and be hollow);
 %     draft_free   only when flotation (mass balance) is still not met: vs is a variable too.
-%   Each step first reaches the equalities from its start point (fmincon with a zero objective)
-%   when the start violates them, then minimises the objective from there. When the solver ends
-%   off the equalities, or stops on its own failure, the step ends at its evaluated point with the
-%   smallest equality violation (then the smallest objective).
-%   The escalation ends when the F10 check passes (accepted) or the equalities hold (the optimum is
-%   the closest fail: it minimises the deviation, and a failed check does not release the draft).
-%   When no step meets the equalities, the closest fail is the evaluated design with the smallest
-%   equality violation max(|flotation|, |GM|) over every step; the solver only exposes its
-%   evaluations portably, so every point evaluated (iterates, their finite-difference neighbours
-%   within the bounds, and the adaptive rebuilds of each step's start and optimum) is a candidate,
-%   rebuilt on its adaptive fit before it is stored.
+%   The escalation ends when the F10 check passes (accepted) or both equalities hold (the step's
+%   optimum is the closest fail: it minimises the deviation, and a failed check does not release
+%   the draft). Otherwise the closest fail is the best design over every step, by the same rank
+%   (the smallest equality violation, with flotation held where any design held it). The solver
+%   exposes its evaluations portably, not its iterates, so every evaluated point (iterates, their
+%   finite-difference neighbours within the bounds, the adaptive rebuilds) is a candidate; the
+%   stored design is rebuilt on its adaptive fit.
 %   A kernel error named in contract F5 and section 8 (VoidClosed, JointNotNested,
-%   FitNotConverged) is a failed evaluation: objective and equality residuals Inf, which the SQP
-%   line search rejects; when one leaves the solver without a gradient, the step ends at its best
-%   evaluated point (above). It never stops Stage 3; an error of any other kind raised while a
-%   design is evaluated is a defect and is raised.
-%   Inner surfaces keep their knot vectors during a solve (F2 opts.knots_from, the adaptive sets
-%   of the step's start point); the step's optimum is rebuilt on its adaptive fit, and when that
-%   fit has another knot structure the step restarts there (contract section 7 item 4) until the
+%   FitNotConverged), and a non-finite point proposed by the solver, is a failed evaluation:
+%   objective and residuals Inf, which the SQP line search rejects; when one leaves the solver
+%   without a gradient (fmincon stops with an error), the step keeps its best point. Failed
+%   evaluations never stop Stage 3; an error of any other kind raised while a design is
+%   evaluated is a defect and is raised.
+%   Inner surfaces keep their knot vectors during a solve (F2 opts.knots_from, the adaptive set of
+%   the step's start point); the step's point is rebuilt on its adaptive fit, and when that fit has
+%   another knot structure the step restarts there (contract section 7 item 4) until the
 %   structure no longer changes or returns to one already searched (noted).
 %
 %   sol: design (S3 of the stored design, built on adaptive sets), escalation (last step run),
-%   solver (struct array: step, exitflag, iterations, fval, max_eq_violation of the step's stored
-%   point), closest ('' accepted | 'optimum' | 'least_violation'), notes (cellstr).
+%   solver (struct array: step, exitflag (phase 2, or phase 1 when phase 2 did not run; NaN when
+%   fmincon stopped with an error), iterations, fval, max_eq_violation of the step's stored point),
+%   closest ('' accepted | 'optimum' | 'least_violation'), notes (cellstr).
 
 store = containers.Map();
 store('ctx') = ctx;
 store('hs') = struct('vs', {}, 'hs', {});
-store('hist') = struct('step', {}, 'x', {}, 'free_vs', {}, 'viol', {}, 'f', {});
+store('hist') = struct('step', {}, 'x', {}, 'free_vs', {}, 'res', {}, 'f', {});
 store('defect') = [];
 store('seen') = containers.Map();
 store('failed') = {};
@@ -97,11 +103,15 @@ for s = 1:size(plan, 1)
     end
 end
 
-% No step met the equalities: the evaluated design with the smallest equality violation.
+% No step met both equalities: the best design evaluated over every step.
 hist = store('hist');
-viol = [hist.viol];
-[~, order] = sort(viol);
-for j = order(isfinite(viol(order)))
+order = zeros(0, 1);
+if ~isempty(hist)
+    keys = cell2mat(arrayfun(@(h) rank_key(h.res, h.f, P.tol_eq), hist(:), 'UniformOutput', false));
+    [~, order] = sortrows(keys);
+    order = order(isfinite(keys(order, 2)));
+end
+for j = order'
     h = hist(j);
     Pj = P;
     Pj.free_vs = h.free_vs;
@@ -110,9 +120,10 @@ for j = order(isfinite(viol(order)))
     if ~rj.failed
         sol.design = rj.design;
         sol.closest = 'least_violation';
-        sol.notes{end + 1} = sprintf(['closest fail: no step met the equalities; stored the design ' ...
-            'evaluated in step %s with the smallest equality violation (%.3g on its own adaptive ' ...
-            'fit, %.3g during the solve)'], h.step, rj.viol, h.viol);
+        sol.notes{end + 1} = sprintf(['closest fail: no step met both equalities; stored the best ' ...
+            'design evaluated (step %s): flotation residual %.3g, GM residual %.3g on its own ' ...
+            'adaptive fit (%.3g, %.3g during the solve)'], h.step, rj.res(1), rj.res(2), h.res(1), ...
+            h.res(2));
         ctx = store('ctx');
         return
     end
@@ -123,9 +134,22 @@ sol.notes{end + 1} = 'closest fail: no evaluated design could be rebuilt on its 
 ctx = store('ctx');
 end
 
+function key = rank_key(res, f, tol)
+% [class, measure, objective]: class 0 both equalities held (measure 0), 1 flotation held
+% (measure |GM residual|), 2 neither (measure the largest residual).
+res = res(:)';
+if all(abs(res) <= tol)
+    key = [0, 0, f];
+elseif abs(res(1)) <= tol
+    key = [1, abs(res(2)), f];
+else
+    key = [2, max(abs(res)), f];
+end
+end
+
 function [x, r, step, notes] = run_step(store, P, name, x0, z_hi, free_vs)
-% One escalation step: fmincon on fixed knot vectors, restarted while the adaptive fit at the
-% optimum changes the knot structure.
+% One escalation step: the two phases on fixed knot vectors, restarted while the adaptive fit at
+% the step's point changes the knot structure.
 e = P.start.edges(:);
 k = P.k;
 P.free_vs = free_vs;
@@ -137,8 +161,10 @@ if free_vs
     ub(end + 1) = P.vs_bounds(2);
 end
 % The solver works on q = (x - lb) ./ w in [0, 1]: metres of ballast level and of shell
-% thickness then weigh alike in its relative step and stopping tests.
+% thickness then weigh alike in its relative step and stopping tests. x is clamped to the bounds
+% so that rounding never puts a thickness past t_max.
 w = ub - lb;
+to_x = @(q) min(max(lb + w .* q, lb), ub);
 notes = {};
 opts = optimoptions('fmincon', 'Algorithm', 'sqp', 'Display', 'iter', ...
     'ConstraintTolerance', P.tol_eq, 'OptimalityTolerance', 1e-6, 'StepTolerance', 1e-8, ...
@@ -154,43 +180,39 @@ if ~r0.failed && ~isempty(r0.inner)
 end
 searched = {base};
 iterations = 0;
+flag = NaN;
 x = x0;
 while true
     ctx = store('ctx');
     ctx.knots_from = base;
     store('ctx') = ctx;
     store('seen') = containers.Map();
-    obj = @(q) objective(store, P, lb + w .* q);
-    con = @(q) constraints(store, P, lb + w .* q);
+    gm_sq = @(q) pick(cached(store, P, to_x(q)), 3)^2;
+    flot = @(q) deal([], pick(cached(store, P, to_x(q)), 2));
+    obj = @(q) pick(cached(store, P, to_x(q)), 1);
+    both = @(q) deal([], pick(cached(store, P, to_x(q)), [2; 3]));
     q01 = {zeros(size(x)), ones(size(x))};
     try
         v = cached(store, P, x);
-        if max(abs(v(2:end))) > P.tol_eq
-            % Phase 1: reach the equalities first (zero objective), then minimise from there.
-            [xi, ~, ~, out] = fmincon(@(q) 0, (x - lb) ./ w, [], [], [], [], q01{:}, con, opts);
-            x = lb + w .* xi;
+        if any(abs(v(2:3)) > P.tol_eq)
+            [qs, ~, flag, out] = fmincon(gm_sq, (x - lb) ./ w, [], [], [], [], q01{:}, flot, opts);
+            x = to_x(qs);
+            iterations = iterations + out.iterations;
+            v = cached(store, P, x);
+        end
+        if all(abs(v(2:3)) <= P.tol_eq)
+            [qs, ~, flag, out] = fmincon(obj, (x - lb) ./ w, [], [], [], [], q01{:}, both, opts);
+            x = to_x(qs);
             iterations = iterations + out.iterations;
         end
-        [xi, ~, flag, out] = fmincon(obj, (x - lb) ./ w, [], [], [], [], q01{:}, con, opts);
-        x = lb + w .* xi;
-        iterations = iterations + out.iterations;
     catch err
-        % An error raised while evaluating a design is a defect; the solver's own failures (a
-        % failed evaluation inside a finite-difference gradient, a failed QP subproblem) end the
-        % step at its best evaluated point below.
         if ~isempty(store('defect'))
             rethrow(store('defect'));
         end
         flag = NaN;
         notes{end + 1} = sprintf('step %s: the solver stopped (%s)', name, err.message); %#ok<AGROW>
     end
-    v = cached(store, P, x);
-    if max(abs(v(2:end))) > P.tol_eq
-        x = best_of_step(store, name, x, max(abs(v(2:end))), v(1));
-    end
-    if ~all(isfinite(x))
-        x = x0;
-    end
+    x = best_of_step(store, P, name, x, x0);
     ctx = store('ctx');
     ctx.knots_from = [];
     store('ctx') = ctx;
@@ -204,7 +226,7 @@ while true
     end
     adaptive = r.inner(changed);
     if any(cellfun(@(s) mwecmass.realise.modular_precast.same_knots(adaptive, s), searched))
-        notes{end + 1} = sprintf(['step %s: the adaptive fit at the optimum returns to a knot ' ...
+        notes{end + 1} = sprintf(['step %s: the adaptive fit at the step''s point returns to a knot ' ...
             'structure already searched; stored there'], name); %#ok<AGROW>
         break
     end
@@ -219,27 +241,21 @@ end
 step = struct('step', name, 'exitflag', flag, 'iterations', iterations, 'fval', r.f, ...
     'max_eq_violation', r.viol);
 if r.failed
-    notes{end + 1} = sprintf('step %s: the optimum could not be rebuilt on its adaptive fit (%s)', ...
+    notes{end + 1} = sprintf('step %s: the step''s point could not be rebuilt on its adaptive fit (%s)', ...
         name, r.message);
 end
-fprintf('      step %s: exitflag %d, %d iterations, %d knot restarts, objective %.6g, max equality violation %.3g\n', ...
-    name, flag, iterations, numel(searched) - 1, r.f, r.viol);
+fprintf(['      step %s: exitflag %g, %d iterations, %d knot restarts, objective %.6g, ' ...
+    'residuals flotation %.3g, GM %.3g\n'], name, flag, iterations, numel(searched) - 1, r.f, r.res);
 end
 
-function f = objective(store, P, x)
-v = cached(store, P, x);
-f = v(1);
-end
-
-function [c, ceq] = constraints(store, P, x)
-v = cached(store, P, x);
-c = [];
-ceq = v(2:end);
+function y = pick(v, idx)
+y = v(idx);
 end
 
 function v = cached(store, P, x)
-% [objective; equality residuals] of x; the solver asks for the objective and the constraints at
-% the same points, so each point is built once (the key prints every double exactly).
+% [objective; flotation residual; GM residual] of x; the solver asks for the objective and the
+% constraints at the same points, so each point is built once (the key prints every double
+% exactly).
 seen = store('seen');
 key = sprintf('%.17g,', x);
 if isKey(seen, key)
@@ -262,17 +278,31 @@ v = [r.f; r.res(:)];
 seen(key) = v;
 end
 
-function x = best_of_step(store, name, x, viol, f)
-% The point of this step with the smallest equality violation (then the smallest objective),
-% when it improves on x.
+function x = best_of_step(store, P, name, x, x0)
+% The best design this step evaluated (rank_key); x0 when x is not finite and nothing ranks.
 hist = store('hist');
-for h = hist(strcmp({hist.step}, name))
-    if numel(h.x) == numel(x) && (h.viol < viol || (h.viol == viol && h.f < f))
+if ~isempty(hist)
+    hist = hist(strcmp({hist.step}, name) & arrayfun(@(h) numel(h.x) == numel(x), hist));
+end
+best = [];
+if all(isfinite(x))
+    v = cached(store, P, x);
+    best = rank_key(v(2:3), v(1), P.tol_eq);
+else
+    x = x0;
+end
+for h = hist
+    key = rank_key(h.res, h.f, P.tol_eq);
+    if isempty(best) || is_less(key, best)
         x = h.x;
-        viol = h.viol;
-        f = h.f;
+        best = key;
     end
 end
+end
+
+function less = is_less(a, b)
+d = find(a ~= b, 1);
+less = ~isempty(d) && a(d) < b(d);
 end
 
 function r = evaluate(store, P, x, adaptive)
@@ -311,7 +341,7 @@ r.viol = max(abs(r.res));
 r.check = check;
 r.inner = ev.inner;
 hist = store('hist');
-hist(end + 1) = struct('step', P.step, 'x', x, 'free_vs', P.free_vs, 'viol', r.viol, 'f', r.f);
+hist(end + 1) = struct('step', P.step, 'x', x, 'free_vs', P.free_vs, 'res', r.res, 'f', r.f);
 store('hist') = hist;
 end
 
