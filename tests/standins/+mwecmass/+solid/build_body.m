@@ -275,20 +275,16 @@ body = struct('design', design, 'inner_t', unique([inner(unique(used)).t]), 'pla
             pats = inner(set).patches;
         end
         segs = [];
-        for k = 1:numel(pats)
-            s = pats(k).surf;
-            Z = s.ctrl(:, 1, 3);
+        for kk = 1:numel(pats)
+            sf = pats(kk).surf;
+            Z = sf.ctrl(:, 1, 3);
             if all(Z == Z(1)) || z < min(Z) || z > max(Z)
                 continue
             end
-            r = piece(s, u_of_z(s, z), u_of_z(s, z));
-            [~, nv, ~] = size(r.ctrl);
-            crv = struct('degree', s.degree(2), 'ctrl', squeeze(r.ctrl(1, :, :)), 'knots', s.knots{2}, ...
+            r = piece(sf, u_of_z(sf, z), u_of_z(sf, z));
+            crv = struct('degree', sf.degree(2), 'ctrl', squeeze(r.ctrl(1, :, :)), 'knots', sf.knots{2}, ...
                 'weights', col(r.weights, 'r', 1));
             segs(end + 1) = edge_for(crv); %#ok<AGROW>
-            if nv < 2
-                error('build_body: degenerate row');
-            end
         end
         L = chain(segs);
     end
@@ -299,15 +295,15 @@ body = struct('design', design, 'inner_t', unique([inner(unique(used)).t]), 'pla
         rest = segs(2:end);
         while ~isempty(rest)
             hit = 0;
-            for k = 1:numel(rest)
-                [a, b] = edge_ends(rest(k));
+            for kk = 1:numel(rest)
+                [a, b] = edge_ends(rest(kk));
                 if a == cur
-                    hit = rest(k);
+                    hit = rest(kk);
                 elseif b == cur
-                    hit = -rest(k);
+                    hit = -rest(kk);
                 end
                 if hit
-                    rest(k) = [];
+                    rest(kk) = [];
                     break
                 end
             end
@@ -321,9 +317,9 @@ body = struct('design', design, 'inner_t', unique([inner(unique(used)).t]), 'pla
             error('mwecmass:solid:SectionNotClosed', 'build_body stand-in: section loop does not close');
         end
         V = zeros(numel(L), 2);
-        for k = 1:numel(L)
-            [a, ~] = edge_ends(L(k));
-            V(k, :) = brep.vertices(a, 1:2);
+        for kk = 1:numel(L)
+            [a, ~] = edge_ends(L(kk));
+            V(kk, :) = brep.vertices(a, 1:2);
         end
         area = sum(V(:, 1) .* V([2:end 1], 2) - V([2:end 1], 1) .* V(:, 2));
         if area < 0
@@ -341,18 +337,18 @@ body = struct('design', design, 'inner_t', unique([inner(unique(used)).t]), 'pla
     end
 
     function idx = edge_for(crv)
-        for k = 1:numel(brep.edges)
-            c = brep.curves(brep.edges(k).curve);
+        for kk = 1:numel(brep.edges)
+            c = brep.curves(brep.edges(kk).curve);
             if c.degree ~= crv.degree
                 continue
             end
             if isequal(c.ctrl, crv.ctrl) && isequal(c.knots, crv.knots) && isequal(c.weights, crv.weights)
-                idx = k;
+                idx = kk;
                 return
             end
             kr = crv.knots(1) + crv.knots(end) - crv.knots(end:-1:1);
             if isequal(c.ctrl, flipud(crv.ctrl)) && isequal(c.knots, kr) && isequal(c.weights, flipud(crv.weights))
-                idx = -k;
+                idx = -kk;
                 return
             end
         end
@@ -372,12 +368,12 @@ body = struct('design', design, 'inner_t', unique([inner(unique(used)).t]), 'pla
 
     function L = bound(region, m)
         L = zeros(1, 0);
-        for k = 1:numel(brep.faces)
-            f = brep.faces(k);
+        for kk = 1:numel(brep.faces)
+            f = brep.faces(kk);
             if strcmp(f.inside, region) && (isempty(m) || f.module(1) == m)
-                L(end + 1) = k; %#ok<AGROW>
+                L(end + 1) = kk; %#ok<AGROW>
             elseif strcmp(f.outside, region) && (isempty(m) || f.module(end) == m)
-                L(end + 1) = -k; %#ok<AGROW>
+                L(end + 1) = -kk; %#ok<AGROW>
             end
         end
     end
@@ -387,11 +383,11 @@ body = struct('design', design, 'inner_t', unique([inner(unique(used)).t]), 'pla
         n = numel(L);
         lab = 1:n;
         E = cell(1, n);
-        for k = 1:n
-            lp = brep.faces(abs(L(k))).loops;
-            E{k} = [];
-            for q = 1:numel(lp)
-                E{k} = [E{k}, abs(lp{q}(:)')];
+        for kk = 1:n
+            lp = brep.faces(abs(L(kk))).loops;
+            E{kk} = [];
+            for qq = 1:numel(lp)
+                E{kk} = [E{kk}, abs(lp{qq}(:)')];
             end
         end
         changed = true;
