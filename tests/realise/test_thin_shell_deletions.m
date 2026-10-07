@@ -4,6 +4,8 @@ function test_thin_shell_deletions()
 %   Outside it, the names may remain only in files other tasks own at this base (contract section
 %   4 and the deletion register): they are listed in `pending` with their owner and printed; any
 %   other file holding one fails the test. J2 and T11 shrink the list as those files change.
+%   The files T7 deletes at J2, once T5 has removed their last callers, are named only by files
+%   T5, T6, T8 and T11 own (listed in `callers`); the remaining references are printed.
 
 root = fileparts(fileparts(fileparts(mfilename('fullpath'))));
 names = {'compute_rmin_at_z', 'hull_slope_cos_at_z', 'inner_properties_at_z', 'max_slope_factor', ...
@@ -44,6 +46,33 @@ for k = 1:numel(files)
     fprintf('pending (%s): %s holds %s\n', pending{row, 2}, rel, strjoin(hits, ', '));
 end
 fprintf('%d files outside the thin-shell path still hold a deleted name\n', n_pending);
+
+j2 = {'build_realised_properties', 'empty_realised_properties', 'integrate_split'};
+callers = {
+    'src/+mwecmass/+realise/+modular_precast/run.m', 'T5'
+    'src/+mwecmass/+realise/+modular_precast/build_realised_properties.m', 'T5'
+    'src/+mwecmass/+realise/+modular_precast/evaluate_design_point.m', 'T5'
+    'src/+mwecmass/+realise/+modular_precast/solve_and_extract.m', 'T5'
+    'src/+mwecmass/+realise/+modular_precast/solve.m', 'T6'
+    'validation/diagnostics/stage_animations.m', 'T8'
+    'validation/diagnostics/uhpc_mass_balance.m', 'T11'
+    };
+own = strcat('src/+mwecmass/+realise/', {'build_realised_properties.m', 'empty_realised_properties.m', ...
+    '+thin_shell/integrate_split.m'});
+for k = 1:numel(files)
+    rel = strrep(files{k}(numel(root) + 2:end), filesep, '/');
+    if any(strcmp(rel, own))
+        continue
+    end
+    txt = fileread(files{k});
+    hits = j2(cellfun(@(n) ~isempty(strfind(txt, n)), j2));
+    if isempty(hits)
+        continue
+    end
+    row = find(strcmp(callers(:, 1), rel), 1);
+    check(~isempty(row), '%s names %s, which T7 deletes at J2', rel, strjoin(hits, ', '));
+    fprintf('J2 deletion waits for %s: %s names %s\n', callers{row, 2}, rel, strjoin(hits, ', '));
+end
 end
 
 function files = list_m(folder)

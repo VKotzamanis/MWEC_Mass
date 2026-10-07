@@ -7,12 +7,14 @@ function test_thin_shell_stage3()
 %   the lightest buildable design (draft released), one whose ballast spills past module 1, one
 %   that ends the flotation curve with z_ballast at the hull bottom (below the inner z_lo), one
 %   too heavy and one too light for every draft within the bounds (closest fail with the draft
-%   released). Then: volume closure with z_ballast exactly at an interior module edge (I1), and
+%   released). Then: volume closure (I1) with z_ballast exactly at an interior module edge and
+%   with z_ballast below the inner z_lo (ballast, shell and the uncut void in module 1), and
 %   kernel errors raised by a test double of offset_surface inside the search (VoidClosed is a
 %   failed evaluation, any other error stops the run). The figure and STEP calls run against test
 %   doubles that record them.
 %   The closed forms of sti_closed_form (prisms) are the independent oracle of the hull volume;
-%   the prism formulas of the cylinder (written out below) are the oracle of the no-float cases.
+%   the prism formulas of the cylinder (written out below) are the oracle of the no-float cases
+%   and of the module-1 regions with z_ballast below the inner z_lo.
 
 root = fileparts(fileparts(fileparts(mfilename('fullpath'))));
 setup(root);
@@ -231,6 +233,7 @@ for c = 1:numel(cases)
 end
 
 edge_closure(config, V_hull);
+below_zlo_closure(config, V_hull);
 kernel_errors(config);
 end
 
@@ -272,6 +275,60 @@ check(mods(2).V_ballast == 0 && all([mods(2:end).V_air] > 0), 'edge: ballast abo
 r = sti_realised(config, ev.design, rho, st, struct('t_min', config.steel_t_min));
 check(isnan(r.modules(1).t) && r.modules(1).h_ballast == e(2) - e(1) && r.modules(2).h_ballast == 0 && ...
     r.modules(2).t == t, 'edge: S8 module layout');
+end
+
+function below_zlo_closure(config, V_hull)
+% I1 with ballast below the inner z_lo: z_ballast = z0 + d/2 (z0 < z_ballast < z0 + d), a light
+% shell and a denser ballast, so module 1 holds ballast, shell and the uncut void. The prism
+% formulas of the cylinder (sti_closed_form, contract section 3) are the oracle of the regions.
+fprintf('\n== z_ballast below the inner z_lo\n');
+config.rho_shell = 1100;
+config.rho_ballast = 1500;
+config.mass_acceptable_pct = 10;
+e = config.strip_edges(:);
+N = numel(e) - 1;
+fx = config.hull_solid.analytic;
+R = fx.R;
+z0 = fx.z(1);
+[~, st] = sti_stage2(config, 0, [NaN; 100; 100; 100]);
+rho = struct('ballast', config.rho_ballast, 'shell', config.rho_shell, 'air', config.rho_air);
+ctx = struct('config', config, 'geo', config.hull_solid, 'edges', e, 'rho', rho, 'stage2', st, ...
+    't_min', config.steel_t_min, 'tol_eq', 1e-6, ...
+    'sets', containers.Map('KeyType', 'char', 'ValueType', 'any'), ...
+    'adaptive_sets', containers.Map('KeyType', 'char', 'ValueType', 'any'), ...
+    'hydro', containers.Map('KeyType', 'char', 'ValueType', 'any'), ...
+    'state', containers.Map('KeyType', 'char', 'ValueType', 'any'));
+t = config.steel_t_min;
+d = t + 0.01 * config.steel_t_min / 2;
+zb = z0 + d / 2;
+ev = mwecmass.realise.thin_shell.evaluate_design_point(ctx, 0, t, zb, true);
+fprintf('inner z_lo %.15g m, z_ballast %.15g m\n', ev.inner.z_lo, zb);
+check(zb > z0 && zb < ev.inner.z_lo, 'z_ballast %.15g is not between z_min and the inner z_lo', zb);
+mods = ev.bp.modules;
+M = 0;
+for i = 1:N
+    m = mods(i);
+    fprintf('module %d: V %.15g, V_ballast %.15g, V_shell %.15g, V_air %.15g, closure %.2f eps\n', i, ...
+        m.V, m.V_ballast, m.V_shell, m.V_air, (m.V_ballast + m.V_shell + m.V_air - m.V) / (eps * m.V));
+    % rounding of three terms
+    check(abs(m.V_ballast + m.V_shell + m.V_air - m.V) <= 4 * eps * m.V, 'below z_lo: module %d closure', i);
+    M = M + rho.ballast * m.V_ballast + rho.shell * m.V_shell + rho.air * m.V_air;
+end
+% four closed-form prisms of the same section: rounding of four terms
+check(abs(sum([mods.V]) - V_hull) <= 8 * eps * V_hull, 'below z_lo: sum of module volumes');
+Vb_cf = pi * R^2 * (zb - z0);
+Va_cf = pi * (R - d)^2 * (e(2) - z0 - d);
+fprintf('module 1: V_ballast - closed form %.3g (%.2f eps), V_air - closed form %.3g (%.2f eps)\n', ...
+    mods(1).V_ballast - Vb_cf, (mods(1).V_ballast - Vb_cf) / (eps * Vb_cf), mods(1).V_air - Va_cf, ...
+    (mods(1).V_air - Va_cf) / (eps * Va_cf));
+% each is one prism, A (zb - za) with A = pi r^2: a few roundings
+check(abs(mods(1).V_ballast - Vb_cf) <= 4 * eps * Vb_cf, 'below z_lo: module 1 V_ballast');
+check(abs(mods(1).V_air - Va_cf) <= 4 * eps * Va_cf, 'below z_lo: module 1 V_air');
+check(mods(1).V_shell > 0 && all([mods(2:end).V_ballast] == 0), 'below z_lo: region layout');
+% the mass is the sum over modules and regions of rho V: rounding of 3 N products and sums
+fprintf('mass %.15g kg, body_properties %.15g kg, relative difference %.3g\n', M, ev.bp.total.mass, ...
+    (ev.bp.total.mass - M) / M);
+check(abs(ev.bp.total.mass - M) <= 6 * N * eps * M, 'below z_lo: mass');
 end
 
 function kernel_errors(config)
