@@ -1,6 +1,6 @@
 # HANDOFF — MWEC_Mass exact-geometry refactor
 
-Updated 2026-10-07 14:00 UTC on `claude/lucid-cray-7o9442`. Process file for agents: the
+Updated 2026-10-07 14:25 UTC on `claude/lucid-cray-7o9442`. Process file for agents: the
 orchestrator updates it at every milestone and at least every 100k tokens; delete it in T12.
 
 ## 1. Goal
@@ -30,16 +30,16 @@ Main `claude/lucid-cray-7o9442` holds the general-kernel amendment (`e7e9114`) a
 | SK | stand-in kit (box, cylinder, closed forms) | K | merged `8eb4552` | 9 (3) | `a03bc4b` |
 | T0b | renames (`z_ballast`, `rho_air`, `rho_ballast`, `uhpc`) | N | merged `b4523aa` | 9 (4) | `c64a4d0` |
 | spec2 | contract amendment: general kernel (owner) + errata | K | merged `e7e9114` | 9 (round 8; errata 9; merge 10) | `5ce48fc` |
-| T5 | UHPC Stage 3 a: split, build, check, store | U | round 3 grading | r1 –, r2 8 | task/T5 `4a9bffa` |
+| T5 | UHPC Stage 3 a: split, build, check, store | U | round 4 grading (last of the lane run) | 7, 8, 8 | task/T5 `eaf4c16` |
 | T6 | UHPC Stage 3 b: optimisation, spill, closest fail | U | queued after T5 | — | — |
-| T7 | thin-shell rebuild | S | round 3 grading | r2 7 | task/T7 `c9626ec` |
+| T7 | thin-shell rebuild | S | round 4 grading (last of the lane run); code correct, bookkeeping findings | 7, 7, 7 | task/T7 `bbee405` |
 | T8 | figures from the realised solid | O | rounds 7–8 (`wf_04b5da50-26a`): role 'wall' → 'shell'; gap where a void's y = 0 interval count changes | r1–r4 8, r5–r6 6 | task/T8 `63810a6` |
 | T10 | Stage-3 STEP exports | O | accepted, waits for J2 | 9 (3) | `07856a2` |
 | T0d | geometry cache of `build_config` | P | round 2 grading | r1 8 | task/T0d `158d77d` |
 | T4a | Stage-2 changes (delete `c_mono`, `c_mass_min`; bottom-filled start; bounds) | P | queued after T0d | — | — |
 | T4b | Stage-2 floors from the kernel (merges after J1) | P | queued after T4a | — | — |
-| SK2 | stand-ins updated to spec2 | SK2 | implementing | — | task/SK2 |
-| T2a | exact-path offset, fold trim, adaptive fit | K1 | implementing (Opus high) | — | task/T2a |
+| SK2 | stand-ins updated to spec2 | SK2 | round 2 grading | 7 | task/SK2 `067c0cb` |
+| T2a | exact-path offset, fold trim, adaptive fit | K1 | implementing: F3, F3b/F4, F1 committed; F2 (offset, trim, fit) in progress; F2b next | — | task/T2a `59aeb4f` |
 | T2b | general path (refits, flat regions, mirrors) | K | after T2a, ∥ T3 | — | — |
 | T3 | bodies and exact properties | K | after T2a | — | — |
 | J1 | merge T2a, T2b, T3; owner checkpoint | — | pending | — | — |
