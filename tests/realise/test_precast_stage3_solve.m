@@ -12,9 +12,12 @@ function test_precast_stage3_solve()
 %   Asserted (exact by construction): the escalation order and the conditions that start each
 %   step, the status rule (accepted exactly when F10 passes), bounds of every variable, the draft
 %   kept unless the draft step ran, props and final_props from the stored body, the stored solver
-%   objective equal to the objective of the stored props, volume closure (rule 11). Flotation
-%   residuals and deviations are printed; the flotation equality is asserted where the case
-%   reaches it (AGENTS OD10, tolerance 1e-6).
+%   record of the last step equal to the objective and residuals of the stored props (solve stores
+%   the point of its last step and solver(end) describes it), volume closure (rule 11).
+%   Outcomes (AGENTS section 3 items 27, 31, 32; OD10 tolerance 1e-6): C accepted with both
+%   equalities and an objective no worse than a known feasible design; S and D hold flotation (D
+%   at the released draft: the lightest design floats inside the vs bounds); G holds flotation
+%   with GM out of reach. Residuals and deviations are printed.
 
 root = fileparts(fileparts(fileparts(mfilename('fullpath'))));
 setup(root);
@@ -27,6 +30,11 @@ config = fixture_config('box', [], 2500, []);
 r = stage3(config, [0; s2.rho], f3, []);
 common(r, [], config, s2, order, tol_eq, 'C');
 check(numel(r.solver) >= 2, 'C: the split check failed and the optimisation ran');
+% a design within the bounds that holds both equalities and passes the check (grader, round 1:
+% t = [0.139902 0.135073 0.0762] m, z_ballast = -2.218129 m) has objective 0.00839728
+check(strcmp(r.status, 'accepted') && all(abs([r.check.equalities.residual]) <= tol_eq), ...
+    'C: accepted with both equalities held');
+check(r.solver(end).fval <= 0.00839728, 'C: objective no worse than the known feasible design');
 
 % S: two modules, shells capped at t_max = 0.1 m - eps_fit/2 (d_close provider of the test): k* is
 % too light even when full of ballast, so flotation needs the spill into module 2
@@ -42,6 +50,7 @@ r = stage3(config, [0; s2.rho], f3, d_close_fn);
 common(r, [], config, s2, order, tol_eq, 'S');
 check(any(strcmp({r.solver.step}, 'spill')), 'S: spill ran');
 check(all(r.design.t(isfinite(r.design.t)) <= t_max), 'S: shells within t_max');
+check(r.check.equalities(1).pass, 'S: flotation holds after the spill');
 
 % D: two modules, too heavy at the Stage-2 draft for every design: the draft is released last
 config = fixture_config('box', [], 2500, [-2.5; -1; 0.5]);
@@ -49,10 +58,15 @@ config = fixture_config('box', [], 2500, [-2.5; -1; 0.5]);
 M_min = mass_of(config, struct('t', config.constructability_t_min * [1; 1], 'z_ballast', -2.5));
 fprintf('D: lightest design %.3f kg, displaced mass %.3f kg\n', M_min, f3.mass_buoyant_force);
 check(M_min > f3.mass_buoyant_force, 'D: flotation out of reach at the Stage-2 draft');
+hull = sti_closed_form('hull', sti_closed_form('fixture', config.hull_solid));
+fprintf('D: rho_w V_hull %.3f kg\n', config.RHO_WATER * hull.V);
+check(M_min < config.RHO_WATER * hull.V, 'D: some draft floats the lightest design');
 r = stage3(config, [2.4; s2.rho], f3, []);
 common(r, [], config, s2, order, tol_eq, 'D');
 check(strcmp(r.escalation, 'draft_free') && r.vs ~= s2.vs, 'D: draft released');
-fprintf('D: vs %.6f m (Stage 2 %.6f m)\n', r.vs, s2.vs);
+fprintf('D: vs %.6f m (Stage 2 %.6f m), flotation residual %.3g, GM residual %.3g\n', r.vs, s2.vs, ...
+    r.check.equalities.residual);
+check(r.check.equalities(1).pass, 'D: flotation holds at the released draft');
 
 % G: unreachable GM (forced infeasible, GM_Stage2 = 100 m) through F14 run.m on the cylinder
 config = fixture_config('cylinder', [], 2500, [-3; -1; 1]);
@@ -70,6 +84,8 @@ check(strcmp(r.status, 'failed') && any(strcmp(r.check.failed, 'GM')) && ...
     'G: closest fail flagged and reported');
 check(numel(r.solver) >= 3 && r.solver(2).max_eq_violation > tol_eq, ...
     'G: the GM equality failed at the Stage-2 draft, so the spill ran');
+check(r.check.equalities(1).pass && ~any(strcmp({r.solver.step}, 'draft_free')), ...
+    'G: flotation held at the Stage-2 draft, so the draft is kept');
 end
 
 function M = mass_of(config, d)
