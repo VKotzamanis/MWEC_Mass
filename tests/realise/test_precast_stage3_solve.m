@@ -12,8 +12,8 @@ function test_precast_stage3_solve()
 %   Asserted (exact by construction): the escalation order and the conditions that start each
 %   step, the status rule (accepted exactly when F10 passes), bounds of every variable, the draft
 %   kept unless the draft step ran, props and final_props from the stored body, the stored solver
-%   record of the last step equal to the objective and residuals of the stored props (solve stores
-%   the point of its last step and solver(end) describes it), volume closure (rule 11).
+%   record of the last step equal to the objective and residuals of the stored props (solve returns
+%   the props and check of the evaluation that set solver(end)), volume closure (rule 11).
 %   Outcomes (AGENTS section 3 items 27, 31, 32; OD10 tolerance 1e-6): C accepted with both
 %   equalities and an objective no worse than a known feasible design; S and D hold flotation (D
 %   at the released draft: the lightest design floats inside the vs bounds); G holds flotation

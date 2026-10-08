@@ -37,7 +37,8 @@ function [realised, final_props] = solve_and_extract(config, x_opt, final3d, opt
 %      T_pitch against Stage 2 with mass_acceptable_pct and flotation against TOL_EQ (escalation
 %      'split').
 %   5. When that check fails, solve optimises from the split (fixed_draft, then spill, then
-%      draft_free; see solve) and returns the accepted design or the closest fail.
+%      draft_free; see solve) and returns the accepted design or the closest fail, with the props,
+%      check and body of the evaluation that gave its solver record.
 %   status is 'accepted' when F10 passes on the stored design, else 'failed' with the failing
 %   metrics, the escalation notes and the closest-fail rule in reason; the realised design is
 %   stored either way and Stage-2 properties are never returned. stage3_report prints it.
@@ -127,7 +128,7 @@ else
     end
 end
 
-[props, check, ev, hs] = evaluate(ctx, design, hs, geo, config, stage2, TOL_EQ);
+[props, check, ev] = evaluate(ctx, design, hs, config, stage2, TOL_EQ);
 X = [props.CG_total(3), props.periods.heave, props.periods.pitch];
 X2 = [stage2.Z_CG, stage2.T_heave, stage2.T_pitch];
 solver.fval = sum(((X - X2) ./ X2).^2);
@@ -143,18 +144,15 @@ if ~check.pass && ~isempty(k) && (~isfield(opts, 'escalate') || opts.escalate)
         'vs_bounds', vsb, 'stage2', stage2, 'config', config, 'pct', config.mass_acceptable_pct, ...
         'tol_eq', TOL_EQ, 'hs_fn', @(v) mwecmass.solid.hydrostatics_at_draft(geo, v, struct()), ...
         'hs_cache', struct('vs', vs, 'hs', hs));
-    [sol, ctx] = mwecmass.realise.modular_precast.solve(ctx, design, P);
+    sol = mwecmass.realise.modular_precast.solve(ctx, design, P);
     design = sol.design;
     solver = [solver, sol.solver];
     escalation = sol.escalation;
     notes = [notes, sol.notes];
-    hs = [];
-    for j = 1:numel(sol.hs_cache)
-        if isequal(sol.hs_cache(j).vs, design.vs)
-            hs = sol.hs_cache(j).hs;
-        end
-    end
-    [props, check, ev, hs] = evaluate(ctx, design, hs, geo, config, stage2, TOL_EQ);
+    props = sol.props;
+    check = sol.check;
+    ev = sol.ev;
+    hs = sol.hs;
     if ~check.pass && strcmp(sol.closest, 'optimum')
         notes{end + 1} = sprintf(['closest fail: the %s result meets the equalities and fails the ' ...
             'mass_acceptable_pct check'], escalation);
@@ -183,12 +181,9 @@ final_props.stage3_check = check;
 mwecmass.realise.modular_precast.stage3_report(realised, notes);
 end
 
-function [props, check, ev, hs] = evaluate(ctx, design, hs, geo, config, stage2, tol_eq)
-% The stored design on its adaptive inner sets; hs is computed at design.vs when empty.
+function [props, check, ev] = evaluate(ctx, design, hs, config, stage2, tol_eq)
+% The split design on its adaptive inner sets.
 ctx.knots_from = [];
-if isempty(hs)
-    hs = mwecmass.solid.hydrostatics_at_draft(geo, design.vs, struct());
-end
 ev = mwecmass.realise.modular_precast.realise_modules(ctx, design);
 props = mwecmass.realise.evaluate_realised(ev.bp, hs, design, config);
 check = mwecmass.realise.check_against_stage2(props, stage2, config.mass_acceptable_pct, tol_eq, ...

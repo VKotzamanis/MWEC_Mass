@@ -48,7 +48,8 @@ function [sol, ctx] = solve(ctx, start, P)
 %   The escalation ends when the F10 check passes (accepted) or both equalities hold (the step's
 %   optimum is the closest fail: it minimises the deviation, and a failed check does not release
 %   the draft). Otherwise the last step's point is the closest fail (least violation). The stored
-%   design is always the point of the last step run, so sol.solver(end) describes it.
+%   design is always the point of the last step run, and its props, check and body are those of
+%   the evaluation that gave sol.solver(end) its objective and residuals.
 %   A kernel error named in contract F5 and section 8 (VoidClosed, JointNotNested,
 %   FitNotConverged), and a non-finite point proposed by the solver, is a failed evaluation:
 %   objective and residuals Inf, which the SQP line search, the Newton steps and the ranking
@@ -61,12 +62,12 @@ function [sol, ctx] = solve(ctx, start, P)
 %   structure no longer changes or returns to one already searched (noted). F7 is called once per
 %   distinct vs (contract section 7 item 3).
 %
-%   sol: design (S3 of the stored design, built on adaptive sets), escalation (last step run),
+%   sol: design (S3 of the stored design, built on adaptive sets), props (F9), check (F10), ev
+%   (realise_modules output: body, bp, inner) and hs (S7) of that design, escalation (last step run),
 %   solver (struct array: step; exitflag of the last fmincon call, NaN when none ran or it stopped
 %   with an error; iterations (sqp, Newton and root iterations); fval and max_eq_violation of the
 %   step's point; fval_phase2_start, the objective where phase 2 first started, NaN when it did
-%   not run), closest ('' accepted | 'optimum' | 'least_violation'), notes (cellstr), hs_cache
-%   (P.hs_cache and every F7 result of the solve).
+%   not run), closest ('' accepted | 'optimum' | 'least_violation'), notes (cellstr).
 
 store = containers.Map();
 store('ctx') = ctx;
@@ -92,7 +93,7 @@ P.opts = optimoptions('fmincon', 'Algorithm', 'sqp', 'Display', 'iter', ...
     'MaxIterations', P.max_iter, 'MaxFunctionEvaluations', 2000);
 sol = struct('design', start, 'escalation', '', 'closest', '', 'notes', {{}}, ...
     'solver', struct('step', {}, 'exitflag', {}, 'iterations', {}, 'fval', {}, ...
-    'max_eq_violation', {}, 'fval_phase2_start', {}), 'hs_cache', []);
+    'max_eq_violation', {}, 'fval_phase2_start', {}), 'props', [], 'check', [], 'ev', [], 'hs', []);
 
 x = [start.z_ballast; start.t(k); start.t(P.hollow(:))];
 spill_ok = k < N && any(P.hollow == k + 1);
@@ -120,6 +121,10 @@ for s = 1:size(plan, 1)
     sol.notes = [sol.notes, notes];
     sol.escalation = name;
     sol.design = r.design;
+    sol.props = r.props;
+    sol.check = r.check;
+    sol.ev = r.ev;
+    sol.hs = r.hs;
     if r.check.pass
         [sol, ctx] = finish(sol, store);
         return
@@ -138,7 +143,6 @@ end
 
 function [sol, ctx] = finish(sol, store)
 ctx = store('ctx');
-sol.hs_cache = store('hs');
 end
 
 function key = rank_key(res, f, tol)
@@ -547,7 +551,7 @@ function r = evaluate(store, P, x, adaptive)
 % sets (knots_from empty), else on the knots of the solve.
 design = design_of_x(P, x);
 r = struct('design', design, 'failed', false, 'message', '', 'f', Inf, 'res', [Inf; Inf], ...
-    'viol', Inf, 'M', Inf, 'check', [], 'inner', []);
+    'viol', Inf, 'M', Inf, 'check', [], 'inner', [], 'props', [], 'ev', [], 'hs', []);
 ctx = store('ctx');
 keep = ctx.knots_from;
 if adaptive
@@ -578,6 +582,9 @@ r.viol = max(abs(r.res));
 r.M = props.mass_total;
 r.check = check;
 r.inner = ev.inner;
+r.props = props;
+r.ev = ev;
+r.hs = hs;
 hist = store('hist');
 hist(end + 1) = struct('step', P.step, 'round', store('round'), 'x', x, 'free_vs', P.free_vs, ...
     'res', r.res, 'f', r.f);
