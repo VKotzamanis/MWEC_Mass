@@ -68,8 +68,9 @@ function test_geometry_cache_key()
   pkg = fullfile(copy_root, '+mwecmass');
   relative = cellfun(@(f) strrep(f(numel(pkg) + 2:end), '\', '/'), files, 'UniformOutput', false);
   required = {'+driver/build_config.m', '+driver/build_hydrostatic_tables.m', ...
-              '+driver/build_strip_geometry_tables.m', '+driver/parse_hull_deck.m', ...
-              '+geometry/MS2Parser.m', '+hydrostatics/compute_strip.m', '+internal/geometry_cache.m'};
+              '+driver/build_strip_geometry_tables.m', '+driver/density_floors.m', '+driver/parse_hull_deck.m', ...
+              '+geometry/MS2Parser.m', '+hydrostatics/compute_strip.m', '+internal/geometry_cache.m', ...
+              '+solid/outer_rows.m'};
   for k = 1:numel(required)
     if ~any(strcmp(relative, required{k}))
       error('keyed set lacks %s', required{k});
@@ -125,9 +126,11 @@ function test_geometry_cache_key()
           numel(used), strjoin(unused, ', '));
 
   roots = {compute_text};
-  for name = {'build_hydrostatic_tables', 'build_strip_geometry_tables', 'parse_hull_deck'}
+  for name = {'build_hydrostatic_tables', 'build_strip_geometry_tables', 'density_floors', 'parse_hull_deck'}
     roots{end+1} = strip_comments(fileread(fullfile(src_root, '+mwecmass', '+driver', [name{1} '.m']))); %#ok<AGROW>
   end
+  standin_root = fullfile(repo_root, 'tests', 'standins');
+  standins = {};
   reached = {};
   pending = roots;
   while ~isempty(pending)
@@ -140,7 +143,14 @@ function test_geometry_cache_key()
     for k = 1:numel(refs)
       file = resolve_reference(src_root, refs{k});
       if isempty(file)
-        error('cannot resolve %s to a source file', refs{k});
+        % A kernel function not merged yet: its stand-in. The whole of +solid is keyed, so the
+        % reference is covered; the stand-in is not followed.
+        file = resolve_reference(standin_root, refs{k});
+        if isempty(file) || isempty(strfind(file, [filesep '+solid' filesep]))
+          error('cannot resolve %s to a source file', refs{k});
+        end
+        standins{end+1} = file; %#ok<AGROW>
+        continue;
       end
       if ~any(strcmp(reached, file))
         reached{end+1} = file; %#ok<AGROW>
@@ -153,18 +163,18 @@ function test_geometry_cache_key()
   if ~isempty(outside)
     error('the cached steps can call files outside the keyed set: %s', strjoin(outside, ', '));
   end
-  fprintf('call graph: %d files reachable from the cached steps, all in the keyed set of %d files\n', ...
-          numel(reached), numel(keyed));
+  fprintf('call graph: %d files reachable from the cached steps, all in the keyed set of %d files; %d kernel references still resolve to stand-ins\n', ...
+          numel(reached), numel(keyed), numel(unique(standins)));
 end
 
-function file = resolve_reference(src_root, ref)
+function file = resolve_reference(root, ref)
   parts = strsplit(ref, '.');
   parts(1) = [];
   file = '';
   for n = numel(parts):-1:1
     folders = cellfun(@(p) ['+' p], parts(1:n-1), 'UniformOutput', false);
-    candidate = fullfile(src_root, '+mwecmass', folders{:}, [parts{n} '.m']);
-    if exist(candidate, 'file')
+    candidate = fullfile(root, '+mwecmass', folders{:}, [parts{n} '.m']);
+    if exist(candidate, 'file') == 2
       file = candidate;
       return;
     end

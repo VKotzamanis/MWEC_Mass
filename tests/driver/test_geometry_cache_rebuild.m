@@ -9,6 +9,7 @@ function test_geometry_cache_rebuild()
   work = tempname();
   mkdir(work);
   saved_path = path();
+  addpath(fullfile(repo_root, 'tests', 'standins'), '-end');   % kernel stand-ins until the real one is merged
   cleanup = onCleanup(@() restore(saved_path, work));
   miss = 'deck, inputs or source changed, computing';
   hit = 'Geometry products: reloaded from';
@@ -23,7 +24,7 @@ function test_geometry_cache_rebuild()
   expect(log, hit, 'second build');
   deck_copy = fullfile(work, 'cylinder.ms2');
   text = fileread(deck);
-  changed = strrep(text, '1.5 0.0 -3.0', '1.6 0.0 -3.0');
+  changed = strrep(strrep(text, '1.5 0.0 -3.0', '1.6 0.0 -3.0'), '1.5 0.0 1.0', '1.6 0.0 1.0');
   if strcmp(changed, text), error('the stand-in deck no longer holds the text this test edits'); end
   fid = fopen(deck_copy, 'w'); fwrite(fid, changed); fclose(fid);
   in_deck = deck_input(deck_copy, 'thin_shell', cache_dir);
@@ -34,7 +35,7 @@ function test_geometry_cache_rebuild()
   expect(log, hit, 'changed deck repeated');
   [log, config] = build(in);
   expect(log, miss, 'original deck restored');
-  fprintf('deck: changed point P1.x 1.5 -> 1.6 m, hull volume %.4f -> %.4f m^3, rebuilt\n', ...
+  fprintf('deck: changed points P1.x and P2.x 1.5 -> 1.6 m, hull volume %.4f -> %.4f m^3, rebuilt\n', ...
           volume_before, volume_after);
 
   % Keyed input.

@@ -746,13 +746,11 @@ function g = geometry_inputs(in, enable_constructability, wall_position)
     g.enable_constructability = enable_constructability;
     g.wall_position = '';
     g.wall_height   = [];
-    g.rho_hull      = [];
     g.floors        = [];
     switch in.materials.realisation_type
         case 'modular_precast'
             g.wall_position = wall_position;
             g.wall_height   = in.materials.modular_precast.wall_height;
-            g.rho_hull      = in.materials.modular_precast.rho_hull;
             g.floors = struct('mode', 'modular_precast', ...
                               't_min', in.materials.modular_precast.t_min, ...
                               'rho_solid', in.materials.modular_precast.rho_hull, ...

@@ -8,7 +8,9 @@ function test_geometry_cache_reload()
   repo_root = fileparts(fileparts(fileparts(mfilename('fullpath'))));
   deck = fullfile(repo_root, 'tests', 'standins', 'fixtures', 'cylinder.ms2');
   cache_dir = tempname();
-  cleanup = onCleanup(@() remove_folder(cache_dir));
+  saved_path = path();
+  addpath(fullfile(repo_root, 'tests', 'standins'), '-end');   % kernel stand-ins until the real one is merged
+  cleanup = onCleanup(@() restore(saved_path, cache_dir));
 
   modes = {'modular_precast', 'thin_shell'};
   for m = 1:numel(modes)
@@ -29,7 +31,7 @@ function test_geometry_cache_reload()
     if isempty(strfind(log_load, 'Geometry products: reloaded from'))
       error('%s: second build did not reload', modes{m});
     end
-    if ~isempty(strfind(log_load, 'Computing per-strip density bounds'))
+    if ~isempty(strfind(log_load, 'Computing per-strip density floors'))
       error('%s: reload still ran the per-strip bounds', modes{m});
     end
 
@@ -48,6 +50,11 @@ function test_geometry_cache_reload()
     fprintf('%s: fresh build %.2f s, reload %.2f s, %d config fields identical, cache %.1f kB\n', ...
             modes{m}, t_fresh, t_load, numel(fieldnames(fresh)) - 1, info.bytes / 1024);
   end
+end
+
+function restore(saved_path, cache_dir)
+  path(saved_path);
+  remove_folder(cache_dir);
 end
 
 function paths = find_objects(v, path)
