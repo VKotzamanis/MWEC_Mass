@@ -31,10 +31,14 @@ function geo = outer_nurbs(model, cache, opts)
 %   depends on u; it takes the exact path when its row heights are monotone. Every exact patch is
 %   split at the ends of constant-z intervals strictly inside its z range (existing knots, no root
 %   search) and then, with split_bspline_surface, at every patch-corner height strictly inside its
-%   z range. Seams are boundaries that share both end points and are the same curve (same degree,
-%   bitwise control points and weights, knots equal after the affine map to [0, 1]). A boundary
-%   shared end to end that is not the same curve sends the later patch in visible order to the
-%   general path; a boundary with no neighbour that is not a pole raises
+%   z range. Then, repeated until nothing changes: a constant-z patch with a vertex (a corner of
+%   another entry) inside one of its boundaries, or with a corner inside a row of another entry,
+%   joins a flat region (general path) with every constant-z patch touching it at that height; a
+%   patch with a vertex inside one of its rows, not counting the end points of seams between merged
+%   patches, takes the general path; seams are boundaries that share both end points and are the
+%   same curve (same degree, bitwise control points and weights, knots equal after the affine map
+%   to [0, 1]), and a boundary shared end to end that is not the same curve sends the later patch
+%   in visible order to the general path. A boundary with no neighbour that is not a pole raises
 %   mwecmass:solid:HullNotClosed. Patches of the general path are handed to
 %   mwecmass.solid.fit_z_faces. outward: S_u x S_v points out of the hull, decided on the sections
 %   of the patches (F4).
@@ -544,9 +548,13 @@ end
 er = vs / r;
 et = cross(cp / norm(cp), er);
 th = atan2(dot(ve, et), dot(ve, er));
-% the parser's arc ends at radius r; the named end point is taken when its radius equals r up to
-% the rounding of the point coordinates (16 ulp), so that the arc joins the next curve by entity
-if abs(norm(ve) - r) > 16 * eps(r)
+% The parser's arc ends at radius r; the named end point is taken (so that the arc joins the next
+% curve by entity) when |E - Cn| equals r up to the rounding of the data. With m = max|S, Cn, E|,
+% each coordinate of S - Cn and E - Cn is off by at most 2 eps(m) (both operands rounded to
+% doubles, eps(m)/2 each, and the subtraction, eps(2m)/2), so each norm moves by at most
+% 2 sqrt(3) eps(m), and each norm is computed to 2 eps of its value (squares, sums, square root).
+m = max(abs([S Cn E]));
+if abs(norm(ve) - r) > 4 * sqrt(3) * eps(m) + 4 * eps(max(r, norm(ve)))
     crv = [];
     return
 end
@@ -1196,13 +1204,17 @@ function [P, general] = split_corner_heights(P, general)
 % every exact patch at every patch-corner height strictly inside its z range (F3b); new row end
 % points are identified with the corners and with each other at that height
 has = arrayfun(@(e) ~isempty(e.surf), P);
-H = [];
+H = zeros(0, 3);
 for k = find(has)
     H = [H; corners(P(k).surf)]; %#ok<AGROW>
+end
+if isempty(H)
+    return
 end
 hz = unique(H(:, 3))';
 out = P([]);
 g = false(1, 0);
+% new row ends: entry, column, height, |C_u| eps(u*) of the column at the cut, column degree
 newends = zeros(0, 5);
 for k = 1:numel(P)
     e = P(k);
@@ -1219,10 +1231,18 @@ for k = 1:numel(P)
     end
     rest = e;
     for h = hs
-        [lo, hi] = mwecmass.solid.split_bspline_surface(rest, h);
+        [lo, hi, us] = mwecmass.solid.split_bspline_surface(rest, h);
         out(end + 1) = refresh(lo); %#ok<AGROW>
         g(end + 1) = false; %#ok<AGROW>
-        newends = [newends; numel(out), 1, h, 0, 0; numel(out), size(lo.surf.ctrl, 2), h, 0, 0]; %#ok<AGROW>
+        for b = [1 3]
+            c = boundary_curve(rest.surf, b);
+            [~, Cu] = mwecmass.solid.eval_bspline_curve(c, us);
+            j = 1;
+            if b == 3
+                j = size(lo.surf.ctrl, 2);
+            end
+            newends = [newends; numel(out), j, h, norm(Cu(1:2)) * eps(us), c.degree]; %#ok<AGROW>
+        end
         rest = refresh(hi);
     end
     out(end + 1) = rest; %#ok<AGROW>
@@ -1230,14 +1250,8 @@ for k = 1:numel(P)
 end
 P = out;
 general = g;
-if isempty(newends)
-    return
-end
 % identification: an end point at a corner of another patch takes that corner; end points of two
-% new rows at one point take the first one's value. The bound is the rounding of the cut row (a
-% few dozen rounded operations on the coordinates), not a geometric tolerance.
-scale = max(1, max(abs(H(:))));
-bound = 64 * eps * scale;
+% new rows at one point take the first one's value
 for q = 1:size(newends, 1)
     k = newends(q, 1);
     j = newends(q, 2);
@@ -1248,19 +1262,18 @@ for q = 1:size(newends, 1)
     if ~isempty(C)
         d = sqrt(sum((C - Eq).^2, 2));
         [dm, i] = min(d);
-        if dm <= bound
+        if dm <= rounding_bound(max(abs([Eq C(i, :)])), newends(q, 5), newends(q, 4))
             target = C(i, :);
         end
     end
     if isempty(target)
         for r = 1:q - 1
-            k2 = newends(r, 1);
-            j2 = newends(r, 2);
             if newends(r, 3) ~= h
                 continue
             end
-            E2 = reshape(P(k2).surf.ctrl(end, j2, :), 1, 3);
-            if norm(E2 - Eq) <= bound
+            E2 = reshape(P(newends(r, 1)).surf.ctrl(end, newends(r, 2), :), 1, 3);
+            if norm(E2 - Eq) <= rounding_bound(max(abs([Eq E2])), max(newends([q r], 5)), ...
+                    newends(q, 4) + newends(r, 4))
                 target = E2;
                 break
             end
@@ -1274,6 +1287,18 @@ for q = 1:size(newends, 1)
 end
 end
 
+function b = rounding_bound(m, p, moved)
+% Largest distance between two computations of one exact point of a converted curve of degree p
+% with control points of magnitude <= m: each is a corner (deck data, at most 4 roundings: the
+% decimal, the revolution offset and two products), a curve evaluation or a cut by p knot
+% insertions (Piegl & Tiller A5.1: per coordinate p + 1 weighted terms, each at most 6 rounded
+% operations: the factor, two products, the weight, the sum and the division), so each coordinate
+% of each point is off by at most 6 (p + 1) eps(m), the distance by 12 sqrt(3) (p + 1) eps(m) for
+% the two; moved: the shift of the point by its parameter (|C_u| eps(u) for a parameter found to
+% adjacent doubles).
+b = 12 * sqrt(3) * (p + 1) * eps(m) + moved;
+end
+
 function C = corners(s)
 C = [reshape(s.ctrl(1, 1, :), 1, 3); reshape(s.ctrl(1, end, :), 1, 3); ...
     reshape(s.ctrl(end, 1, :), 1, 3); reshape(s.ctrl(end, end, :), 1, 3)];
@@ -1282,98 +1307,137 @@ end
 % =============================================================== seams
 
 function [P, general] = find_seams(P, general, unparsed)
+% Contract F1 order of the rules, repeated until nothing changes: (1a) constant-z patches with a
+% vertex inside one of their rows (every boundary of a constant-z patch is a row), or with a corner
+% inside a row of another patch, join a flat region with every constant-z patch that touches it at
+% that height; (1b) vertices counted with the end points of seams between merged patches dropped:
+% a patch with a vertex inside one of its rows takes the general path; (2) a boundary shared end to
+% end (the same two end points) that is not the same curve sends the later patch in visible order
+% to the general path. Vertices here are the corners of the entries.
 fields = {'seam_v0', 'seam_u1', 'seam_v1', 'seam_u0'};
+n = numel(P);
+has = arrayfun(@(e) ~isempty(e.surf), P);
+flatz = false(1, n);
+for k = find(has)
+    flatz(k) = P(k).z_range(1) == P(k).z_range(2);
+end
+B = cell(n, 4);
+for k = find(has)
+    for b = 1:4
+        B{k, b} = boundary_curve(P(k).surf, b);
+    end
+end
+C = cell(1, n);
+for k = find(has)
+    C{k} = corners(P(k).surf);
+end
 changed = true;
 while changed
     changed = false;
-    n = numel(P);
-    B = cell(n, 4);
-    for k = 1:n
-        if general(k) || isempty(P(k).surf)
-            continue
-        end
-        for b = 1:4
-            B{k, b} = boundary_curve(P(k).surf, b);
+    % (1a) flat regions
+    merged = general & flatz;
+    for k = find(~general & flatz)
+        if any_inside(C, B, k, row_set(flatz, k), setdiff(find(has), k), []) || ...
+                corner_in_other_row(C, B, flatz, has, k)
+            merged(k) = true;
         end
     end
-    for k = 1:n
-        for b = 1:4
-            P(k).(fields{b}) = [];
-        end
-    end
-    open = zeros(0, 2);
-    for k = 1:n
-        if general(k) || isempty(B{k, 1})
-            continue
-        end
-        for b = 1:4
-            ck = B{k, b};
-            if all(all(ck.ctrl == ck.ctrl(1, :)))
-                continue
-            end
-            if ~isempty(P(k).(fields{b}))
-                continue
-            end
-            found = false;
-            cand = zeros(0, 2);
-            for j = 1:n
-                if general(j) || isempty(B{j, 1})
-                    continue
-                end
-                for c = 1:4
-                    if (j == k && c == b) || ~same_ends(ck, B{j, c})
-                        continue
-                    end
-                    if same_curve(ck, B{j, c})
-                        P(k).(fields{b}) = [j c];
-                        P(j).(fields{c}) = [k b];
-                        found = true;
-                        break
-                    end
-                    cand(end + 1, :) = [j c]; %#ok<AGROW>
-                end
-                if found
+    grow = true;
+    while grow
+        grow = false;
+        for k = find(~merged & flatz & ~general)
+            for j = find(merged)
+                if P(j).z_range(1) == P(k).z_range(1) && touches(C, B, k, j)
+                    merged(k) = true;
+                    grow = true;
                     break
                 end
             end
-            if ~found
-                for q = 1:size(cand, 1)
-                    j = cand(q, 1);
-                    if coincide(ck, B{j, cand(q, 2)})
-                        % the same boundary converted differently: the later patch in visible
-                        % order takes the general path
-                        later = j;
-                        if P(k).visible > P(j).visible
-                            later = k;
-                        end
-                        general = mark_general(P, general, later);
-                        changed = true;
-                        found = true;
-                        break
-                    end
-                end
-            end
-            if ~found
-                open(end + 1, :) = [k b]; %#ok<AGROW>
-            end
-            if changed
-                break
-            end
         end
-        if changed
-            break
+    end
+    for k = find(merged & ~general)
+        general = mark_piece_general(P, general, k);
+        changed = true;
+    end
+    if changed
+        continue
+    end
+    % (1b) vertices inside rows of the exact entries, seam ends between merged patches dropped
+    drop = dropped_corners(C, B, P, merged);
+    for k = find(~general & has)
+        others = setdiff(find(has), k);
+        if any_inside(C, B, k, row_set(flatz, k), others, drop)
+            general = mark_general(P, general, k);
+            changed = true;
         end
     end
     if changed
         continue
     end
+    % (2) seams among the exact entries; tie-break for boundaries shared end to end
+    ex = find(~general & has);
+    for k = 1:n
+        for b = 1:4
+            P(k).(fields{b}) = [];
+        end
+    end
+    for k = ex
+        for b = 1:4
+            ck = B{k, b};
+            if collapsed(ck.ctrl) || ~isempty(P(k).(fields{b}))
+                continue
+            end
+            for j = ex
+                hit = false;
+                for c = 1:4
+                    if (j == k && c == b) || ~isempty(P(j).(fields{c}))
+                        continue
+                    end
+                    if same_ends(ck, B{j, c}) && same_curve(ck, B{j, c})
+                        P(k).(fields{b}) = [j c];
+                        P(j).(fields{c}) = [k b];
+                        hit = true;
+                        break
+                    end
+                end
+                if hit
+                    break
+                end
+            end
+        end
+    end
+    open = zeros(0, 2);
+    for k = ex
+        for b = 1:4
+            if isempty(P(k).(fields{b})) && ~collapsed(B{k, b}.ctrl)
+                open(end + 1, :) = [k b]; %#ok<AGROW>
+            end
+        end
+    end
     for q = 1:size(open, 1)
         k = open(q, 1);
-        b = open(q, 2);
-        if inner_vertex(P, general, k, b)
-            general = mark_general(P, general, k);
-            changed = true;
+        ck = B{k, open(q, 2)};
+        cand = open(open(:, 1) ~= k, :);
+        keep = false(size(cand, 1), 1);
+        for i = 1:size(cand, 1)
+            keep(i) = same_ends(ck, B{cand(i, 1), cand(i, 2)});
         end
+        cand = cand(keep, :);
+        if isempty(cand)
+            continue
+        end
+        % the partner among boundaries with the same two end points: the one whose midpoint is nearest
+        mk = curve_mid(ck);
+        dist = arrayfun(@(i) norm(curve_mid(B{cand(i, 1), cand(i, 2)}) - mk), 1:size(cand, 1));
+        [~, i] = min(dist);
+        j = cand(i, 1);
+        later = j;
+        if P(k).visible > P(j).visible
+            later = k;
+        end
+        general = mark_general(P, general, later);
+        changed = true;
+        break
     end
     if changed
         continue
@@ -1390,6 +1454,93 @@ while changed
 end
 end
 
+function rows = row_set(flatz, k)
+% the row boundaries of entry k: u0 and u1, and every boundary of a constant-z entry
+rows = [2 4];
+if flatz(k)
+    rows = 1:4;
+end
+end
+
+function tf = any_inside(C, B, k, rows, others, drop)
+% a corner of one of the entries others (not listed in drop, rows [entry corner]) lies strictly
+% inside one of the boundaries rows of entry k
+tf = false;
+for b = rows
+    c = B{k, b};
+    if collapsed(c.ctrl)
+        continue
+    end
+    for j = others
+        for i = 1:4
+            if ~isempty(drop) && any(drop(:, 1) == j & drop(:, 2) == i)
+                continue
+            end
+            if strictly_inside(c, C{j}(i, :))
+                tf = true;
+                return
+            end
+        end
+    end
+end
+end
+
+function tf = corner_in_other_row(C, B, flatz, has, k)
+% a corner of entry k lies strictly inside a row of another entry
+tf = false;
+for j = setdiff(find(has), k)
+    for b = row_set(flatz, j)
+        c = B{j, b};
+        if collapsed(c.ctrl)
+            continue
+        end
+        for i = 1:4
+            if strictly_inside(c, C{k}(i, :))
+                tf = true;
+                return
+            end
+        end
+    end
+end
+end
+
+function tf = touches(C, B, k, j)
+% two constant-z entries at one height touch: a corner of one lies on a boundary of the other
+tf = false;
+for pair = [k j; j k]'
+    for i = 1:4
+        X = C{pair(1)}(i, :);
+        for b = 1:4
+            if on_curve(B{pair(2), b}, X)
+                tf = true;
+                return
+            end
+        end
+    end
+end
+end
+
+function drop = dropped_corners(C, B, P, merged)
+% corners of merged patches that are end points of seams between merged patches at one height:
+% they lie on a boundary of another merged patch of the same height
+drop = zeros(0, 2);
+idx = find(merged);
+for k = idx
+    for i = 1:4
+        X = C{k}(i, :);
+        for j = idx
+            if j == k || P(j).z_range(1) ~= P(k).z_range(1)
+                continue
+            end
+            if any(arrayfun(@(b) on_curve(B{j, b}, X), 1:4))
+                drop(end + 1, :) = [k i]; %#ok<AGROW>
+                break
+            end
+        end
+    end
+end
+end
+
 function general = mark_general(P, general, k)
 % a mirror takes its source's path: every entry of the same ultimate source goes along
 src = P(k).source;
@@ -1400,71 +1551,84 @@ for j = 1:numel(P)
 end
 end
 
-function tf = inner_vertex(P, general, k, b)
-% a corner of another exact entry lies strictly inside row boundary b of entry k: same height
-% (bitwise) and on the row curve, its distance from the curve (Newton projection from the nearest
-% of 401 samples) within the rounding of a cut row (64 ulp of the coordinates)
-tf = false;
-if b ~= 2 && b ~= 4
-    return
-end
-c = boundary_curve(P(k).surf, b);
-h = c.ctrl(1, 3);
-if any(c.ctrl(:, 3) ~= h)
-    return
-end
-bound = 64 * eps * max(1, max(abs(c.ctrl(:))));
-s = linspace(c.knots(1), c.knots(end), 401)';
-Q = mwecmass.solid.eval_bspline_curve(c, s);
-for j = 1:numel(P)
-    if j == k || general(j) || isempty(P(j).surf)
-        continue
-    end
-    C = corners(P(j).surf);
-    C = C(C(:, 3) == h, :);
-    for i = 1:size(C, 1)
-        X = C(i, :);
-        if isequal(X, c.ctrl(1, :)) || isequal(X, c.ctrl(end, :))
-            continue
-        end
-        [~, m] = min(sum((Q - X).^2, 2));
-        x = s(m);
-        for it = 1:30
-            [Cx, C1, C2] = mwecmass.solid.eval_bspline_curve(c, x);
-            g = (Cx - X) * C1';
-            H = C1 * C1' + (Cx - X) * C2';
-            x = min(max(x - g / H, c.knots(1)), c.knots(end));
-        end
-        Cx = mwecmass.solid.eval_bspline_curve(c, x);
-        if x > c.knots(1) && x < c.knots(end) && norm(Cx - X) <= bound
-            tf = true;
-            return
-        end
+function general = mark_piece_general(P, general, k)
+% one piece of a patch joins a flat region; the same piece of every mirror of its source goes along
+vis = [P.visible];
+grp = find(vis == P(k).visible);
+i = find(grp == k);
+for v = unique(vis(strcmp({P.source}, P(k).source)))
+    g = find(vis == v);
+    if numel(g) == numel(grp)
+        general(g(i)) = true;
     end
 end
 end
 
-function tf = coincide(a, b)
-% two curves with the same end points are one point set: every one of 9 interior points of a lies
-% on b within the rounding of two exact conversions (256 ulp of the coordinates); distance by
-% Newton projection from the nearest of 401 samples of b
-bound = 256 * eps * max(1, max(abs([a.ctrl(:); b.ctrl(:)])));
-s = linspace(b.knots(1), b.knots(end), 401)';
-Q = mwecmass.solid.eval_bspline_curve(b, s);
-X = mwecmass.solid.eval_bspline_curve(a, a.knots(1) + (1:9)' / 10 * (a.knots(end) - a.knots(1)));
-tf = true;
-for i = 1:size(X, 1)
-    [~, m] = min(sum((Q - X(i, :)).^2, 2));
-    x = s(m);
-    for it = 1:30
-        [Cx, C1, C2] = mwecmass.solid.eval_bspline_curve(b, x);
-        x = min(max(x - ((Cx - X(i, :)) * C1') / (C1 * C1' + (Cx - X(i, :)) * C2'), b.knots(1)), b.knots(end));
+function [d, x, c1] = project(c, X)
+% distance from X to the curve c: Newton from the nearest of 401 samples, to adjacent doubles
+s = linspace(c.knots(1), c.knots(end), 401)';
+Q = mwecmass.solid.eval_bspline_curve(c, s);
+[~, m] = min(sum((Q - X).^2, 2));
+x = s(m);
+for it = 1:60
+    [Cx, C1, C2] = mwecmass.solid.eval_bspline_curve(c, x);
+    H = C1 * C1' + (Cx - X) * C2';
+    if H <= 0
+        H = C1 * C1';
     end
-    if norm(mwecmass.solid.eval_bspline_curve(b, x) - X(i, :)) > bound
-        tf = false;
-        return
+    xn = min(max(x - ((Cx - X) * C1') / H, c.knots(1)), c.knots(end));
+    if xn == x || ~isfinite(xn)
+        break
     end
+    x = xn;
 end
+[Cx, c1] = mwecmass.solid.eval_bspline_curve(c, x);
+d = norm(Cx - X);
+end
+
+function tf = on_curve(c, X)
+% X lies on the curve c (its end points included) up to the rounding of two computations of one
+% point (rounding_bound)
+if isequal(X, c.ctrl(1, :)) || isequal(X, c.ctrl(end, :))
+    tf = true;
+    return
+end
+m = max(abs([c.ctrl(:); X(:)]));
+tf = false;
+if outside_hull_box(c, X, rounding_bound(m, c.degree, 0))
+    return
+end
+[d, x, c1] = project(c, X);
+tf = d <= rounding_bound(m, c.degree, norm(c1) * eps(x));
+end
+
+function tf = strictly_inside(c, X)
+% X lies on the curve c and is neither of its end points (rounding_bound for both tests)
+tf = false;
+if X(3) ~= c.ctrl(1, 3) && all(c.ctrl(:, 3) == c.ctrl(1, 3))
+    return
+end
+if isequal(X, c.ctrl(1, :)) || isequal(X, c.ctrl(end, :))
+    return
+end
+m = max(abs([c.ctrl(:); X(:)]));
+bnd = rounding_bound(m, c.degree, 0);
+if norm(X - c.ctrl(1, :)) <= bnd || norm(X - c.ctrl(end, :)) <= bnd || outside_hull_box(c, X, bnd)
+    return
+end
+[d, x, c1] = project(c, X);
+tf = x > c.knots(1) && x < c.knots(end) && d <= rounding_bound(m, c.degree, norm(c1) * eps(x));
+end
+
+function tf = outside_hull_box(c, X, bnd)
+% the curve lies in the convex hull of its control points (positive weights): X is off the curve
+% when it lies farther than bnd (the rounding of the two computations, rounding_bound) outside
+% their bounding box
+tf = any(X < min(c.ctrl, [], 1) - bnd | X > max(c.ctrl, [], 1) + bnd);
+end
+
+function X = curve_mid(c)
+X = mwecmass.solid.eval_bspline_curve(c, (c.knots(1) + c.knots(end)) / 2);
 end
 
 function c = boundary_curve(s, b)
