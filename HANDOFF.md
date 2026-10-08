@@ -1,6 +1,6 @@
 # HANDOFF — MWEC_Mass exact-geometry refactor
 
-Updated 2026-10-07 22:20 UTC on `claude/lucid-cray-7o9442`. Process file for agents: the
+Updated 2026-10-08 00:10 UTC on `claude/lucid-cray-7o9442`. Process file for agents: the
 orchestrator updates it at every milestone and at least every 100k tokens; delete it in T12.
 
 ## 1. Goal
@@ -31,17 +31,17 @@ Main `claude/lucid-cray-7o9442` = `9447e9c` + handoff commits: general-kernel am
 | T0b | renames (`z_ballast`, `rho_air`, `rho_ballast`, `uhpc`) | N | merged `b4523aa` | 9 (4) | `c64a4d0` |
 | spec2 | contract amendment: general kernel (owner) + errata | K | merged `e7e9114` | 9 (round 8; errata 9; merge 10) | `5ce48fc` |
 | T5 | UHPC Stage 3 a: split, build, check, store | U | accepted (round 5); waits for J2 | 7, 8, 8, 8, 9 | `31f470f` |
-| T6 | UHPC Stage 3 b: optimisation, spill, closest fail | U | round 1 rejected at 5 (optimum not reached: phase-2 skipped near tol, no feasibility step, draft released on one failed rebuild); fixing (`wf_f16b85f9-6d8`) | 5 | task/T6 `3e1d450` |
+| T6 | UHPC Stage 3 b: optimisation, spill, closest fail | U | round 1: 5; fix continuing from saved WIP `0fabdac` (`wf_a7e645af-0f4`) | 5 | task/T6 `0fabdac` |
 | T7 | thin-shell rebuild | S | accepted (round 7: code correct; 2 minor items fixed and quick-checked); waits for J2 | 7, 7, 7, 8, 8, 8, 8 + quick check | `4c310df` |
 | T8 | figures from the realised solid | O | accepted (round 10); waits for J2 | 8, 8, 8, 8, 6, 6, 6, 6, 7, 9 | `3b0a0be` |
 | T10 | Stage-3 STEP exports | O | accepted, waits for J2 | 9 (3) | `07856a2` |
 | T0d | geometry cache of `build_config` (C1: fresh build 421 s CPU, reload 0.44 s) | P | merged `f52e232` | 9 (2); merge 10 | `158d77d` |
 | T4a | Stage-2 changes (delete `c_mono`, `c_mass_min`; bottom-filled start; bounds) | P | merged `9447e9c` (suite 30 passed, 2 skipped; merge grade 10) | 7, 8 + quick check | `6687df5` |
-| T4b | Stage-2 floors from the kernel (merges after J1) | P | implementing (`wf_c0835769-40a`) | — | task/T4b |
+| T4b | Stage-2 floors from the kernel (merges after J1) | P | implementing from saved WIP `783431f` (`wf_451500b2-1d3`) | — | task/T4b `783431f` |
 | SK2 | stand-ins updated to spec2 | SK2 | merged `1bb06d6` | 9 (3); merge 10 | `753a11e` |
-| T2a | exact-path offset, fold trim, adaptive fit | K1 | round 1 rejected at 5 (general decks crash, decimal arcs, fold on exact decks, rounding bounds); C1 results correct; fixing (`wf_f1cd8be0-af1`) | 5 | task/T2a `23ddfe9` |
+| T2a | exact-path offset, fold trim, adaptive fit | K1 | round 1: 5; fix restarted after the 23:59 restart (`wf_fe98f6d8-fda`); the first fixer left no edits | 5 | task/T2a `23ddfe9` |
 | T2b | general path (refits, flat regions, mirrors) | K | after T2a, ∥ T3 | — | — |
-| T3 | bodies and exact properties | K3 | implementing in parallel with the T2a fix, base task/T2a, merges T2a's fixes (`wf_5f898e2c-a8c`) | — | task/T3 |
+| T3 | bodies and exact properties | K3 | F5, F6, F6b, F7 committed (`734145a`); continuing (`wf_5f20013d-b64`) | — | task/T3 `734145a` |
 | J1 | merge T2a, T2b, T3; owner checkpoint | — | pending | — | — |
 | J2 | merge T5, T6, T7, T8, T10 (in order); first whole-pipeline runs; owner checkpoints after T6, T10 | — | pending | — | — |
 | G | T11 cleanup → T12 docs → T13 final review | — | pending | — | — |
@@ -147,7 +147,7 @@ Main `claude/lucid-cray-7o9442` = `9447e9c` + handoff commits: general-kernel am
 
 ## 6. What did not work (do not repeat)
 
-- Container restarts (00:18, 04:02, 15:54 UTC) kill every background job and workflow; only committed and
+- Container restarts (7 Oct 00:18, 04:02, 15:54, ~20:50, 23:59 UTC; roughly every 4 h) kill every background job and workflow; only committed and
   pushed work survives. After a restart: recover each run's launch input from the session transcript,
   check every worktree (delete `octave-workspace` crash dumps), and relaunch each lane from its last
   verdict with a generated `mwec-lane-<lane>-restart.js` (args embedded) and a note to continue from
