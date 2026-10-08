@@ -47,6 +47,7 @@ for k = 1:numel(B.faces)
     f = B.faces(k);
     s = B.surfaces{f.surface};
     if ~strcmp(s.type, 'bspline')
+        flat_here = flat_here || (strcmp(f.role, 'outer') && s.origin(3) == z);
         continue
     end
     zr = [s.ctrl(1, 1, 3), s.ctrl(end, 1, 3)];

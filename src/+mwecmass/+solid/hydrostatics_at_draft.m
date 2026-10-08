@@ -8,7 +8,8 @@ function hs = hydrostatics_at_draft(geo, vs, opts)
 %   The outer pieces below the waterline (lateral pieces cut there by split_bspline_surface) are
 %   integrated with body_properties (divergence theorem; the waterplane has n_x = 0 and adds 0):
 %   V_sub and CB. S_wet integrates |S_u x S_v| over the same pieces and over the constant-z pieces
-%   strictly below the waterline, with the same Gauss rule. The waterplane is
+%   strictly below the waterline, with the same Gauss rule, and adds the area of every flat region
+%   (geo.flat, general path) strictly below it, by Green's theorem on the rows that bound it. The waterplane is
 %   slice_bspline_surface (F4) of the lateral pieces reaching the waterline from below: Aw, centre
 %   of flotation (xF, yF), I_wp_xx = int y^2 dA - Aw yF^2 and I_wp_yy = int x^2 dA - Aw xF^2
 %   (about the centre of flotation), I_wp_yy_origin = int x^2 dA, BM_L = I_wp_yy / V_sub, KM =
@@ -79,6 +80,13 @@ end
 for k = 1:numel(flat)
     area = area + face_area(flat{k}, ng);
 end
+if isfield(geo, 'flat')
+    for j = 1:numel(geo.flat)
+        if geo.flat(j).z < zw || full
+            area = area + flat_area(geo, j, ng);
+        end
+    end
+end
 hs.S_wet = area;
 if full
     hs.submersion = 'full';
@@ -97,6 +105,41 @@ hs.I_wp_yy = L.I(2) - L.area * hs.xF^2;
 hs.I_wp_yy_origin = L.I(2);
 hs.BM_L = hs.I_wp_yy / hs.V_sub;
 hs.KM = hs.CB(3) + hs.BM_L;
+end
+
+function a = flat_area(geo, j, ng)
+% area of flat region j from the rows that name it (S1 seam [0 j]) by Green's theorem: a row
+% bounds the flat face in the direction opposite to its use in the loop of its lateral face, so
+% with outward normals both ways the u0 row runs along +v when S_u x S_v points out of the hull and
+% the u1 row along -v; the loop is then counter-clockwise seen from the flat's normal [0 0 normal_z]
+[xg, wg] = gauss_legendre(ng);
+a = 0;
+for k = 1:numel(geo.outer)
+    p = geo.outer(k);
+    s = p.surf;
+    rows = {'seam_u0', 1, 1; 'seam_u1', size(s.ctrl, 1), -1};
+    for r = 1:2
+        sm = p.(rows{r, 1});
+        if numel(sm) ~= 2 || sm(1) ~= 0 || sm(2) ~= j
+            continue
+        end
+        i = rows{r, 2};
+        w = [];
+        if ~isempty(s.weights)
+            w = s.weights(i, :)';
+        end
+        c = struct('degree', s.degree(2), 'ctrl', reshape(s.ctrl(i, :, :), [], 3), 'knots', s.knots{2}, 'weights', w);
+        kv = unique(c.knots);
+        g = 0;
+        for q = 1:numel(kv) - 1
+            t = (kv(q) + kv(q + 1)) / 2 + (kv(q + 1) - kv(q)) / 2 * xg;
+            [C, Cs] = mwecmass.solid.eval_bspline_curve(c, t);
+            g = g + (kv(q + 1) - kv(q)) / 2 * (wg' * (C(:, 1) .* Cs(:, 2)));
+        end
+        a = a + rows{r, 3} * (2 * p.outward - 1) * g;
+    end
+end
+a = a * geo.flat(j).normal_z;
 end
 
 function a = face_area(s, ng)

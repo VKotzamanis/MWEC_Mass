@@ -42,6 +42,10 @@ function body = build_body(geo, design, inner)
 %   outside), shells (precast all_outer, all_voids; thin shell layer, void) and voids(i): the void
 %   of module i, z_lo and z_hi [m, body] (NaN: none) and open_lo, open_hi (true where the void
 %   ends in a pole or line of its set, so its section has no area there).
+%   Flat regions (geo.flat, inner(k).flat; general path): one plane face each at its height, normal
+%   [0 0 normal_z], whose loops are the chains of the rows of lateral faces that name it (S1 seam
+%   [0 j]); an outer flat region is an outer face of the module on its material side, an inner one
+%   a face of the void kept by the rules of constant-z inner pieces.
 %   Errors: mwecmass:solid:BadEdges, MissingInnerSet, SectionNotClosed, JointNotNested.
 
 e = design.edges(:);
@@ -86,8 +90,12 @@ for k = unique(set_of(set_of > 0))'
     cz = zr(:, 1) == zr(:, 2);
     sinfo(k).z_lo = lo;
     sinfo(k).z_hi = hi;
-    sinfo(k).flat_lo = any(cz & zr(:, 1) == lo);
-    sinfo(k).flat_hi = any(cz & zr(:, 1) == hi);
+    fz = [];
+    if isfield(inner(k), 'flat') && ~isempty(inner(k).flat)
+        fz = [inner(k).flat.z];
+    end
+    sinfo(k).flat_lo = any(cz & zr(:, 1) == lo) || any(fz == lo);
+    sinfo(k).flat_hi = any(cz & zr(:, 1) == hi) || any(fz == hi);
 end
 % void of each module: (lo, hi) where its set leaves air above z_ballast
 voids = struct('z_lo', num2cell(NaN(N, 1)), 'z_hi', NaN, 'open_lo', false, 'open_hi', false);
@@ -116,6 +124,8 @@ vmap = containers.Map('KeyType', 'char', 'ValueType', 'double');
 emap = containers.Map('KeyType', 'char', 'ValueType', 'any');
 % rows of lateral faces at their lowest and highest height: set (0 outer), module, z, edge (0: collapsed)
 rows = struct('set', {}, 'module', {}, 'z', {}, 'edge', {}, 'top', {});
+% rows that bound a flat region j (S1 seam [0 j]) of the outer surface (set 0) or of inner set k
+frows = struct('set', {}, 'flat', {}, 'edge', {});
 
 % outer faces
 for p = 1:numel(geo.outer)
@@ -136,7 +146,8 @@ for p = 1:numel(geo.outer)
         end
         for slab = cut_at(piece, planes)
             zm = mean(slab.z_range);
-            add_face(slab.surf, slab.outward, 'outer', module_at(zm), region(zm < zb), 'exterior', 0);
+            add_face(slab.surf, slab.outward, 'outer', module_at(zm), region(zm < zb), 'exterior', 0, ...
+                flat_ids(geo.outer(p), slab));
         end
     end
 end
@@ -148,16 +159,7 @@ for k = unique(set_of(set_of > 0))'
         for piece = c0_pieces(inner(k).patches(q))
             zr = piece.z_range;
             if zr(1) == zr(2)
-                h = zr(1);
-                if void_above(piece)
-                    i = module_above(h);
-                    keep = set_of(i) == k && h >= voids(i).z_lo && h < voids(i).z_hi && ...
-                        ~(h == voids(i).z_lo && (h == zb || (precast && h == e(i))));
-                else
-                    i = module_below(h);
-                    keep = set_of(i) == k && h > voids(i).z_lo && h <= voids(i).z_hi && ...
-                        ~(precast && h == e(i + 1));
-                end
+                [keep, i] = keep_inner_flat(zr(1), void_above(piece), k);
                 if keep
                     add_inner(piece, i, k);
                 end
@@ -167,9 +169,35 @@ for k = unique(set_of(set_of > 0))'
                 zm = mean(slab.z_range);
                 i = module_at(zm);
                 if set_of(i) == k && zm > voids(i).z_lo && zm < voids(i).z_hi
-                    add_inner(slab, i, k);
+                    add_inner(slab, i, k, flat_ids(inner(k).patches(q), slab));
                 end
             end
+        end
+    end
+end
+
+% flat regions (general path): one plane face each, bounded by the rows that name it
+gflat = [];
+if isfield(geo, 'flat')
+    gflat = geo.flat;
+end
+for j = 1:numel(gflat)
+    h = gflat(j).z;
+    if gflat(j).normal_z > 0
+        add_flat(0, j, h, 1, 'outer', module_below(h), region(h <= zb), 'exterior');
+    else
+        add_flat(0, j, h, -1, 'outer', module_above(h), region(h < zb), 'exterior');
+    end
+end
+for k = unique(set_of(set_of > 0))'
+    if ~isfield(inner(k), 'flat')
+        continue
+    end
+    for j = 1:numel(inner(k).flat)
+        h = inner(k).flat(j).z;
+        [keep, i] = keep_inner_flat(h, inner(k).flat(j).normal_z > 0, k);
+        if keep
+            add_flat(k, j, h, sign(inner(k).flat(j).normal_z), 'inner', i, solid_name, 'air');
         end
     end
 end
@@ -238,16 +266,74 @@ body = struct('design', design, 'inner_t', inner_t, 'planes', planes(:)', 'brep'
         end
     end
 
-    function add_inner(piece, i, k)
-        if piece.outward
-            add_face(piece.surf, true, 'inner', i, solid_name, 'air', k);
+    function [keep, i] = keep_inner_flat(h, up, k)
+        % a constant-z part of inner set k at height h (up: the void lies above it) is a face of the
+        % void of module i unless a plane face takes its place (z_ballast; precast module edges)
+        if up
+            i = module_above(h);
+            keep = set_of(i) == k && h >= voids(i).z_lo && h < voids(i).z_hi && ...
+                ~(h == voids(i).z_lo && (h == zb || (precast && h == e(i))));
         else
-            add_face(piece.surf, true, 'inner', i, 'air', solid_name, k);
+            i = module_below(h);
+            keep = set_of(i) == k && h > voids(i).z_lo && h <= voids(i).z_hi && ...
+                ~(precast && h == e(i + 1));
         end
     end
 
-    function add_face(s, outward, role, m, inside, other, set)
-        % lateral or constant-z face of a z_of_u piece; outward: S_u x S_v points from inside to other
+    function add_inner(piece, i, k, fl)
+        if nargin < 4
+            fl = [0 0];
+        end
+        if piece.outward
+            add_face(piece.surf, true, 'inner', i, solid_name, 'air', k, fl);
+        else
+            add_face(piece.surf, true, 'inner', i, 'air', solid_name, k, fl);
+        end
+    end
+
+    function add_flat(set, j, h, nz, role, m, inside, outside)
+        % plane face of flat region j at height h, normal [0 0 nz]: its loops are the chains of the
+        % rows that name it; a loop inside an even number of the others is an outer loop
+        % (counter-clockwise seen from the normal), the others are holes of the smallest outer loop
+        % around them
+        ed = unique([frows([frows.set] == set & [frows.flat] == j).edge]);
+        if isempty(ed)
+            error('mwecmass:solid:SectionNotClosed', 'build_body: no rows bound flat region %d at z = %.17g', j, h);
+        end
+        loops = chain_all(ed, h, true);
+        n = numel(loops);
+        A = cellfun(@(Lp) loop_area(Lp), loops);
+        depth = zeros(1, n);
+        pts = cell(1, n);
+        for a = 1:n
+            pts{a} = curve_midpoint(brep.curves(brep.edges(abs(loops{a}(1))).curve));
+        end
+        for a = 1:n
+            for b = 1:n
+                if a ~= b && winding(loops{b}, pts{a}) ~= 0
+                    depth(a) = depth(a) + 1;
+                end
+            end
+        end
+        outer = find(mod(depth, 2) == 0);
+        for a = 1:n
+            want = nz * (2 * (mod(depth(a), 2) == 0) - 1);
+            if sign(A(a)) ~= want
+                loops{a} = -loops{a}(end:-1:1);
+            end
+        end
+        for o = outer
+            holes = find(depth == depth(o) + 1);
+            holes = holes(arrayfun(@(b) winding(loops{o}, pts{b}) ~= 0, holes));
+            brep.surfaces{end + 1} = struct('type', 'plane', 'origin', [0 0 h], 'normal', [0 0 nz]);
+            brep.faces(end + 1) = struct('surface', numel(brep.surfaces), 'same_sense', true, ...
+                'loops', {[loops(o), loops(holes)]}, 'role', role, 'module', m, 'inside', inside, 'outside', outside);
+        end
+    end
+
+    function add_face(s, outward, role, m, inside, other, set, fl)
+        % lateral or constant-z face of a z_of_u piece; outward: S_u x S_v points from inside to other;
+        % fl: the flat regions its u0 and u1 rows bound (0: none)
         [nu, nv, ~] = size(s.ctrl);
         W = s.weights;
         bnd = {{s.ctrl(:, 1, :), s.knots{1}, col(W, 1), s.degree(1), 1}, ...
@@ -280,6 +366,12 @@ body = struct('design', design, 'inner_t', inner_t, 'planes', planes(:)', 'brep'
             % row 4 (u0) and row 2 (u1): the face's rows at its two end heights
             rows(end + 1) = struct('set', set, 'module', m, 'z', z0, 'edge', bedge(4), 'top', z0 > z1);
             rows(end + 1) = struct('set', set, 'module', m, 'z', z1, 'edge', bedge(2), 'top', z1 > z0);
+            if nargin >= 8
+                ub = [4 2];
+                for r = find(fl ~= 0 & bedge(ub) ~= 0)
+                    frows(end + 1) = struct('set', set, 'flat', fl(r), 'edge', bedge(ub(r))); %#ok<AGROW>
+                end
+            end
         end
     end
 
@@ -719,6 +811,22 @@ for z = zs(:)'
     rest = hi;
 end
 P(end + 1) = rest;
+end
+
+function fl = flat_ids(parent, piece)
+% flat regions bounded by the u0 and u1 rows of piece, a piece of parent (S1 seam [0 j] on a row
+% the piece keeps)
+fl = [0 0];
+f = {'seam_u0', 'seam_u1'};
+for q = 1:2
+    if ~isfield(parent, f{q})
+        continue
+    end
+    sm = parent.(f{q});
+    if numel(sm) == 2 && sm(1) == 0 && piece.z_range(q) == parent.z_range(q)
+        fl(q) = sm(2);
+    end
+end
 end
 
 function up = flat_up(piece)
