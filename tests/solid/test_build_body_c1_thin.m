@@ -11,15 +11,13 @@ function test_build_body_c1_thin()
 
 root = fileparts(fileparts(fileparts(mfilename('fullpath'))));
 setup(root);
-evalc('model = mwecmass.geometry.MS2Parser.parse(fullfile(root, ''Input'', ''C1.ms2''));');
-geo = mwecmass.solid.outer_nurbs(model);
+geo = c1_kernel_cache();
 zr = geo.z_range;
 nodes = linspace(zr(1), zr(2), 5)';
 e = [zr(1); (nodes(1:end - 1) + nodes(2:end)) / 2; zr(2)];
 t = 0.0254;
-tic;
-inner = mwecmass.solid.offset_surface(model, [], geo, t, zr, struct('t_min', t));
-fprintf('C1 inner set t = %.4f m (d = %.17g) over the hull: %.1f s, z_range %s\n', t, inner.d, toc, mat2str(inner.z_range, 17));
+[~, inner] = c1_kernel_cache(t, zr);
+fprintf('C1 inner set t = %.4f m (d = %.17g) over the hull: z_range %s\n', t, inner.d, mat2str(inner.z_range, 17));
 fprintf('C1 thin-shell module edges (body) %s\n', sprintf('%.17g ', e));
 rho = struct('ballast', 7500, 'shell', 7500, 'air', 1.2);
 cases = {-2.9, 'ballast inside module 1'
@@ -83,6 +81,7 @@ if exist('OCTAVE_VERSION', 'builtin')
     addpath(fullfile(root, 'tests', 'octave_shims'));
 end
 addpath(fullfile(root, 'src'));
+addpath(fullfile(root, 'tests'));
 addpath(fullfile(root, 'tests', 'step'));
 addpath(fullfile(root, 'tests', 'solid'));
 end

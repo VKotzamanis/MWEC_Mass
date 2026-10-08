@@ -82,8 +82,7 @@ check(strcmp(hs.submersion, 'partial') && abs(hs.Aw - 3) <= 64 * eps * 3 && abs(
 fprintf('stepped_box waterline at the step z = 0.5: Aw %.17g (faces below: 3), V_sub %.17g (9)\n', hs.Aw, hs.V_sub);
 
 % C1
-evalc('model = mwecmass.geometry.MS2Parser.parse(fullfile(root, ''Input'', ''C1.ms2''));');
-geo = mwecmass.solid.outer_nurbs(model);
+geo = c1_kernel_cache();
 r = 0.1;
 Aw = 0.4 + pi * r^2;
 Iyy = 2 * 0.2^3 / 12 + pi * r^4 / 4;
@@ -137,6 +136,7 @@ if exist('OCTAVE_VERSION', 'builtin')
     addpath(fullfile(root, 'tests', 'octave_shims'));
 end
 addpath(fullfile(root, 'src'));
+addpath(fullfile(root, 'tests'));
 addpath(fullfile(root, 'tests', 'standins'), '-end');
 addpath(fullfile(root, 'tests', 'standins', 'fixtures'), '-end');
 end

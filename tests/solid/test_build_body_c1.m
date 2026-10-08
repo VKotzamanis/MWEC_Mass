@@ -12,15 +12,13 @@ function test_build_body_c1()
 
 root = fileparts(fileparts(fileparts(mfilename('fullpath'))));
 setup(root);
-evalc('model = mwecmass.geometry.MS2Parser.parse(fullfile(root, ''Input'', ''C1.ms2''));');
-geo = mwecmass.solid.outer_nurbs(model);
+geo = c1_kernel_cache();
 zr = geo.z_range;
 wall_height = 1.8;
 e = [linspace(zr(1), zr(2) - wall_height, 5)'; zr(2)];
 t = 0.0762;
-tic;
-inner = mwecmass.solid.offset_surface(model, [], geo, t, [zr(1) e(5)], struct('t_min', t));
-fprintf('C1 inner set t = %.4f m (d = %.17g) over [%.4f, %.4f]: %.1f s, z_lo %.17g\n', t, inner.d, zr(1), e(5), toc, inner.z_lo);
+[~, inner] = c1_kernel_cache(t, [zr(1) e(5)]);
+fprintf('C1 inner set t = %.4f m (d = %.17g) over [%.4f, %.4f]: z_lo %.17g\n', t, inner.d, zr(1), e(5), inner.z_lo);
 fprintf('C1 module edges (body) %s\n', sprintf('%.17g ', e));
 rho = struct('uhpc', 2500, 'air', 1.2);
 tt = [t; t; t; t; NaN];
@@ -111,6 +109,7 @@ if exist('OCTAVE_VERSION', 'builtin')
     addpath(fullfile(root, 'tests', 'octave_shims'));
 end
 addpath(fullfile(root, 'src'));
+addpath(fullfile(root, 'tests'));
 addpath(fullfile(root, 'tests', 'step'));
 addpath(fullfile(root, 'tests', 'solid'));
 end
