@@ -25,19 +25,17 @@ function [x_optimal, final_props, exitflag, convergence_data] = solve_2d_surroga
         ub = [config.vertical_shift_bounds(2), ...
               ones(1, num_densities) * config.ballast_density_bounds(2)];
 
-        % Per-strip density lower bounds (constructability mode).
-        % Enforces t_min by preventing the optimizer from requesting
-        % densities that cannot be physically realised.
-        if config.enable_constructability && ~isempty(config.per_strip_density_lb)
+        % Per-strip density floors (both shell realisations): the lowest density a module
+        % built with the minimum-thickness shell can have; the modular-precast wall strip is pinned.
+        if ~isempty(config.per_strip_density_lb)
             for i = 1:num_densities %#ok<FXUP> -- reused loop index
                 lb(1 + i) = max(lb(1 + i), config.per_strip_density_lb(i));
             end
-            % Pin wall strip
-            if ~isempty(config.wall_strip_index)
-                w_idx = config.wall_strip_index;
-                lb(1 + w_idx) = config.constructability_rho_hull;
-                ub(1 + w_idx) = config.constructability_rho_hull;
-            end
+        end
+        if config.enable_constructability && ~isempty(config.wall_strip_index)
+            w_idx = config.wall_strip_index;
+            lb(1 + w_idx) = config.constructability_rho_hull;
+            ub(1 + w_idx) = config.constructability_rho_hull;
         end
 
         % No linear inequality constraints (density ratio handled in nonlinear constraints)
