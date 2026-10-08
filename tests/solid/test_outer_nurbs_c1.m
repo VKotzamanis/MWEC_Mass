@@ -27,9 +27,8 @@ for k = 1:8
     Z = p.surf.ctrl(:, :, 3);
     check(all(all(Z == Z(:, 1))), '%s: rows have one z', p.name);
     check(p.z_range(1) == 1.1, '%s: top at z = 1.1', p.name);
-    % the keel row is the bead BeadBottom evaluated on the converted curve5 (one knot insertion and
-    % one curve evaluation on coordinates <= 4): rounding only
-    check(abs(p.z_range(2) + 3.25) <= 16 * eps(3.25), '%s: keel at z = -3.25', p.name);
+    % the keel row is the parser's bead BeadBottom, which the parser evaluates to -3.25 exactly
+    check(p.z_range(2) == -3.25, '%s: keel at z = -3.25', p.name);
     check(numel(p.c0_u) == 1 && isempty(p.c0_v), '%s: one c0_u row, no c0_v', p.name);
     i = find(p.surf.knots{1} == p.c0_u, 1) - 1;
     check(all(p.surf.ctrl(i, :, 3) == 1), '%s: the c0_u row is the arc-to-curve1 joint z = 1.0', p.name);
@@ -43,7 +42,8 @@ for k = 1:8
         check(isequal(p.seam_u0, [mx 4]) && isequal(p.seam_u1, [mx 2]), '%s: ridge and keel shared with its X-mirror', p.name);
     end
 end
-fprintf('C1: z_range [%.17g %.17g], c0_u %.17g, weights of the arc row %.17g\n', P(1).z_range, P(1).c0_u, ...
+check(isequal(geo.z_range, [-3.25 1.1]), 'geo.z_range = [-3.25 1.1] bitwise');
+fprintf('C1: geo.z_range [%.17g %.17g], c0_u %.17g, weights of the arc row %.17g\n', geo.z_range, P(1).c0_u, ...
     P(1).surf.weights(2, 1));
 
 % seams: mutual, bitwise equal rows (C1: every seam from one array or a mirror plane)

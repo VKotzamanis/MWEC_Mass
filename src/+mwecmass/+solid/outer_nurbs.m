@@ -15,14 +15,14 @@ function geo = outer_nurbs(model, cache, opts)
 %   mwecmass:solid:UnsupportedEntity; a Symmetry entry or MirrSurf plane other than x = 0 or y = 0
 %   raises mwecmass:solid:UnsupportedMirror.
 %
-%   Exact path. Points: FramePoint, MirrPoint, AbsBead (on the converted curve at the parser's
-%   parameter). Curves: BCurve as is (the parser's clamped uniform knots), Line degree 1, Arc as
-%   a rational quadratic (weights 1, cos(theta/2), 1), BSubCurve by knot insertion at the beads,
-%   PolyCurve2 joined with C0 knots at k/n after exact degree elevation to the highest degree,
-%   ProjCurve by zeroing one coordinate of the control points, EdgeSnake as the boundary row or
-%   column of the converted parent surface (edges 1 = v0, 2 = u1, 3 = v1, 4 = u0). Surfaces:
-%   RevSurf about a vertical axis as profile x rational arc (segments of at most 90 degrees,
-%   multiples of 90 degrees with exact 0 and +-1), RuledSurf degree 1 in v between its two curves
+%   Exact path. Points: FramePoint, MirrPoint, AbsBead (the parser's point, so that end rows on
+%   beads take the parser's heights bitwise). Curves: BCurve as is (the parser's clamped uniform
+%   knots), Line degree 1, Arc as a rational quadratic (weights 1, cos(theta/2), 1), BSubCurve
+%   by knot insertion at the beads, PolyCurve2 joined with C0 knots at k/n after exact degree
+%   elevation to the highest degree, ProjCurve by zeroing one coordinate of the control points,
+%   EdgeSnake as the boundary row or column of the converted parent surface (edges 1 = v0,
+%   2 = u1, 3 = v1, 4 = u0). Surfaces: RevSurf about a vertical axis as profile x rational arc
+%   (segments of at most 90 degrees, multiples of 90 degrees with exact 0 and +-1), RuledSurf degree 1 in v between its two curves
 %   after one common degree and knot vector (both curves must share the parser's parameter map
 %   and their weights), mirrors by negating one coordinate of the control points. The parameter
 %   maps of the parser (uniform angle on arcs and revolutions, k/n pieces of a PolyCurve2) are
@@ -373,10 +373,11 @@ switch e.type
             pt.reason = b.reason;
         end
     case 'AbsBead'
+        % the parser's own point, so that an end row on a bead takes the parser's height bitwise
+        % (the converted curve evaluates it only to rounding)
         cv = conv_curve(ctx, e.params.parent_curve);
         if cv.ok
-            s = pm_eval(cv.pmap, e.params.parameter);
-            pt.p = mwecmass.solid.eval_bspline_curve(cv.curve, s);
+            pt.p = m.eval_any_point(name);
             pt.ok = true;
         else
             pt.reason = cv.reason;
