@@ -21,7 +21,8 @@ function st = body_checks(geo, body, rho, name, opts)
 %   - STEP (opts.step): METRE, closed volumes, the solid count of the mode.
 %   st: bp (F6), V_module_outer [N x 1], V_hull, err_module [N x 1], bound_module, err_hull,
 %   bound_hull, abs_moments [1 x 10] (sum over the lateral faces of the absolute F6 face integrals
-%   [V, int x, int y, int z, int x^2, int y^2, int z^2, int xy, int xz, int yz]), n_faces, occ,
+%   [V, int x, int y, int z, int x^2, int y^2, int z^2, int xy, int xz, int yz]), n_faces,
+%   area (of the lateral faces), n_nodes (largest number of Gauss nodes of one outer patch), occ,
 %   mesh, ref (F6 volumes of the imported solids, same order).
 
 if nargin < 5
@@ -64,17 +65,19 @@ Vout = zeros(N, 1);
 absf = zeros(N, 1);
 nf = zeros(N, 1);
 absmom = zeros(1, 10);
+area = 0;
 for k = 1:numel(B.faces)
     f = B.faces(k);
     s = B.surfaces{f.surface};
     if ~strcmp(s.type, 'bspline') || all(reshape(s.ctrl(:, :, 3), [], 1) == s.ctrl(1, 1, 3))
         continue
     end
-    [m, ~, ~, mom] = face_volume(s, ng);
+    [m, ~, ~, mom, a] = face_volume(s, ng);
     if ~f.same_sense
         m = -m;
     end
     absmom = absmom + abs(mom);
+    area = area + a;
     i = f.module(1);
     absf(i) = absf(i) + abs(m);
     nf(i) = nf(i) + 1;
@@ -149,7 +152,7 @@ fprintf('  total mass %.6f kg, CG_body [%.3e %.3e %.12f] m, Ixx %.6f, Iyy %.6f, 
     bp.total.mass, bp.total.CG_body, diag(bp.total.I_cg));
 
 st = struct('bp', bp, 'V_module_outer', Vout, 'V_hull', Vh, 'err_module', err_m, 'bound_module', bound_m, ...
-    'err_hull', err_h, 'bound_hull', bound_h, 'abs_moments', absmom, 'n_faces', sum(nf), 'occ', [], 'mesh', [], 'ref', []);
+    'err_hull', err_h, 'bound_hull', bound_h, 'abs_moments', absmom, 'n_faces', sum(nf), 'area', area, 'n_nodes', nmax, 'occ', [], 'mesh', [], 'ref', []);
 if ~opts.step
     return
 end
@@ -195,7 +198,7 @@ st.mesh = mesh;
 st.ref = ref;
 end
 
-function [m, scale, nn, mom] = face_volume(s, ng, br)
+function [m, scale, nn, mom, area] = face_volume(s, ng, br)
 % volume integral of x n_x over the face with F6's Gauss rule (spans between br, default the
 % distinct u knots); scale = sum over the nodes of |w| |x| |S_u| |S_v|; mom: the ten F6 integrals
 if nargin < 3
@@ -222,6 +225,7 @@ nn = numel(U);
 x = P(:, 1);
 y = P(:, 2);
 z = P(:, 3);
+area = (Wu(:) .* Wv(:))' * sqrt(sum(cross(Su, Sv, 2).^2, 2));
 mom = w' * [x, x.^2 / 2, x .* y, x .* z, x.^3 / 3, x .* y.^2, x .* z.^2, x.^2 .* y / 2, x.^2 .* z / 2, x .* y .* z];
 end
 
