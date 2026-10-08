@@ -193,7 +193,7 @@ else
             'shells', {solid_shells(bound('ballast', []))});
     end
     out = -bound('exterior', []);
-    sheet = out(arrayfun(@(f) strcmp(brep.faces(f).inside, 'shell'), out));
+    sheet = out(arrayfun(@(f) any(strcmp({brep.faces(abs(f)).inside, brep.faces(abs(f)).outside}, 'shell')), out));
     if ~isempty(sheet)
         brep.bodies(end + 1) = struct('name', sprintf('%s_STEEL_shell', hull), 'kind', 'sheet', 'shells', {{sheet}});
     end
