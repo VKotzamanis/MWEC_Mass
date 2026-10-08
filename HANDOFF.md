@@ -1,6 +1,6 @@
 # HANDOFF — MWEC_Mass exact-geometry refactor
 
-Updated 2026-10-08 00:10 UTC on `claude/lucid-cray-7o9442`. Process file for agents: the
+Updated 2026-10-08 01:15 UTC on `claude/lucid-cray-7o9442`. Process file for agents: the
 orchestrator updates it at every milestone and at least every 100k tokens; delete it in T12.
 
 ## 1. Goal
@@ -64,6 +64,12 @@ Main `claude/lucid-cray-7o9442` = `9447e9c` + handoff commits: general-kernel am
   by itself, all tests passing, its own exact test written, and the minimum of five scores ≥ 9; it
   reports `spec_issues` instead of enforcing a wrong spec. Implementers commit after every
   deliverable and push their task branch after every commit. Workflows never merge.
+- **Test time (owner, 8 Oct 01:10 UTC).** While working, agents and graders run only the tests their
+  change affects (`TESTS_FILTER`); the whole suite runs once, before acceptance and at every merge.
+  Verified geometry is loaded, not recomputed: `tests/c1_kernel_cache.m` (T3) saves the C1 outer NURBS
+  and inner sets under `/home/user/geomcache`, keyed by SHA-256 of `Input/C1.ms2` and `src/+mwecmass/+solid`;
+  `build_config` products are cached by T0d. Slowest tests measured: T6 known-optimum 402 s and
+  failed-evaluations 382 s, T5 stage-3 154 s, T3 C1 body 148 s, T0d cache rebuild 131 s.
 - **Minor findings (owner approved, 2026-10-07 21:10 UTC).** The grader marks each required fix
   `blocking` or `minor` and sets `minor_only` when only minor items remain. Then the fixer corrects
   them and a quick check (Sonnet medium) confirms exactly those items, the clean pushed tree and the
@@ -147,7 +153,7 @@ Main `claude/lucid-cray-7o9442` = `9447e9c` + handoff commits: general-kernel am
 
 ## 6. What did not work (do not repeat)
 
-- Container restarts (7 Oct 00:18, 04:02, 15:54, ~20:50, 23:59 UTC; roughly every 4 h) kill every background job and workflow; only committed and
+- Container restarts (7 Oct 00:18, 04:02, 15:54, ~20:50, 23:59, 8 Oct 01:08 UTC) kill every background job and workflow; only committed and
   pushed work survives. After a restart: recover each run's launch input from the session transcript,
   check every worktree (delete `octave-workspace` crash dumps), and relaunch each lane from its last
   verdict with a generated `mwec-lane-<lane>-restart.js` (args embedded) and a note to continue from
