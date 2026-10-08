@@ -18,7 +18,8 @@ function fl = density_floors(model, cache, geo, edges, t_min, rho_solid, rho_air
 %   A solid module has rho_min = rho_solid, V_air = 0.
 %
 %   opts (optional): mode ('modular_precast' | 'thin_shell'; default 'modular_precast' when
-%   solid_modules is not empty, else 'thin_shell'), n_gauss (forwarded to body_properties) and
+%   solid_modules is not empty, else 'thin_shell'), rho_ballast [kg/m^3] (required for thin_shell:
+%   the ballast density of the body, which has no ballast here and does not enter the floors), n_gauss (forwarded to body_properties) and
 %   max_passes (forwarded to offset_surface). The first and last edge must equal the hull's z
 %   range to 16 ulp (the bound of the outer rows); they are replaced by the exact z range.
 %
@@ -42,6 +43,10 @@ function fl = density_floors(model, cache, geo, edges, t_min, rho_solid, rho_air
             solid_region = 'shell';
         otherwise
             error('mwecmass:driver:BadMode', 'density_floors: mode ''%s'' is neither modular_precast nor thin_shell.', mode);
+    end
+    if strcmp(mode, 'thin_shell') && ~isfield(opts, 'rho_ballast')
+        error('mwecmass:driver:MissingBallastDensity', ...
+              'density_floors: thin_shell mode needs opts.rho_ballast (the body model requires a ballast density).');
     end
     hollow = setdiff(1:N, solid_modules);
     if isempty(hollow)
@@ -70,7 +75,9 @@ function fl = density_floors(model, cache, geo, edges, t_min, rho_solid, rho_air
 
     rho = struct(solid_region, rho_solid, 'air', rho_air);
     if strcmp(mode, 'thin_shell')
-        rho.ballast = rho_solid;   % the body has no ballast: its volume is 0 in every module
+        % body_properties requires the ballast density of a thin-shell body although z_ballast sits
+        % at the keel and the ballast volume is 0 in every module.
+        rho.ballast = opts.rho_ballast;
     end
     bp_opts = struct();
     if isfield(opts, 'n_gauss'), bp_opts.n_gauss = opts.n_gauss; end
@@ -84,6 +91,9 @@ function fl = density_floors(model, cache, geo, edges, t_min, rho_solid, rho_air
         V_solid(i) = bp.modules(i).(['V_' solid_region]);
         V_air(i) = bp.modules(i).V_air;
     end
-    fl = struct('rho_min', (rho_solid * V_solid + rho_air * V_air) ./ V, ...
-                'V', V, 'V_solid', V_solid, 'V_air', V_air, 'fit', fit);
+    rho_min = (rho_solid * V_solid + rho_air * V_air) ./ V;
+    V_solid(solid_modules) = V(solid_modules);   % by definition, not by (a V) / V
+    V_air(solid_modules) = 0;
+    rho_min(solid_modules) = rho_solid;
+    fl = struct('rho_min', rho_min, 'V', V, 'V_solid', V_solid, 'V_air', V_air, 'fit', fit);
 end

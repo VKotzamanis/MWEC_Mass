@@ -759,8 +759,15 @@ function g = geometry_inputs(in, enable_constructability, wall_position)
             g.floors = struct('mode', 'thin_shell', ...
                               't_min', in.materials.thin_shell.t_min, ...
                               'rho_solid', in.materials.thin_shell.rho_shell, ...
-                              'rho_air', in.materials.thin_shell.rho_air);
+                              'rho_air', in.materials.thin_shell.rho_air, ...
+                              'rho_ballast', thin_shell_rho_ballast(in));
     end
+end
+
+function opts = floor_options(floors)
+%FLOOR_OPTIONS The options density_floors takes from g.floors.
+    opts = struct('mode', floors.mode);
+    if isfield(floors, 'rho_ballast'), opts.rho_ballast = floors.rho_ballast; end
 end
 
 function bounds = mode_density_bounds(in)
@@ -1000,7 +1007,7 @@ function [products, ms2_model] = compute_geometry_products(ms2_file, g)
         geo.hull_solid = mwecmass.solid.outer_nurbs(geo.ms2_model);
         fl = mwecmass.driver.density_floors(geo.ms2_model, geo.boundary_cache, geo.hull_solid, ...
                  geo.strip_edges, g.floors.t_min, g.floors.rho_solid, g.floors.rho_air, ...
-                 geo.wall_strip_index, struct('mode', g.floors.mode));
+                 geo.wall_strip_index, floor_options(g.floors));
         geo.density_floors = fl;
         geo.per_strip_density_lb = max(g.ballast_density_bounds(1), fl.rho_min(:))';
 

@@ -1,8 +1,9 @@
 function result = stage1_screen_draft(vs_k, config)
 %STAGE1_SCREEN_DRAFT Probe one selected draft without fmincon.
 % Builds a flotation-balanced density vector, pinning the modular-precast wall strip when enabled,
-% then evaluates 3-D properties once. Tier 1 checks only mass balance and GM; full constraints belong
-% to Tier 2. The result contains the candidate, objective value, properties, and feasibility flag.
+% then evaluates 3-D properties once. Strip densities are raised to config.per_strip_density_lb, so the
+% start never lies below the density floors (Tier 1 then judges the mass balance). Tier 1 checks only
+% mass balance and GM; full constraints belong to Tier 2. The result contains the candidate, objective value, properties, and feasibility flag.
     N        = config.num_ballast_sections;
     V_strips = sum(config.strip_V);   % total hull strip volume from config
 
@@ -37,6 +38,10 @@ function result = stage1_screen_draft(vs_k, config)
         rho_unif = max(config.ballast_density_bounds(1), ...
                    min(config.ballast_density_bounds(2), rho_unif));
         rho_bal  = repmat(rho_unif, 1, N);
+    end
+
+    if ~isempty(config.per_strip_density_lb)
+        rho_bal = max(rho_bal, config.per_strip_density_lb(:)');
     end
 
     x_bal  = [vs_k, rho_bal];

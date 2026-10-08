@@ -31,6 +31,9 @@ function [x, fval, exitflag, output, lambda] = fmincon(fun, x0, A, b, Aeq, beq, 
 %   (the raw sqp code).
 %   lambda: eqlin, eqnonlin, ineqlin, ineqnonlin, lower, upper, in MATLAB's sign convention.
 %
+%   If core sqp fails inside its QP subproblem (unbounded, it then errors out on empty multipliers),
+%   x is the evaluated point of smallest constraint violation, exitflag is -2 and output.info is -1.
+%
 %   OutputFcn is called with state 'init' (iteration 0, at x0) and 'done' (at the solution).
 %   Per-iteration ('iter') calls are not available because sqp has no callback.
   if nargin < 2, error('fmincon:nargin', 'fmincon needs at least fun and x0.'); end
@@ -62,8 +65,8 @@ function [x, fval, exitflag, output, lambda] = fmincon(fun, x0, A, b, Aeq, beq, 
 
   cache = containers.Map();
   shp = @(v) reshape(v, x0_shape);
-  f_sq = @(v) cached_objective(cache, fun, shp, v);
   nl = @(v) cached_nonlcon(cache, nonlcon, shp, v);
+  f_sq = @(v) tracked_objective(cache, fun, shp, nl, A, b, Aeq, beq, lbc, ubc, v);
 
   has_eq = ~isempty(Aeq) || ~isempty(nonlcon);
   has_in = ~isempty(A) || ~isempty(nonlcon);
@@ -95,8 +98,32 @@ function [x, fval, exitflag, output, lambda] = fmincon(fun, x0, A, b, Aeq, beq, 
   else
     lb_arg = []; ub_arg = [];
   end
-  [xs, fval, info, iter, nf, lam] = sqp(xc, f_sq, g_fn, h_fn, lb_arg, ub_arg, maxit + 1, tol);
-  iterations = iter - 1;
+  try
+    [xs, fval, info, iter, nf, lam] = sqp(xc, f_sq, g_fn, h_fn, lb_arg, ub_arg, maxit + 1, tol);
+    iterations = iter - 1;
+    sqp_failed = false;
+  catch err
+    if isempty(err.stack) || ~strcmp(err.stack(1).name, 'sqp')
+      rethrow(err);
+    end
+    sqp_failed = true;
+    sqp_msg = err.message;
+  end
+  if sqp_failed
+    % Core sqp errors out when its QP subproblem is unbounded (it keeps qp's empty multipliers).
+    % Return the evaluated point with the smallest constraint violation, flagged as failed.
+    s = cache('best');
+    xs = min(max(s.x, lbc), ubc);
+    fval = f_sq(xs);
+    cv = violation(nl, A, b, Aeq, beq, lbc, ubc, xs);
+    x = shp(xs);
+    output = make_output(0, 0, cv, -1, ['sqp failed: ' sqp_msg]);
+    lambda = empty_lambda(n);
+    exitflag = -2;
+    ov.fval = fval; ov.constrviolation = cv;
+    call_output(outfcns, x, ov, 'done');
+    return;
+  end
 
   cv = violation(nl, A, b, Aeq, beq, lbc, ubc, xs);
   switch info
@@ -138,6 +165,15 @@ function v = get_opt(options, name, default)
   k = find(strcmpi(names, name), 1);
   if ~isempty(k) && ~isempty(options.(names{k}))
     v = options.(names{k});
+  end
+end
+
+function f = tracked_objective(cache, fun, shp, nl, A, b, Aeq, beq, lbc, ubc, v)
+% Objective with a record of the evaluated point of smallest constraint violation (latest on ties).
+  f = cached_objective(cache, fun, shp, v);
+  cv = violation(nl, A, b, Aeq, beq, lbc, ubc, v);
+  if ~isKey(cache, 'best') || cv <= cache('best').cv
+    cache('best') = struct('x', v, 'cv', cv);
   end
 end
 

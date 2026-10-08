@@ -5,12 +5,13 @@ function test_density_floors()
 %   read from the deck points K, P1, T; a shell of design thickness t_min is built at d = t_min +
 %   0.005 t_min (eps_fit = 0.01 t_min), so the void of a hollow module is the cylinder of radius
 %   R - d between max(edge_i, z0 + d) and min(edge_i+1, z1 - d).
-%   Exact by construction (asserted for every kernel): V_solid + V_air = V per module, the
-%   modules sum to the hull volume, the solid modules are solid, the floor lies in (rho_air,
-%   rho_solid], build_config stores max(lower input bound, floor) per module and the same
-%   floors in the geometry products. Agreement with the closed form is asserted at rounding
-%   when the kernel is the closed-form stand-in (geo.analytic), and printed for the real kernel,
-%   whose rational faces are only approximated by quadrature.
+%   Exact by construction (asserted for every kernel): V_solid + V_air = V per module, the solid
+%   modules are solid (rho_min equal to rho_solid bitwise, also for a module volume V where
+%   (rho_solid V) / V differs from rho_solid), the floor lies in (rho_air, rho_solid], build_config
+%   stores max(lower input bound, floor) per module and the same floors in the geometry products.
+%   The sum of the module volumes equal to the hull volume and the agreement with the closed form
+%   are asserted at rounding when the kernel is the closed-form stand-in (geo.analytic) and
+%   printed for the real kernel, whose rational faces are only approximated by quadrature.
   repo_root = fileparts(fileparts(fileparts(mfilename('fullpath'))));
   deck = fullfile(repo_root, 'tests', 'standins', 'fixtures', 'cylinder.ms2');
   saved_path = path();
@@ -87,8 +88,8 @@ function test_density_floors()
       error('%s: a hollow module has no void: V_air = %s', mode, mat2str(fl.V_air', 5));
     end
     recomposed = (rho_solid * fl.V_solid + rho_air * fl.V_air) ./ fl.V;
-    if ~isequal(recomposed, fl.rho_min)
-      error('%s: rho_min is not (rho_solid V_solid + rho_air V_air) / V', mode);
+    if ~isequal(recomposed(hollow), fl.rho_min(hollow))
+      error('%s: a hollow rho_min is not (rho_solid V_solid + rho_air V_air) / V', mode);
     end
     lb = mwecmass.optim.stage2_bounds(config);
     expect_lb = max(in.bounds.ballast_density_bounds(1), fl.rho_min(:))';
@@ -131,13 +132,41 @@ function test_density_floors()
   evalc('config = mwecmass.driver.build_config(deck_input(deck, ''thin_shell'', ''''), [], struct());');
   args = {config.ms2_model, config.boundary_cache, config.hull_solid};
   e = config.strip_edges(:);
-  expect_error(@() mwecmass.driver.density_floors(args{:}, [e(1) + 0.1; e(2:end)], 0.0254, 7500, 1.2, []), ...
+  ballast = struct('rho_ballast', 7500);
+  expect_error(@() mwecmass.driver.density_floors(args{:}, [e(1) + 0.1; e(2:end)], 0.0254, 7500, 1.2, [], ballast), ...
                'mwecmass:driver:EdgesNotOnHull');
+  expect_error(@() mwecmass.driver.density_floors(args{:}, e, 0.0254, 7500, 1.2, []), ...
+               'mwecmass:driver:MissingBallastDensity');
   expect_error(@() mwecmass.driver.density_floors(args{:}, e, 0.0254, 7500, 1.2, 1:numel(e) - 1), ...
                'mwecmass:driver:NoHollowModule');
   expect_error(@() mwecmass.driver.density_floors(args{:}, e, 0.0254, 7500, 1.2, [], struct('mode', 'preliminary')), ...
                'mwecmass:driver:BadMode');
-  fprintf('refusals: EdgesNotOnHull, NoHollowModule, BadMode\n');
+  fprintf('refusals: EdgesNotOnHull, MissingBallastDensity, NoHollowModule, BadMode\n');
+
+  % a solid module whose volume V makes (rho_solid V) / V differ from rho_solid
+  rho_solid = 2500;
+  top = e(end);
+  found = false;
+  for k = 1:200
+    edge_k = top - 0.01 * (1 + 0.1337 * k) - 0.9;
+    edges_k = [e(1); linspace(e(1), edge_k, 4)(2:end)'; top];
+    fl_k = mwecmass.driver.density_floors(args{:}, edges_k, 0.0254, rho_solid, 1.2, numel(edges_k) - 1, ...
+                                          struct('mode', 'modular_precast'));
+    V_w = fl_k.V(end);
+    if (rho_solid * V_w) / V_w ~= rho_solid
+      found = true;
+      if fl_k.rho_min(end) ~= rho_solid || fl_k.V_solid(end) ~= V_w || fl_k.V_air(end) ~= 0
+        error('solid module with V = %.17g: rho_min %.17g, V_solid %.17g, V_air %.3g', ...
+              V_w, fl_k.rho_min(end), fl_k.V_solid(end), fl_k.V_air(end));
+      end
+      fprintf('solid module V = %.17g m^3: (rho V)/V - rho = %.3g, rho_min - rho = 0\n', ...
+              V_w, (rho_solid * V_w) / V_w - rho_solid);
+      break;
+    end
+  end
+  if ~found
+    error('no candidate wall module volume made (rho_solid V) / V differ from rho_solid');
+  end
 end
 
 function expect_error(fun, id)
