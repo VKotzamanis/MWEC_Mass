@@ -124,6 +124,33 @@ end
 fprintf('largest |F6 - closed form| over all cases: V %.2e m3, S %.2e m4, J %.2e m5 (box asserted, cylinder printed)\n', ...
     worst.V, worst.S, worst.J);
 fprintf('largest relative F6b section area difference from the closed form: %.2e\n', worst.sec);
+
+% errors: edges not spanning the hull, a hollow module without its inner set, and a joint_step
+% whose loops cross (the t = 0.15 set replaced by the t = 0.1 set moved 0.2 m along x)
+design = struct('mode', 'modular_precast', 'edges', [-2.4; -1.5; -0.5; 0.5], 'vs', 0, 't', [0.1; 0.1; 0.1], ...
+    'z_ballast', -2.5, 'solid_modules', []);
+expect_error(@() mwecmass.solid.build_body(gb, design, ib), 'mwecmass:solid:BadEdges');
+design.edges = eb;
+design.t = [0.1; 0.2; 0.1];
+expect_error(@() mwecmass.solid.build_body(gb, design, ib), 'mwecmass:solid:MissingInnerSet');
+moved = ib(1);
+moved.t = 0.15;
+for k = 1:numel(moved.patches)
+    moved.patches(k).surf.ctrl(:, :, 1) = moved.patches(k).surf.ctrl(:, :, 1) + 0.2;
+end
+design.t = [0.1; 0.15; 0.15];
+expect_error(@() mwecmass.solid.build_body(gb, design, [ib(1), moved]), 'mwecmass:solid:JointNotNested');
+fprintf('errors BadEdges, MissingInnerSet, JointNotNested raised\n');
+end
+
+function expect_error(fn, id)
+try
+    fn();
+catch err
+    check(strcmp(err.identifier, id), 'expected %s, got %s: %s', id, err.identifier, err.message);
+    return
+end
+error('test_build_body_fixtures:fail', 'expected error %s', id);
 end
 
 function setup(root)
