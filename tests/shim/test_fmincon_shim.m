@@ -97,6 +97,47 @@ function test_fmincon_shim()
     if out.constrviolation < 0.5
         error('test_fmincon_shim:P8', 'a violation of at least 0.5 is unavoidable, got %.3e', out.constrviolation);
     end
+
+    % 9. A failure inside core sqp (its QP subproblem, which then errors on empty multipliers) gives
+    %    exitflag -2 and the evaluated point of smallest constraint violation; an error raised by
+    %    the user's function still propagates. A stand-in sqp that evaluates three points and fails
+    %    plays the solver; min x1^2 + x2^2 s.t. x1 + x2 = 1.
+    fake_dir = tempname();
+    mkdir(fake_dir);
+    fid = fopen(fullfile(fake_dir, 'sqp.m'), 'w');
+    fprintf(fid, ['function varargout = sqp(x0, f, g, h, lb, ub, maxit, tol)\n' ...
+                  '  f(x0); g(x0); f([0.5; 0.5]); g([0.5; 0.5]); f([3; 3]); g([3; 3]);\n' ...
+                  '  error(''Octave:nonconformant-args'', ''operator *: nonconformant arguments'');\n' ...
+                  'end\n']);
+    fclose(fid);
+    saved_path = path();
+    path_guard = onCleanup(@() cleanup_fake(saved_path, fake_dir));
+    addpath(fake_dir, '-begin');
+    f9 = @(x) x(1)^2 + x(2)^2;
+    [x, fval, ef, out, lam] = fmincon(f9, [0; 0], [], [], [1 1], 1, [], [], [], opts);
+    report('P9 sqp failure', x, [0.5; 0.5], ef, out);
+    check_flag('P9 exitflag', ef, -2);
+    check_flag('P9 info', out.info, -1);
+    check('P9 x', x, [0.5; 0.5], 0);
+    check('P9 fval', fval, 0.5, 0);
+    check('P9 constrviolation', out.constrviolation, 0, 0);
+    check_flag('P9 lambda.lower size', numel(lam.lower), 2);
+    raised = '';
+    try
+        fmincon(@(x) error('test_fmincon_shim:user', 'user function failed'), [0; 0], [], [], [1 1], 1, [], [], [], opts);
+    catch err
+        raised = err.identifier;
+    end
+    if ~strcmp(raised, 'test_fmincon_shim:user')
+        error('test_fmincon_shim:P9', 'an error of the objective was swallowed (got ''%s'')', raised);
+    end
+    fprintf('  P9 user error propagates\n');
+end
+
+function cleanup_fake(saved_path, fake_dir)
+    path(saved_path);
+    delete(fullfile(fake_dir, 'sqp.m'));
+    rmdir(fake_dir);
 end
 
 function v = check_row(x)
