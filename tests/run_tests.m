@@ -1,5 +1,6 @@
 % Run every tests/**/test_*.m (except tests/octave_shims) and exit non-zero if any fails.
 %   octave --no-gui --quiet tests/run_tests.m
+%   matlab -batch "run('tests/run_tests.m')"   (or run it from the MATLAB prompt)
 % Environment variables:
 %   TESTS_FILTER (optional)  run only files whose path contains that text.
 %   MWEC_REGRESSION=1        also run tests/regression/test_*.m (they run the whole pipeline, 24 to 94
@@ -9,9 +10,17 @@
 % this script file.
 tests_dir = fileparts(mfilename('fullpath'));
 repo_root = fileparts(tests_dir);
-warning('off', 'Octave:shadowed-function');
-% One call so that the shims come first, then src, then the repo root (addpath prepends).
-addpath(fullfile(tests_dir, 'octave_shims'), fullfile(repo_root, 'src'), repo_root);
+in_octave = exist('OCTAVE_VERSION', 'builtin') ~= 0;
+% The shims replace MATLAB functions Octave lacks; under MATLAB they would shadow the real ones.
+if in_octave
+  warning('off', 'Octave:shadowed-function');
+  % One call so that the shims come first, then src, then the repo root (addpath prepends).
+  addpath(fullfile(tests_dir, 'octave_shims'), fullfile(repo_root, 'src'), repo_root);
+else
+  addpath(fullfile(repo_root, 'src'), repo_root);
+end
+% Exit with a status only from a batch run; an interactive MATLAB session stays open.
+quit_when_done = in_octave || batchStartupOptionUsed;
 
 files = {};
 pending = {tests_dir};
@@ -43,12 +52,14 @@ if ~isempty(filter)
 end
 if isempty(files)
   fprintf('run_tests: no test files found.\n');
-  exit(1);
+  if quit_when_done, exit(1); end
+  error('run_tests: no test files found');
 end
 [~, names] = cellfun(@fileparts, files, 'UniformOutput', false);
 if numel(unique(names)) ~= numel(names)
   fprintf('run_tests: test file names must be unique across folders.\n');
-  exit(1);
+  if quit_when_done, exit(1); end
+  error('run_tests: test file names must be unique across folders');
 end
 
 n_fail = 0;
@@ -91,6 +102,7 @@ fprintf('%d passed, %d failed, %d skipped, %d total, %.1f s\n', ...
 if n_fail > 0
   fprintf('Failed:\n');
   fprintf('  %s\n', failed{:});
-  exit(1);
+  if quit_when_done, exit(1); end
+  error('run_tests: %d test(s) failed', n_fail);
 end
-exit(0);
+if quit_when_done, exit(0); end
