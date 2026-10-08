@@ -92,6 +92,15 @@ reports and `launch_inputs.json` (every task's brief).
 6. The pipeline regressions (`MWEC_REGRESSION=1`) compare with Octave baselines that are stale by
    design (regenerated once at J2); do not use them as a gate before then.
 
+### Agents (Claude Code, local)
+
+`CLAUDE.md` loads `AGENTS.md` into every session. `.claude/agents/` defines three subagents:
+`mwec-implementer` (Opus, high: implements or fixes one task on its branch), `mwec-checker` (Opus,
+xhigh, read-only: strict review; marks findings blocking or minor) and `mwec-quick-check` (Sonnet,
+medium, read-only: confirms minor fixes). Loop per task: implementer → checker → implementer fixes
+→ checker again for blocking findings, quick check for minor-only findings → merge. One MATLAB
+test run at a time (or `-singleCompThread` per run, never more runs than cores).
+
 ## 4. Merge plan (what remains, in order)
 
 1. **Finish T2a** (§5) and **T3**, then **J1**: merge `task/T2a`, then `task/T3` (T3 already holds
