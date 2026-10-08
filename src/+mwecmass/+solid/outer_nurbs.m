@@ -531,7 +531,9 @@ crv = struct('degree', 1, 'ctrl', [A; B], 'knots', [0 0 1 1], 'weights', []);
 end
 
 function [crv, pm] = arc_curve(S, Cn, E)
-% MS2Parser arc_evaluate: radius |S - Cn|, angle theta in (0, pi) from S toward E, uniform in t
+% MS2Parser arc_evaluate: radius |S - Cn|, angle theta in (0, pi) from S toward E, uniform in t;
+% its two degenerate cases (a point, a straight line) are taken with the parser's own thresholds,
+% so that the conversion is the curve the parser evaluates
 vs = S - Cn;
 ve = E - Cn;
 r = norm(vs);
