@@ -4,9 +4,9 @@ function [c, rep] = fit_bspline_surface(prob, opts)
 %   [c, rep] = mwecmass.solid.fit_bspline_surface(prob, opts)
 %   n = mwecmass.solid.fit_bspline_surface('max_passes')   default refinement cap
 %
-%   Fits the curve that an inner surface is built from (the offset profile of a rev_z piece or the
-%   offset boundary curve of a ruled piece; the surface follows from it by the outer surface's own
-%   v-construction), after Piegl & Tiller, The NURBS Book, 2nd ed., sections 9.4 (least squares
+%   Fits the curve that an inner surface is built from (the offset profile of a rev_z piece; the
+%   surface follows from it by the outer surface's own v-construction), after Piegl & Tiller, The
+%   NURBS Book, 2nd ed., sections 9.4 (least squares
 %   with end constraints) and 5.4 (knot removal):
 %     1. fit a non-rational B-spline of degree prob.degree through nodes prob.sample(s) placed at
 %        every knot and opts.nodes_per_span points inside every span;
@@ -20,7 +20,8 @@ function [c, rep] = fit_bspline_surface(prob, opts)
 %   second, second-to-last, control value equals the first, last, in that coordinate, a tangent
 %   in the coordinate plane); monotone (coordinate whose control values are kept monotone between
 %   the end values by pooling adjacent violators; 0 for none); judge (handle c -> [span_ok, info]).
-%   A coordinate whose node values are all equal is reproduced exactly (partition of unity).
+%   A coordinate whose node values are all equal, and equal to its fixed end values, is reproduced
+%   exactly (partition of unity); otherwise the fixed end values take precedence.
 %   opts: max_passes (default: the value returned by the 'max_passes' query, a limit set at the
 %   T3 checkpoint, contract section 9 item 2), knots_fixed (true: fit once on prob.knots and
 %   prob.breaks, no insertion or removal), nodes_per_span (default 8).
@@ -105,16 +106,18 @@ N = mwecmass.solid.eval_bspline_curve(struct('degree', p, 'ctrl', eye(n), 'knots
 m = size(Q, 2);
 P = zeros(n, m);
 for col = 1:m
-    if all(Q(:, col) == Q(1, col))
-        P(:, col) = Q(1, col);
-        continue
-    end
     val = NaN(n, 1);
     if isfield(prob, 'fix0') && ~isnan(prob.fix0(col))
         val(1) = prob.fix0(col);
     end
     if isfield(prob, 'fix1') && ~isnan(prob.fix1(col))
         val(n) = prob.fix1(col);
+    end
+    % equal node values are reproduced exactly when the fixed ends agree with them; a fixed end
+    % (a point shared with a neighbour) takes precedence
+    if all(Q(:, col) == Q(1, col)) && all(val(~isnan(val)) == Q(1, col))
+        P(:, col) = Q(1, col);
+        continue
     end
     tie2 = isfield(prob, 'tie0') && prob.tie0(col) && ~isnan(val(1));
     tie3 = isfield(prob, 'tie1') && prob.tie1(col) && ~isnan(val(n));

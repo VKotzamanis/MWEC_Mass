@@ -16,17 +16,25 @@ function [inner, rep] = offset_surface(model, cache, geo, t, z_range, opts)
 %     segment is offset by d along its inward normal; at a convex crease or a fold the offsets
 %     overlap and are trimmed at their crossing (trim_fold); a concave crease gets a face of its
 %     own, the crease point offset by d along the fan of normals from one side's to the other's
-%     (a circular arc of radius d, exact). Straight segments are translated exactly; curved ones
-%     are fitted (fit_bspline_surface) with end points shared with their neighbours, an axis end
-%     kept on the axis with a horizontal tangent. Each smooth run between creases becomes one
-%     patch: the profile revolved with the outer surface's own rational arc (rows of one z).
-%   - ruled_parallel, planar (every boundary a convex crease with a planar neighbour): the face
-%     moved by d along its inward normal and trimmed by its neighbours' offset planes (corners at
-%     the crossing of three planes).
+%     (a circular arc of radius d, exact). Straight segments (control points on one line, bitwise)
+%     are translated exactly, a horizontal or vertical one keeping its constant coordinate exactly;
+%     curved ones are fitted (fit_bspline_surface) with end points shared with their neighbours,
+%     an axis end kept on the axis with a horizontal tangent. Each smooth run between creases
+%     becomes one patch: the profile revolved with the outer surface's own rational arc.
+%   - ruled_parallel planar pieces (every boundary a seam): moved by d along the inward normal,
+%     bounded by the neighbour's offset plane at a convex crease (corners at the crossing of
+%     three planes) and by the plane over the boundary, normal to the face, at a smooth seam or a
+%     concave crease.
 %   - ruled_parallel with equal rulings and a tangent-continuous seam with a rev_z patch: ruled
 %     between that patch's inner boundary curve (taken bitwise, so the seam is one curve) and its
 %     translate by the ruling.
-%   Every other patch takes the general path (mwecmass.solid.fit_z_faces).
+%   Seams of the outer surface are smooth when the cross-boundary control legs are antiparallel
+%   (cross product exactly zero), else creases, convex or concave by the side the neighbour leaves
+%   the tangent plane to. The general path (mwecmass.solid.fit_z_faces, which also makes the
+%   mirrors) receives, for primary patches only and with surf empty and a field offset_of: every
+%   piece of a patch whose offset keeps no structure (offset_of.patch.outer), one entry per
+%   concave crease between two outer entries (offset_of.crease: curve, outer) and one per vertex
+%   where three or more creases meet, all concave (offset_of.vertex: point, outer).
 %   Only the outer part whose points lie within d of z_range is offset, so a set over a partial
 %   range is open at its clipped end (F5 cuts it there).
 %   M1-M3 are judged between the faces as written (inner as fitted, outer as in geo) at the check
@@ -35,8 +43,12 @@ function [inner, rep] = offset_surface(model, cache, geo, t, z_range, opts)
 %   distance to the outer surface; M1: t_local >= t_min; M2: t <= t_local <= t + eps_fit; M3: rows of one z with
 %   monotone heights, every non-pole boundary shared with one neighbour (same curve), and every
 %   horizontal section of the inner set one simple closed loop inside the outer section.
-%   A fitted profile that reaches the refinement cap raises mwecmass:solid:FitNotConverged.
-%   Results are cached per (hull, t bitwise, z_range, t_min, options).
+%   A set that fails M1-M3 (or reaches the refinement cap) raises mwecmass:solid:FitNotConverged
+%   listing the failing patches and M3 reasons, except a knots_from refit, which only reports.
+%   S2r rep.n_sections: the number of section heights judged for M3 (every distinct check height
+%   strictly inside the set, off its constant-z pieces).
+%   Results are cached per (hull, t bitwise, z_range, t_min, options, knots_from's pieces and knot
+%   vectors bitwise).
 
 if nargin < 6 || isempty(opts)
     opts = struct();
@@ -90,6 +102,7 @@ for v = 1:nv
     end
 end
 built = mirror_all(P, prim, built, nv);
+kinds = boundary_kinds(P);
 for v = 1:nv
     G = P([P.visible] == v);
     if isempty(G) || prim(v) ~= v || ~isempty(built{v}) || general_vis(v)
@@ -97,7 +110,7 @@ for v = 1:nv
     end
     E = [];
     if strcmp(G(1).offset_kind, 'ruled_parallel')
-        E = planar_inner(G, P, C);
+        E = planar_inner(find([P.visible] == v), P, C, kinds);
         if isempty(E)
             E = ruled_inner(G, P, built);
         end
@@ -109,45 +122,51 @@ for v = 1:nv
     end
 end
 built = mirror_all(P, prim, built, nv);
-for v = 1:nv
-    if isempty(built{v}) && ~general_vis(prim(v))
-        general_vis(v) = true;
-    end
-end
 
 patches = [];
 for v = 1:nv
     patches = [patches, built{v}]; %#ok<AGROW>
 end
 flat = struct('z', {}, 'normal_z', {}, 'visible', {});
-if any(general_vis)
-    general = [false(1, numel(patches)), true(1, nnz(general_vis))];
-    stubs = P([]);
-    for v = find(general_vis)
-        G = P([P.visible] == v);
-        s = G(1);
-        s.surf = [];
-        s.exact = false;
-        stubs(end + 1) = s; %#ok<AGROW>
-    end
+% the general path (fit_z_faces, which makes the mirrors): every piece of a primary patch whose
+% offset keeps no structure of the outer patch, one face per concave crease between two outer
+% entries (a crease inside one rev_z profile is a revolved fan arc, built above) and one per vertex
+% where three or more creases meet, all of them concave, so that its cone of normals spans a solid angle
+hand = general_entries(P, prim, general_vis, kinds);
+if ~isempty(hand)
+    patches = with_offset_of(patches);
+    general = [false(1, numel(patches)), true(1, numel(hand))];
     fopts = struct('t_min', opts.t_min, 'max_passes', C.max_passes, 'kind', 'inner', 'd', d, 'geo', geo);
-    [patches, flat] = mwecmass.solid.fit_z_faces(model, cache, [patches, stubs], general, fopts);
+    [patches, flat] = mwecmass.solid.fit_z_faces(model, cache, [patches, hand], general, fopts);
 end
 patches = find_seams(patches);
 rep = judge_set(patches, C, fitrep, prim);
 zz = reshape([patches.z_range], 2, [])';
 inner = struct('t', t, 'd', d, 'eps_fit', eps_fit, 'z_range', [min(zz(:)) max(zz(:))], ...
     'z_lo', min(zz(:)), 'refit', ~isempty(C.knots_from), 'patches', patches, 'flat', flat, 'report', rep);
-if rep.cap_reached
-    bad = find(~([rep.patches.M1] & [rep.patches.M2]));
-    error('mwecmass:solid:FitNotConverged', 'offset_surface: refinement cap %d reached on %s (t_local %s m)', ...
-        C.max_passes, strjoin({patches(bad).name}, ', '), mat2str([[rep.patches(bad).t_local_min]; ...
-        [rep.patches(bad).t_local_max]], 6));
+if rep.cap_reached || (~rep.ok && isempty(C.knots_from))
+    bad = find(~([rep.patches.M1] & [rep.patches.M2] & [rep.patches.M3]));
+    why = arrayfun(@(i) sprintf('%s (t_local %.10g .. %.10g m, M1 %d, M2 %d, M3 %d%s)', patches(i).name, ...
+        rep.patches(i).t_local_min, rep.patches(i).t_local_max, rep.patches(i).M1, rep.patches(i).M2, ...
+        rep.patches(i).M3, m3_text(rep.patches(i).M3_reason)), bad, 'UniformOutput', false);
+    if rep.cap_reached
+        head = sprintf('refinement cap %d reached', C.max_passes);
+    else
+        head = 'the fitted set fails M1-M3';
+    end
+    error('mwecmass:solid:FitNotConverged', 'offset_surface: %s on %s', head, strjoin(why, '; '));
 end
 store(key) = {inner, rep};
 end
 
 % =============================================================== helpers
+
+function t = m3_text(reason)
+t = '';
+if ~isempty(reason)
+    t = [': ' reason];
+end
+end
 
 function v = get_opt(opts, name, default)
 v = default;
@@ -171,7 +190,14 @@ for k = 1:numel(geo.outer)
 end
 kf = '';
 if isfield(opts, 'knots_from') && ~isempty(opts.knots_from)
-    kf = [num2hex(opts.knots_from.t), sprintf('%d', numel(opts.knots_from.patches))];
+    % the pieces and their knot vectors, bitwise
+    kp = opts.knots_from.patches;
+    parts = cell(1, numel(kp));
+    for k = 1:numel(kp)
+        kk = [kp(k).surf.degree(:); numel(kp(k).surf.knots{1}); kp(k).surf.knots{1}(:); kp(k).surf.knots{2}(:)];
+        parts{k} = [kp(k).name, ':', reshape(num2hex(kk)', 1, [])];
+    end
+    kf = [num2hex(opts.knots_from.t), strjoin(parts, ',')];
 end
 o = [get_opt(opts, 't_min', NaN), get_opt(opts, 'max_passes', NaN), get_opt(opts, 'n_gauss', NaN)];
 key = [model.filename, '|', num2hex(f), num2hex(g), '|', num2hex(t), '|', reshape(num2hex(z_range(:))', 1, []), ...
@@ -312,7 +338,7 @@ for k = 1:numel(G)
     for j = 1:numel(cuts) - 1
         sg = sub_curve(c2, cuts(j), cuts(j + 1));
         segs(end + 1) = struct('ctrl', sg.ctrl, 'w', sg.weights, 'knots', sg.knots, 'ua', cuts(j), ...
-            'ub', cuts(j + 1), 'entry', k, 'linear', sg.degree == 1, ...
+            'ub', cuts(j + 1), 'entry', k, 'linear', straight(sg.ctrl), ...
             'flatz', all(sg.ctrl(:, 2) == sg.ctrl(1, 2))); %#ok<AGROW>
     end
 end
@@ -397,8 +423,10 @@ for k = 1:nseg - 1
         continue
     end
     cr = a(1) * bb(2) - a(2) * bb(1);
-    % parallel up to the rounding of the control points (16 ulp of the leg lengths)
-    if abs(cr) <= 16 * eps * norm(a) * norm(bb) && a * bb' > 0
+    % smooth when the control legs on the two sides are parallel and point the same way, decided
+    % bitwise (no rounding bound is derivable for legs of different conversions; a converted G1
+    % joint, as C1's arc to curve1, gives an exact zero); otherwise a crease
+    if cr == 0 && a * bb' > 0
         joint{k} = 'smooth';
     else
         nA = sn * rot(a) / norm(a);
@@ -431,14 +459,24 @@ for k = 1:nseg
 end
 keep = mwecmass.solid.trim_fold(F, rng);
 keep = clip_axis(keep, F);
-% a crossing on the offset of a straight segment with a constant coordinate (a horizontal or a
+% consecutive kept parts meet in one point (computed once: a crossing, or the first part's end);
+% a point on the offset of a straight segment with a constant coordinate (a horizontal or a
 % vertical line in the meridian plane) takes that coordinate of the offset line exactly
 for q = 1:numel(keep) - 1
-    if ~keep(q).trim1
-        continue
+    keep(q + 1).X0 = keep(q).X1;
+end
+for q = 0:numel(keep)
+    if q == 0
+        X = keep(1).X0;
+        nbr = keep(1).k;
+    elseif q == numel(keep)
+        X = keep(q).X1;
+        nbr = keep(q).k;
+    else
+        X = keep(q).X1;
+        nbr = [keep(q).k, keep(q + 1).k];
     end
-    X = keep(q).X1;
-    for w = [keep(q).k, keep(q + 1).k]
+    for w = nbr
         if what(w, 1) ~= 1 || ~segs(what(w, 2)).linear
             continue
         end
@@ -451,8 +489,12 @@ for q = 1:numel(keep) - 1
             end
         end
     end
-    keep(q).X1 = X;
-    keep(q + 1).X0 = X;
+    if q > 0
+        keep(q).X1 = X;
+    end
+    if q < numel(keep)
+        keep(q + 1).X0 = X;
+    end
 end
 
 % runs: maximal sequences of kept parts joined smoothly without a trim
@@ -516,6 +558,18 @@ for q = 1:numel(runs)
     fr(end + 1) = frq; %#ok<AGROW>
 end
 ok = true;
+end
+
+function tf = straight(Q)
+% the control points (r, z) lie on the line through the first and the last, bitwise (a constant r or
+% z gives an exact zero), in order along it: the segment is that line segment for any positive
+% weights (convex hull property), so its offset is the translated segment
+A = Q(1, :);
+AB = Q(end, :) - A;
+R = Q - A;
+cr = R(:, 1) * AB(2) - R(:, 2) * AB(1);
+pr = R * AB';
+tf = any(AB ~= 0) && all(cr == 0) && all(diff(pr) >= 0);
 end
 
 function keep = clip_axis(keep, F)
@@ -616,8 +670,10 @@ s2 = segs(what(parts(end).k, 2));
 prob.tie0 = [false, ~parts(1).trim0 && X0(1) == 0 && s1.ctrl(1, 2) == s1.ctrl(2, 2)];
 prob.tie1 = [false, ~parts(end).trim1 && X1(1) == 0 && s2.ctrl(end, 2) == s2.ctrl(end - 1, 2)];
 prob.monotone = 2;
-% initial knots: the outer knots inside the run and enough to keep every span's turn of the
-% outer tangent within pi/4 (dense where the outer surface curves sharply)
+% initial knots (AGENTS section 5 item 9.1): the outer knots inside the run, and enough to keep
+% every span's turn of the outer tangent within pi/4 (dense where the outer surface curves
+% sharply) and every span's length on the offset profile within the void's half-width there, its
+% largest distance from the axis over the span (dense where the void is narrow)
 kn = [];
 for j = 1:numel(parts)
     sg = segs(what(parts(j).k, 2));
@@ -629,6 +685,11 @@ for j = 1:numel(parts)
         [~, Tb] = seg_eval(sg, grid(g + 1));
         ang = acos(max(-1, min(1, (Ta * Tb') / (norm(Ta) * norm(Tb)))));
         m = max(1, ceil(ang / (pi / 4)));
+        Xs = offset_point(sg, linspace(grid(g), grid(g + 1), 9)', C.d, sn);
+        w = max(Xs(:, 1));
+        if w > 0
+            m = max(m, ceil(sum(sqrt(sum(diff(Xs, 1, 1).^2, 2))) / w));
+        end
         uu = grid(g) + (1:m - 1) / m * (grid(g + 1) - grid(g));
         kn = [kn, sig(j) + ([uu, grid(g + 1)] - parts(j).s0) / (parts(j).s1 - parts(j).s0) * (sig(j + 1) - sig(j))]; %#ok<AGROW>
     end
@@ -973,95 +1034,311 @@ end
 
 % =============================================================== ruled_parallel
 
-function E = planar_inner(G, P, C)
-% a planar face whose four boundaries are convex creases with planar neighbours: translated by d
-% and trimmed by the neighbours' offset planes
+function E = planar_inner(idx, P, C, K)
+% the pieces P(idx) of a patch, each a planar face whose boundaries are all seams: moved by d along
+% its inward normal and bounded, at each boundary, by the neighbour's offset plane where the crease
+% is convex (the two offsets meet there), or by the plane through the boundary normal to the face
+% where the seam is smooth or the crease concave (the offset ends over the boundary; a concave
+% crease's fan face starts there). Empty when a piece is not of this kind.
 E = [];
-if numel(G) ~= 1
-    return
-end
-e = G(1);
-s = e.surf;
-if ~isequal(s.degree, [1 1]) || ~isempty(s.weights) && any(s.weights(:) ~= s.weights(1))
-    return
-end
-[n, c0] = plane_of(e);
-if isempty(n)
-    return
-end
 fields = {'seam_v0', 'seam_u1', 'seam_v1', 'seam_u0'};
-NB = zeros(4, 4);
-for bnd = 1:4
-    nb = e.(fields{bnd});
-    if isempty(nb)
-        return
-    end
-    q = P(nb(1));
-    [n2, c2] = plane_of(q);
-    if isempty(n2) || ~isequal(q.surf.degree, [1 1])
-        return
-    end
-    % convex: the neighbour lies on the inner side of this face's plane
-    ctr = mean(reshape(q.surf.ctrl, [], 3), 1);
-    if n * ctr' - c0 >= 0
-        return
-    end
-    NB(bnd, :) = [n2, c2];
-end
-% offset planes n.x = c - d (outward unit normals)
-own = [n, c0 - C.d];
-NB(:, 4) = NB(:, 4) - C.d;
 corner_b = [1 4; 1 2; 3 4; 3 2];
 ij = [1 1; 2 1; 1 2; 2 2];
-ctrl = zeros(2, 2, 3);
-for q = 1:4
-    Pl = [own; NB(corner_b(q, 1), :); NB(corner_b(q, 2), :)];
-    x = (Pl(:, 1:3) \ Pl(:, 4))';
-    for ax3 = 1:3
-        for r = 1:3
-            nr = Pl(r, 1:3);
-            if nr(ax3) ~= 0 && all(nr([1:ax3 - 1, ax3 + 1:3]) == 0)
-                x(ax3) = Pl(r, 4) / nr(ax3);
-            end
+for ke = idx
+    e = P(ke);
+    s = e.surf;
+    [n, c0] = plane_of(e);
+    if isempty(n) || ~isempty(s.weights) && any(s.weights(:) ~= s.weights(1))
+        E = [];
+        return
+    end
+    NB = zeros(4, 4);
+    for bnd = 1:4
+        nb = e.(fields{bnd});
+        if isempty(nb) || nb(1) == 0
+            E = [];
+            return
+        end
+        switch K{ke, bnd}
+            case 'convex'
+                [n2, c2] = plane_of(P(nb(1)));
+                if isempty(n2)
+                    E = [];
+                    return
+                end
+                NB(bnd, :) = [n2, c2 - C.d];
+            case {'concave', 'smooth'}
+                c = boundary_curve(s, bnd);
+                m = unit_snapped(cross(n, c.ctrl(end, :) - c.ctrl(1, :)));
+                NB(bnd, :) = [m, m * c.ctrl(1, :)'];
+            otherwise
+                E = [];
+                return
         end
     end
-    ctrl(ij(q, 1), ij(q, 2), :) = reshape(x, 1, 1, 3);
+    % offset plane n.x = c - d (outward unit normal n)
+    own = [n, c0 - C.d];
+    ctrl = zeros(2, 2, 3);
+    for q = 1:4
+        Pl = [own; NB(corner_b(q, 1), :); NB(corner_b(q, 2), :)];
+        x = (Pl(:, 1:3) \ Pl(:, 4))';
+        for ax3 = 1:3
+            for r = 1:3
+                nr = Pl(r, 1:3);
+                if nr(ax3) ~= 0 && all(nr([1:ax3 - 1, ax3 + 1:3]) == 0)
+                    x(ax3) = Pl(r, 4) / nr(ax3);
+                end
+            end
+        end
+        ctrl(ij(q, 1), ij(q, 2), :) = reshape(x, 1, 1, 3);
+    end
+    ctrl(:, 2, 3) = ctrl(:, 1, 3);
+    surf = s;
+    surf.ctrl = ctrl;
+    name = [e.name '_inner'];
+    if numel(idx) > 1
+        name = sprintf('%s_inner%d', e.name, find(idx == ke));
+    end
+    ent = new_entry(e, name, surf, ~e.outward, e.offset_kind);
+    ent.u_range = e.u_range;
+    E = [E, ent]; %#ok<AGROW>
 end
-ctrl(:, 2, 3) = ctrl(:, 1, 3);
-surf = s;
-surf.ctrl = ctrl;
-E = new_entry(e, [e.name '_inner'], surf, ~e.outward, e.offset_kind);
-E.u_range = e.u_range;
 end
 
 function [n, c] = plane_of(e)
-% outward unit normal and offset of a planar bilinear face (its four corners coplanar, exactly)
+% outward unit normal and offset of a planar face: a ruled_parallel bilinear patch (two Lines with
+% parallel rulings, F1's bitwise test, so its four corners are coplanar)
 n = [];
 c = [];
-if isempty(e.surf) || ~isequal(e.surf.degree, [1 1])
+if isempty(e.surf) || ~isequal(e.surf.degree, [1 1]) || ~strcmp(e.offset_kind, 'ruled_parallel')
     return
 end
 Q = reshape(e.surf.ctrl, [], 3);
 nn = cross(Q(2, :) - Q(1, :), Q(3, :) - Q(1, :));
-if norm(nn) == 0
+if all(nn == 0)
+    nn = cross(Q(4, :) - Q(2, :), Q(3, :) - Q(1, :));
+end
+if all(nn == 0)
     return
 end
-nn = nn / norm(nn);
-for k = 1:3
-    if sum(nn ~= 0) == 1 && nn(k) ~= 0
-        nn(k) = sign(nn(k));
-    end
-end
-dev = abs((Q - Q(1, :)) * nn');
-if any(dev > 16 * eps * max(1, max(abs(Q(:)))))
-    return
-end
+nn = unit_snapped(nn);
 [~, Su, Sv] = mwecmass.solid.eval_bspline_surface(e.surf, mean(e.surf.knots{1}([1 end])), mean(e.surf.knots{2}([1 end])));
 if (cross(Su, Sv) * nn' > 0) ~= e.outward
     nn = -nn;
 end
 n = nn;
 c = n * Q(1, :)';
+end
+
+function u = unit_snapped(v)
+% unit vector; along a coordinate axis it is that axis exactly
+u = v / norm(v);
+if sum(v ~= 0) == 1
+    u = sign(v);
+end
+end
+
+function K = boundary_kinds(P)
+% per outer entry and boundary: '' (no neighbour face), 'smooth', 'convex' or 'concave'. Smooth
+% when the cross-boundary control legs of the two sides are antiparallel at every boundary control
+% point (cross product exactly zero); otherwise a crease, convex when the neighbour leaves the
+% boundary to the inner side of the tangent plane (n . D < 0 at the boundary's middle, n the
+% outward normal, D the neighbour's derivative into itself), concave when to the outer side
+fields = {'seam_v0', 'seam_u1', 'seam_v1', 'seam_u0'};
+K = repmat({''}, numel(P), 4);
+for k = 1:numel(P)
+    if isempty(P(k).surf)
+        continue
+    end
+    for b = 1:4
+        nb = P(k).(fields{b});
+        if isempty(nb) || nb(1) == 0 || ~isempty(K{k, b}) || isempty(P(nb(1)).surf)
+            continue
+        end
+        kind = seam_kind(P(k), b, P(nb(1)), nb(2));
+        K{k, b} = kind;
+        K{nb(1), nb(2)} = kind;
+    end
+end
+end
+
+function kind = seam_kind(e, b, q, c)
+[Ae, Le] = legs(e.surf, b);
+[Aq, Lq] = legs(q.surf, c);
+if size(Ae, 1) == size(Aq, 1)
+    if isequal(Ae, flipud(Aq)) && ~isequal(Ae, Aq)
+        Lq = flipud(Lq);
+    end
+    ok = true;
+    for i = 1:size(Le, 1)
+        if all(Le(i, :) == 0) || all(Lq(i, :) == 0)
+            continue
+        end
+        if any(cross(Le(i, :), Lq(i, :)) ~= 0) || Le(i, :) * Lq(i, :)' >= 0
+            ok = false;
+            break
+        end
+    end
+    if ok
+        kind = 'smooth';
+        return
+    end
+end
+[ue, ve, ~] = boundary_mid(e.surf, b);
+[~, Su, Sv] = mwecmass.solid.eval_bspline_surface(e.surf, ue, ve);
+n = cross(Su, Sv);
+if ~e.outward
+    n = -n;
+end
+[uq, vq, D] = boundary_mid(q.surf, c);
+[~, Su, Sv] = mwecmass.solid.eval_bspline_surface(q.surf, uq, vq);
+D = D(1) * Su + D(2) * Sv;
+sd = n * D';
+if sd < 0
+    kind = 'convex';
+elseif sd > 0
+    kind = 'concave';
+else
+    kind = 'smooth';
+end
+end
+
+function [A, L] = legs(s, b)
+% boundary control points and the control legs from them into the patch
+switch b
+    case 1
+        A = s.ctrl(:, 1, :);
+        L = s.ctrl(:, 2, :) - A;
+    case 2
+        A = s.ctrl(end, :, :);
+        L = s.ctrl(end - 1, :, :) - A;
+    case 3
+        A = s.ctrl(:, end, :);
+        L = s.ctrl(:, end - 1, :) - A;
+    case 4
+        A = s.ctrl(1, :, :);
+        L = s.ctrl(2, :, :) - A;
+end
+A = reshape(A, [], 3);
+L = reshape(L, [], 3);
+end
+
+function [u, v, D] = boundary_mid(s, b)
+% parameters of the middle of boundary b and the direction (du, dv) into the patch
+ku = s.knots{1};
+kv = s.knots{2};
+um = (ku(1) + ku(end)) / 2;
+vm = (kv(1) + kv(end)) / 2;
+switch b
+    case 1
+        u = um; v = kv(1); D = [0 1];
+    case 2
+        u = ku(end); v = vm; D = [-1 0];
+    case 3
+        u = um; v = kv(end); D = [0 -1];
+    case 4
+        u = ku(1); v = vm; D = [1 0];
+end
+end
+
+function H = general_entries(P, prim, general_vis, K)
+% entries handed to fit_z_faces (surf empty; offset_of names what they offset), primaries only
+fields = {'seam_v0', 'seam_u1', 'seam_v1', 'seam_u0'};
+H = with_offset_of(P([]));
+vis = [P.visible];
+isprim = arrayfun(@(k) prim(vis(k)) == vis(k), 1:numel(P));
+for k = find(ismember(vis, find(general_vis)))
+    H(end + 1) = blank(P(k), P(k).name, P(k).visible, struct('patch', struct('outer', k))); %#ok<AGROW>
+end
+% concave creases between two outer entries, each seam once
+for k = 1:numel(P)
+    for b = 1:4
+        nb = P(k).(fields{b});
+        if ~strcmp(K{k, b}, 'concave') || nb(1) < k || (nb(1) == k && nb(2) < b)
+            continue
+        end
+        j = nb(1);
+        if vis(k) == vis(j) && strcmp(P(k).offset_kind, 'rev_z')
+            continue
+        end
+        if ~(isprim(k) || isprim(j))
+            continue
+        end
+        crv = boundary_curve(P(k).surf, b);
+        H(end + 1) = blank(P(k), sprintf('%s_%s_crease', P(k).name, P(j).name), min(vis([k j])), ...
+            struct('crease', struct('curve', crv, 'outer', [k j]))); %#ok<AGROW>
+    end
+end
+% vertices: three or more creases end there and all are concave
+V = zeros(0, 3);
+owner = zeros(0, 2);
+for k = 1:numel(P)
+    if isempty(P(k).surf)
+        continue
+    end
+    Ck = [reshape(P(k).surf.ctrl(1, 1, :), 1, 3); reshape(P(k).surf.ctrl(end, 1, :), 1, 3); ...
+        reshape(P(k).surf.ctrl(1, end, :), 1, 3); reshape(P(k).surf.ctrl(end, end, :), 1, 3)];
+    V = [V; Ck]; %#ok<AGROW>
+    owner = [owner; repmat(k, 4, 1), (1:4)']; %#ok<AGROW>
+end
+[U, ~, iu] = unique(V, 'rows');
+for i = 1:size(U, 1)
+    I = unique(owner(iu == i, 1))';
+    nc = 0;
+    allc = true;
+    for k = I
+        for b = 1:4
+            nb = P(k).(fields{b});
+            if isempty(nb) || nb(1) == 0 || ~any(nb(1) == I) || nb(1) < k || (nb(1) == k && nb(2) < b)
+                continue
+            end
+            if ~any(strcmp(K{k, b}, {'convex', 'concave'}))
+                continue
+            end
+            c = boundary_curve(P(k).surf, b);
+            if ~(isequal(c.ctrl(1, :), U(i, :)) || isequal(c.ctrl(end, :), U(i, :)))
+                continue
+            end
+            nc = nc + 1;
+            allc = allc && strcmp(K{k, b}, 'concave');
+        end
+    end
+    if nc >= 3 && allc && any(isprim(I))
+        H(end + 1) = blank(P(I(1)), sprintf('vertex_%s', strjoin({P(I).name}, '_')), min(vis(I)), ...
+            struct('vertex', struct('point', U(i, :), 'outer', I))); %#ok<AGROW>
+    end
+end
+end
+
+function e = blank(src, name, visible, offset_of)
+e = src;
+e.name = name;
+e.surf = [];
+e.exact = false;
+e.fit = [];
+e.visible = visible;
+e.u_range = [];
+e.z_range = [];
+e.pole = [false false];
+e.c0_u = [];
+e.c0_v = [];
+e.offset_kind = '';
+for f = {'seam_u0', 'seam_u1', 'seam_v0', 'seam_v1'}
+    e.(f{1}) = [];
+end
+e.offset_of = offset_of;
+end
+
+function E = with_offset_of(E)
+if ~isfield(E, 'offset_of')
+    if isempty(E)
+        f = fieldnames(E)';
+        args = [f; repmat({{}}, 1, numel(f))];
+        E = struct(args{:}, 'offset_of', {});
+    else
+        [E.offset_of] = deal([]);
+    end
+end
 end
 
 function E = ruled_inner(G, P, built)
@@ -1129,8 +1406,8 @@ f = fields{b};
 end
 
 function tf = smooth_seam(e, be, q, bq)
-% the cross-boundary control legs of the two patches are parallel and point the same way (rounding
-% of the control points: 16 ulp of the leg lengths) at every row with nonzero legs
+% the cross-boundary control legs of the two patches are parallel (cross product exactly zero) and
+% point the same way at every row with nonzero legs
 s = e.surf;
 f = q.surf;
 if be == 1
@@ -1154,8 +1431,7 @@ for i = 1:size(la, 1)
     if all(la(i, :) == 0) || all(lb(i, :) == 0)
         continue
     end
-    cr = norm(cross(la(i, :), lb(i, :)));
-    if cr > 16 * eps * norm(la(i, :)) * norm(lb(i, :)) || la(i, :) * lb(i, :)' <= 0
+    if any(cross(la(i, :), lb(i, :)) ~= 0) || la(i, :) * lb(i, :)' <= 0
         tf = false;
         return
     end
@@ -1321,9 +1597,6 @@ zlo = min(zz(:));
 zhi = max(zz(:));
 flatz = zz(zz(:, 1) == zz(:, 2), 1);
 zcheck = unique(zcheck(zcheck > zlo & zcheck < zhi & ~ismember(zcheck, flatz)));
-if numel(zcheck) > 40
-    zcheck = zcheck(round(linspace(1, numel(zcheck), 40)));
-end
 sec_reason = '';
 for h = zcheck'
     try
@@ -1347,7 +1620,8 @@ if ~isempty(sec_reason)
         pr(k).M3_reason = strjoin([{pr(k).M3_reason}, {sec_reason}], '; ');
     end
 end
-rep = struct('patches', pr, 'ok', all([pr.M1]) && all([pr.M2]) && all([pr.M3]), 'cap_reached', cap);
+rep = struct('patches', pr, 'ok', all([pr.M1]) && all([pr.M2]) && all([pr.M3]), 'cap_reached', cap, ...
+    'n_sections', numel(zcheck));
 end
 
 function tf = at_clip(c, C)
