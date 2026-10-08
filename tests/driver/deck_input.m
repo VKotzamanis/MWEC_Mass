@@ -14,7 +14,6 @@ function in = deck_input(deck_file, mode, cache_dir, repo_root)
   in.files.geometry_cache_dir = cache_dir;
   in.materials.realisation_type = mode;
   in.materials.modular_precast.wall_height = 1.0;
-  in.materials.modular_precast.n_sub = 101;
   in.geometry.n_z_levels = 20;
   in.geometry.num_ballast_sections = 4;
   in.bem.hams_dir = '';

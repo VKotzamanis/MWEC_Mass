@@ -22,9 +22,6 @@ function test_stage2_c1_formulation()
     mode = modes{m};
     in = WEC_User_Input();
     in.materials.realisation_type = mode;
-    if strcmp(mode, 'modular_precast')
-      in.materials.modular_precast.n_sub = 101;   % the n_sub = 100 grid hits a roundoff-sized area in the circle-based floors (tools/baseline_run.m)
-    end
     hydro_table = mwecmass.bem.load_hydro_cache(fullfile(root, 'tests', 'fixtures', 'C1_wamit_cache_v5.mat'));
     mesh_sizing = struct();
     [mesh_sizing.mesh_Nu, mesh_sizing.mesh_Nv, ~] = mwecmass.bem.wamit.restore_mesh_sizing_from_cache(hydro_table, in);
