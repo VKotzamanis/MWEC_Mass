@@ -31,12 +31,16 @@ if store.isKey(key)
 end
 E = geo.outer;
 E = E(arrayfun(@(e) ~isempty(e.surf), E));
-% samples: points, inward unit normals, face and parameters
+flats = cell(1, numel(E));
+% samples: points, inward unit normals, face and parameters; flat: index of the sample's
+% constant-z interval in flats{face} (0 off them)
 S = zeros(0, 3);
 N = zeros(0, 3);
 id = zeros(0, 3);
+flat = zeros(0, 1);
 for k = 1:numel(E)
     s = E(k).surf;
+    flats{k} = flat_intervals(s);
     us = samples(s.knots{1});
     vs = samples(s.knots{2});
     [UU, VV] = ndgrid(us, vs);
@@ -48,9 +52,15 @@ for k = 1:numel(E)
     if E(k).outward
         n = -n;
     end
+    fk = zeros(nnz(good), 1);
+    ug = UU(good);
+    for j = 1:size(flats{k}, 1)
+        fk(ug >= flats{k}(j, 1) & ug <= flats{k}(j, 2)) = j;
+    end
     S = [S; Pk(good, :)]; %#ok<AGROW>
     N = [N; n]; %#ok<AGROW>
-    id = [id; [repmat(k, nnz(good), 1), UU(good), VV(good)]]; %#ok<AGROW>
+    id = [id; [repmat(k, nnz(good), 1), ug, VV(good)]]; %#ok<AGROW>
+    flat = [flat; fk]; %#ok<AGROW>
 end
 m = size(S, 1);
 best = zeros(m, 1);
@@ -94,6 +104,7 @@ zz = reshape([E.z_range], 2, [])';
 for h = zr(zr > min(zz(:)) & zr < max(zz(:)))
     d_close = min(d_close, plane_meeting(E, S, N, id, h, d_close));
 end
+d_close = min(d_close, contact_events(E, flats, S, N, id, flat, zr, d_close));
 store(key) = d_close;
 end
 
@@ -390,4 +401,295 @@ catch
     return
 end
 tf = inpolygon(Q(1), Q(2), L.pts(:, 1), L.pts(:, 2));
+end
+
+function F = flat_intervals(s)
+% u-intervals (whole knot spans) on which every control point acting there has one z, bitwise:
+% the face is the plane z = F(:, 3) there and its normal is +-e_z exactly. Rows [ua ub z].
+p = s.degree(1);
+U = s.knots{1};
+Z = s.ctrl(:, :, 3);
+nu = size(Z, 1);
+ku = unique(U);
+F = zeros(0, 3);
+for a = 1:numel(ku) - 1
+    rows = find(U(1:nu) < ku(a + 1) & U(p + 2:nu + p + 1) > ku(a));
+    z = Z(rows, :);
+    if all(z(:) == z(1))
+        if ~isempty(F) && F(end, 2) == ku(a) && F(end, 3) == z(1)
+            F(end, 2) = ku(a + 1);
+        else
+            F(end + 1, :) = [ku(a) ku(a + 1) z(1)]; %#ok<AGROW>
+        end
+    end
+end
+end
+
+function rho = contact_events(E, flats, S, N, id, flat, zr, rho_cap)
+% smallest radius of a ball inscribed in the hull, centred in z_range, that touches the surface at
+% three or four points c = q_i + rho n_i (n_i inward unit normals) of one of these kinds:
+%   critical: 0 lies in the convex hull of the n_i (three coplanar normals, det = 0, or four): the
+%     void pinches or vanishes there without a double normal;
+%   flat face: one contact on a constant-z interval (n = +-e_z) and 0 in the convex hull of the
+%     horizontal parts of the others (two antiparallel ones with det = 0, or three): that face's
+%     offset shrinks to nothing (or splits) because the layers of the other contacts meet over it.
+% A fold of one layer is neither: its contacts lie on one connected arc of normals, within an open
+% hemisphere, and a flat face does not fold. A sign of a convex weight that rounding decides
+% belongs to a configuration that reduces to fewer contacts, a double normal at the same radius.
+% Seeds: the ball of each sample point that touches the surface there and passes through another
+% sample point, smallest radius (at most twice rho_cap, the smallest event found so far), with the
+% sample points nearest to its sphere, one per normal direction; refined by Levenberg-Marquardt
+% steps on the contact parameters, the centre and the radius to the solver's stopping rule
+% (residual relative 1e-10 of the coordinates involved). The ball counts when no surface point is
+% closer to its centre than rho, to the same stopping rule.
+rho = Inf;
+m = size(S, 1);
+cap = 2 * rho_cap;
+seeds = zeros(0, 6);
+c0 = zeros(0, 3);
+r0 = zeros(0, 1);
+for i = 1:m
+    dS = S - S(i, :);
+    w = dS * N(i, :)';
+    ok = w > 0;
+    if ~any(ok)
+        continue
+    end
+    ri = min(sum(dS(ok, :).^2, 2) ./ (2 * w(ok)));
+    if ri > cap
+        continue
+    end
+    c = S(i, :) + ri * N(i, :);
+    dev = sqrt(sum((S - c).^2, 2)) - ri;
+    dev(sum((c - S) .* N, 2) <= 0) = Inf;
+    dev(i) = Inf;
+    [ds, o] = sort(dev);
+    o = o(isfinite(ds));
+    pick = i;
+    for j = o'
+        if numel(pick) == 6
+            break
+        end
+        if all(N(pick, :) * N(j, :)' < cos(pi / 6))
+            pick(end + 1) = j; %#ok<AGROW>
+        end
+    end
+    others = pick(2:end);
+    for k = 3:4
+        if numel(others) < k - 1
+            continue
+        end
+        sub = nchoosek(others, k - 1);
+        for r = 1:size(sub, 1)
+            q = [i, sub(r, :)];
+            if event_kind(N(q, :), flat(q) > 0)
+                seeds(end + 1, :) = [sort(q), zeros(1, 4 - k), k, 0]; %#ok<AGROW>
+                c0(end + 1, :) = c; %#ok<AGROW>
+                r0(end + 1, 1) = ri; %#ok<AGROW>
+            end
+        end
+    end
+end
+if isempty(seeds)
+    return
+end
+[~, u] = unique(seeds(:, 1:5), 'rows');
+seeds = seeds(u, :);
+c0 = c0(u, :);
+r0 = r0(u);
+for k = 3:4
+    sel = seeds(:, 5) == k;
+    if ~any(sel)
+        continue
+    end
+    q = seeds(sel, 1:k);
+    [x, ok, nn, L] = refine_contacts(E, flats, id, flat, N, q, c0(sel, :), r0(sel), k);
+    c = x(:, 2 * k + 1:2 * k + 3);
+    r = x(:, end);
+    good = ok & r > 0 & r < min(rho, rho_cap) & c(:, 3) >= zr(1) & c(:, 3) <= zr(2);
+    for g = find(good)'
+        good(g) = event_kind(reshape(nn(g, :, :), k, 3), flat(q(g, :)) > 0);
+    end
+    if ~any(good)
+        continue
+    end
+    g = find(good);
+    dmin = surface_distance(E, c(g, :));
+    in = dmin >= r(g) - 1e-10 * L(g);
+    if any(in)
+        rho = min(rho, min(r(g(in))));
+    end
+end
+end
+
+function tf = event_kind(n, isflat)
+% n: [k x 3] inward unit normals of the contacts; isflat: contacts on constant-z intervals
+k = size(n, 1);
+tf = same_sign(null_vector(n'));
+if tf
+    return
+end
+for f = find(isflat(:)')
+    h = n(setdiff(1:k, f), 1:2);
+    if k == 3
+        tf = h(1, :) * h(2, :)' < 0;
+    else
+        tf = same_sign(null_vector(h'));
+    end
+    if tf
+        return
+    end
+end
+end
+
+function x = null_vector(A)
+[~, ~, V] = svd(A);
+x = V(:, end);
+end
+
+function tf = same_sign(x)
+tf = all(x > 0) || all(x < 0);
+end
+
+function [x, conv, nn, L] = refine_contacts(E, flats, id, flat, N, q, c0, r0, k)
+% Levenberg-Marquardt on x = [u_1 v_1 ... u_k v_k, c, rho] for q_i + rho n_i = c (and, for three
+% contacts, det(n_1, n_2, n_3) = 0: rho stationary along the curve of balls touching all three).
+% A contact seeded on a constant-z interval stays on it (its u clamped to the interval) and takes
+% the plane's exact height and normal.
+n = size(q, 1);
+nx = 2 * k + 4;
+x = zeros(n, nx);
+F = id(q, 1);
+F = reshape(F, n, k);
+FL = false(n, k);
+ZF = zeros(n, k);
+SG = zeros(n, k);
+lo = -Inf(n, nx);
+hi = Inf(n, nx);
+for j = 1:k
+    x(:, 2 * j - 1) = id(q(:, j), 2);
+    x(:, 2 * j) = id(q(:, j), 3);
+    for r = 1:n
+        s = E(F(r, j)).surf;
+        lo(r, 2 * j - 1:2 * j) = [s.knots{1}(1), s.knots{2}(1)];
+        hi(r, 2 * j - 1:2 * j) = [s.knots{1}(end), s.knots{2}(end)];
+        fi = flat(q(r, j));
+        if fi > 0
+            iv = flats{F(r, j)}(fi, :);
+            lo(r, 2 * j - 1) = iv(1);
+            hi(r, 2 * j - 1) = iv(2);
+            FL(r, j) = true;
+            ZF(r, j) = iv(3);
+            SG(r, j) = sign(N(q(r, j), 3));
+        end
+    end
+end
+x(:, 2 * k + 1:2 * k + 3) = c0;
+x(:, end) = r0;
+lo(:, end) = 0;
+[R, J] = k_system(E, x, F, FL, ZF, SG, k);
+% damping relative to the largest squared singular value of J; steps by the SVD, so that a
+% singular J (contacts on a continuum, as on a surface of revolution) takes the minimum-norm step
+lam = 1e-12 * ones(n, 1);
+active = true(n, 1);
+for it = 1:200
+    % iterate until no step lowers the residual, then judge the stopping rule
+    active = active & lam < 1;
+    if ~any(active)
+        break
+    end
+    xn = x;
+    for r = find(active)'
+        [Uj, Sj, Vj] = svd(reshape(J(r, :, :), [], nx), 'econ');
+        sj = diag(Sj);
+        step = -Vj * ((sj ./ (sj.^2 + lam(r) * sj(1)^2)) .* (Uj' * R(r, :)'));
+        xn(r, :) = min(max(x(r, :) + step', lo(r, :)), hi(r, :));
+    end
+    a = find(active);
+    Rn = k_system(E, xn(a, :), F(a, :), FL(a, :), ZF(a, :), SG(a, :), k);
+    better = sum(Rn.^2, 2) < sum(R(a, :).^2, 2);
+    b = a(better);
+    x(b, :) = xn(b, :);
+    lam(b) = max(lam(b) / 10, eps);
+    lam(a(~better)) = lam(a(~better)) * 100;
+    if any(better)
+        [R(b, :), J(b, :, :)] = k_system(E, x(b, :), F(b, :), FL(b, :), ZF(b, :), SG(b, :), k);
+    end
+end
+[R, ~, nn] = k_system(E, x, F, FL, ZF, SG, k);
+[conv, L] = converged(R, x, k);
+end
+
+function [conv, L] = converged(R, x, k)
+c = x(:, 2 * k + 1:2 * k + 3);
+P = zeros(size(x, 1), 3 * k);
+for j = 1:k
+    P(:, 3 * j - 2:3 * j) = c - R(:, 3 * j - 2:3 * j);
+end
+L = max(abs([c, P, x(:, end)]), [], 2);
+conv = sqrt(sum(R(:, 1:3 * k).^2, 2)) <= 1e-10 * L;
+if size(R, 2) > 3 * k
+    conv = conv & abs(R(:, end)) <= 1e-10;
+end
+end
+
+function [R, J, nn] = k_system(E, x, F, FL, ZF, SG, k)
+n = size(x, 1);
+nx = 2 * k + 4;
+ne = 3 * k + (k == 3);
+ow = double([E.outward]);
+c = x(:, 2 * k + 1:2 * k + 3);
+rho = x(:, end);
+R = zeros(n, ne);
+J = zeros(n, ne, nx);
+nn = zeros(n, k, 3);
+nU = zeros(n, k, 3);
+nV = zeros(n, k, 3);
+for j = 1:k
+    [P, Pu, Pv, Puu, Puv, Pvv] = eval_faces(E, F(:, j), x(:, 2 * j - 1), x(:, 2 * j));
+    m = cross(Pu, Pv, 2);
+    Lm = sqrt(sum(m.^2, 2));
+    nh = m ./ Lm;
+    mu = cross(Puu, Pv, 2) + cross(Pu, Puv, 2);
+    mv = cross(Puv, Pv, 2) + cross(Pu, Pvv, 2);
+    nu = (mu - nh .* sum(nh .* mu, 2)) ./ Lm;
+    nv = (mv - nh .* sum(nh .* mv, 2)) ./ Lm;
+    sg = 1 - 2 * reshape(ow(F(:, j)), [], 1);
+    nh = nh .* sg;
+    nu = nu .* sg;
+    nv = nv .* sg;
+    fl = FL(:, j);
+    if any(fl)
+        P(fl, 3) = ZF(fl, j);
+        Pu(fl, 3) = 0;
+        Pv(fl, 3) = 0;
+        nh(fl, :) = [zeros(nnz(fl), 2), SG(fl, j)];
+        nu(fl, :) = 0;
+        nv(fl, :) = 0;
+    end
+    rows = 3 * j - 2:3 * j;
+    R(:, rows) = P + rho .* nh - c;
+    J(:, rows, 2 * j - 1) = Pu + rho .* nu;
+    J(:, rows, 2 * j) = Pv + rho .* nv;
+    for a = 1:3
+        J(:, rows(a), 2 * k + a) = -1;
+    end
+    J(:, rows, nx) = nh;
+    nn(:, j, :) = reshape(nh, n, 1, 3);
+    nU(:, j, :) = reshape(nu, n, 1, 3);
+    nV(:, j, :) = reshape(nv, n, 1, 3);
+end
+if k == 3
+    g = @(a, b, c3) sum(a .* cross(b, c3, 2), 2);
+    n1 = reshape(nn(:, 1, :), n, 3);
+    n2 = reshape(nn(:, 2, :), n, 3);
+    n3 = reshape(nn(:, 3, :), n, 3);
+    R(:, ne) = g(n1, n2, n3);
+    J(:, ne, 1) = g(reshape(nU(:, 1, :), n, 3), n2, n3);
+    J(:, ne, 2) = g(reshape(nV(:, 1, :), n, 3), n2, n3);
+    J(:, ne, 3) = g(n1, reshape(nU(:, 2, :), n, 3), n3);
+    J(:, ne, 4) = g(n1, reshape(nV(:, 2, :), n, 3), n3);
+    J(:, ne, 5) = g(n1, n2, reshape(nU(:, 3, :), n, 3));
+    J(:, ne, 6) = g(n1, n2, reshape(nV(:, 3, :), n, 3));
+end
 end
