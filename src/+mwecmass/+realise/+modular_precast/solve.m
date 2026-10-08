@@ -37,7 +37,8 @@ function [sol, ctx] = solve(ctx, start, P)
 %   equalities held (smallest objective), then flotation held (smallest |GM residual|), then
 %   neither (smallest largest residual); ties by the objective. Flotation ranks first because it
 %   must hold in every reported state (item 32). Each step starts from the previous step's point
-%   and evaluates it, so its point ranks no worse.
+%   and keeps it when the chosen point ranks worse on its adaptive fit, so its point ranks no
+%   worse than the previous step's.
 %   Escalation (AGENTS section 3 items 6, 20, 31; OD6 option ii):
 %     fixed_draft  vs = Stage-2 value, ballast within k*;
 %     spill        only when the two equalities are not both met: the same ballast variable, its
@@ -219,6 +220,12 @@ end
 ctx = store('ctx');
 ctx.knots_from = [];
 store('ctx') = ctx;
+% points are ranked on the knots of their round; the step's start, built on its adaptive fit, is
+% kept when the chosen point ranks worse on its own adaptive fit
+if ~r0.failed && is_less(rank_key(r0.res, r0.f, P.tol_eq), rank_key(r.res, r.f, P.tol_eq))
+    x = x0;
+    r = r0;
+end
 failed = store('failed');
 if ~isempty(failed)
     add_note(store, sprintf('step %s: %d failed evaluations, counted as rejected points (first: %s)', ...
