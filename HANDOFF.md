@@ -1,199 +1,220 @@
 # HANDOFF — MWEC_Mass exact-geometry refactor
 
-Updated 2026-10-08 01:15 UTC on `claude/lucid-cray-7o9442`. Process file for agents: the
-orchestrator updates it at every milestone and at least every 100k tokens; delete it in T12.
+Pause point of 2026-10-08 (UTC), written for the owner, who continues locally in MATLAB, and for any
+agent that picks the work up. Every branch named here is on GitHub (`VKotzamanis/MWEC_Mass`).
+Section 9 holds the branch heads at the moment of the pause.
 
-## 1. Goal
+## 1. Goal and binding documents
 
-Make the MATLAB code correct per the owner's rules: every geometric operation from the `.ms2`
+Make the MATLAB code correct by the owner's rules: every geometric operation from the `.ms2`
 parametric definition (no shape assumptions), Stage 3 realised from the whole Stage-2 solution on
-one exact geometry kernel (UHPC modular precast and steel thin shell as separate pipelines), and
-STEP output of the realised bodies. The binding documents, in this order:
-- `AGENTS.md` — owner rules (§1), current code (§2), owner corrections and decisions (§3 items
-  1–36), issues (§4), expected outcome (§5), decisions log (§8).
-- `docs/plans/2026-10-07-interfaces.md` — interface contract: structs and functions (§1–2),
-  ownership and stand-ins (§3), shared-file order (§4), invariants (§5), lanes and joins (§6).
-  It wins over the plan where they differ.
-- `docs/plans/2026-10-06-exact-geometry-stage3-step.md` — task sections T0…T13, deletion register.
+one exact geometry kernel (UHPC modular precast and steel thin shell as separate pipelines), STEP
+output of the realised bodies. In one line: Stage 3 = the Stage-2 design built from real material,
+checked against Stage 2.
 
-## 2. Progress tracker
+Binding documents, in this order:
+- `AGENTS.md`: owner rules (§1, rules 1–12), the v1.0 code (§2), owner corrections and decisions
+  (§3 items 1–36), issues I1–I23 (§4), expected outcome (§5), decision log (§8).
+- `docs/plans/2026-10-07-interfaces.md`: interface contract (structs S1–S8, functions F1–F14,
+  stand-ins, shared-file order §4, invariants I1–I9, lanes §6, general hulls §8). It wins over the
+  plan where they differ. Section 6 below lists decisions not yet written into it.
+- `docs/plans/2026-10-06-exact-geometry-stage3-step.md`: task sections T0…T13 and the deletion
+  register D1–D17.
 
-Main `claude/lucid-cray-7o9442` = `9447e9c` + handoff commits: general-kernel amendment, AGENTS rule 12, SK2, T0d, T4a; suite 30 passed, 2 skipped (627 s). Every task branch `task/<id>` is on GitHub.
+## 2. What is where
 
-| Task | What | Lane | Status | Grade (rounds) | Head |
-|---|---|---|---|---|---|
-| T0 | test harness, Octave shims, baselines | A | merged | 9 (3) | `c2234c7` |
-| T1 | exact outer rows and normals | A | merged | 9 (3) | `85443fb` |
-| T9 | AP214 STEP writer, `tests/step_check.py` | A | merged | 9 (2) | `53067fd` |
-| spec | owner decisions, plan, contract | — | merged `7fcd02d` | 9 (5) | `e60d6d7` |
-| T0c | parser resolves entities once (4.3× faster, bit-identical) | N | merged `a935491` | 9 (2) | `80ef938` |
-| SK | stand-in kit (box, cylinder, closed forms) | K | merged `8eb4552` | 9 (3) | `a03bc4b` |
-| T0b | renames (`z_ballast`, `rho_air`, `rho_ballast`, `uhpc`) | N | merged `b4523aa` | 9 (4) | `c64a4d0` |
-| spec2 | contract amendment: general kernel (owner) + errata | K | merged `e7e9114` | 9 (round 8; errata 9; merge 10) | `5ce48fc` |
-| T5 | UHPC Stage 3 a: split, build, check, store | U | accepted (round 5); waits for J2 | 7, 8, 8, 8, 9 | `31f470f` |
-| T6 | UHPC Stage 3 b: optimisation, spill, closest fail | U | round 1: 5; fix continuing from saved WIP `0fabdac` (`wf_a7e645af-0f4`) | 5 | task/T6 `0fabdac` |
-| T7 | thin-shell rebuild | S | accepted (round 7: code correct; 2 minor items fixed and quick-checked); waits for J2 | 7, 7, 7, 8, 8, 8, 8 + quick check | `4c310df` |
-| T8 | figures from the realised solid | O | accepted (round 10); waits for J2 | 8, 8, 8, 8, 6, 6, 6, 6, 7, 9 | `3b0a0be` |
-| T10 | Stage-3 STEP exports | O | accepted, waits for J2 | 9 (3) | `07856a2` |
-| T0d | geometry cache of `build_config` (C1: fresh build 421 s CPU, reload 0.44 s) | P | merged `f52e232` | 9 (2); merge 10 | `158d77d` |
-| T4a | Stage-2 changes (delete `c_mono`, `c_mass_min`; bottom-filled start; bounds) | P | merged `9447e9c` (suite 30 passed, 2 skipped; merge grade 10) | 7, 8 + quick check | `6687df5` |
-| T4b | Stage-2 floors from the kernel (merges after J1) | P | implementing from saved WIP `783431f` (`wf_451500b2-1d3`) | — | task/T4b `783431f` |
-| SK2 | stand-ins updated to spec2 | SK2 | merged `1bb06d6` | 9 (3); merge 10 | `753a11e` |
-| T2a | exact-path offset, fold trim, adaptive fit | K1 | round 1: 5; fix restarted after the 23:59 restart (`wf_fe98f6d8-fda`); the first fixer left no edits | 5 | task/T2a `23ddfe9` |
-| T2b | general path (refits, flat regions, mirrors) | K | after T2a, ∥ T3 | — | — |
-| T3 | bodies and exact properties | K3 | F5, F6, F6b, F7 committed (`734145a`); continuing (`wf_5f20013d-b64`) | — | task/T3 `734145a` |
-| J1 | merge T2a, T2b, T3; owner checkpoint | — | pending | — | — |
-| J2 | merge T5, T6, T7, T8, T10 (in order); first whole-pipeline runs; owner checkpoints after T6, T10 | — | pending | — | — |
-| G | T11 cleanup → T12 docs → T13 final review | — | pending | — | — |
+### 2.1 Main branch `claude/lucid-cray-7o9442` (merged, tests green)
 
-## 3. How the work is run
+| Merged | Content |
+|---|---|
+| T0 | Octave test harness `tests/run_tests.m`, Octave shims, baselines, Python reference evaluator `tests/reference/c1_reference.py` |
+| T1 | exact outer rows and normals of the `.ms2` surfaces |
+| T9 | AP214 STEP writer `+output/+step/write_step.m`, `validate_brep`, `tests/step_check.py` (gmsh import check) |
+| T0c | `MS2Parser` resolves each entity once (4.3× faster, bit-identical outputs) |
+| T0b | renames: `z_ballast`, `rho_air`, `rho_ballast`, `uhpc` names (rule 10) |
+| SK, SK2 | stand-in kit `tests/standins`, `tests/standin_kit` (closed-form cylinder and box bodies) |
+| T0d | `build_config` saves its geometry products (`Output/cache/`, gitignored; key = deck, inputs, source) and reloads them (C1: 0.2–0.44 s instead of 6–7 min in Octave) |
+| T4a | Stage 2: `c_mono` and `c_mass_min` deleted in both copies; second, bottom-filled start; upper density bound per mode from the material (7500 thin shell, 2500 UHPC); thin-shell t_min = t_init = 25.4 mm |
+| — | `tests/run_tests.m` now runs under MATLAB too (shims only in Octave; an interactive session stays open) |
 
-- **Metrics decide (AGENTS rule 12).** Every acceptance, rejection and report to the owner cites
-  numbers computed from the code's outputs. Never send the owner a picture as evidence; send the
-  failing metric. Figures for the owner: real C1 XZ (y = 0) and YZ (x = 0) sections from J1 on, with
-  the metrics printed beside them.
-- The orchestrator delegates; implementers and graders are subagents run by the Workflow tool.
-  Scripts: `docs/plans/orchestration/lane.js` (with rule 15 and grader item 7, judge by metrics) and
-  `merge.js`. New lane launches use the session copy `workflows/scripts/mwec-lane-v2.js` (a task with
-  `resume: {last, r0}` starts from its last verdict: fix, then two grading rounds); resume a
-  workflow started before 13:50 UTC only with its own script `mwec-lane-wf_d681e461-e66.js`
-  (resume reuses cached agent calls only while the prompts are unchanged).
-- **Lane workflow** (`lane.js`, args `{lane, mode: 'chain'|'parallel', tasks: [{id, wt, branch,
-  base, model, effort, brief}]}`): per task, implementer → Opus 5.5 xhigh grader → fixer, at most 4
-  grading rounds. The grader accepts only with no rule violation, every acceptance item reproduced
-  by itself, all tests passing, its own exact test written, and the minimum of five scores ≥ 9; it
-  reports `spec_issues` instead of enforcing a wrong spec. Implementers commit after every
-  deliverable and push their task branch after every commit. Workflows never merge.
-- **Test time (owner, 8 Oct 01:10 UTC).** While working, agents and graders run only the tests their
-  change affects (`TESTS_FILTER`); the whole suite runs once, before acceptance and at every merge.
-  Verified geometry is loaded, not recomputed: `tests/c1_kernel_cache.m` (T3) saves the C1 outer NURBS
-  and inner sets under `/home/user/geomcache`, keyed by SHA-256 of `Input/C1.ms2` and `src/+mwecmass/+solid`;
-  `build_config` products are cached by T0d. Slowest tests measured: T6 known-optimum 402 s and
-  failed-evaluations 382 s, T5 stage-3 154 s, T3 C1 body 148 s, T0d cache rebuild 131 s.
-- **Minor findings (owner approved, 2026-10-07 21:10 UTC).** The grader marks each required fix
-  `blocking` or `minor` and sets `minor_only` when only minor items remain. Then the fixer corrects
-  them and a quick check (Sonnet medium) confirms exactly those items, the clean pushed tree and the
-  affected tests; the task is accepted without another full round. Blocking findings still get a full
-  independent round. `lane.js` `minorPath`; a resume whose `last.minor_only` is true starts there.
-- **Merge workflow** (`merge.js`, args `{branches: [...]}`): merge `--no-ff`, run the suite, push
-  only if green; an Opus xhigh grader checks diff = union of the branches, reruns the suite, checks
-  the remote. One merge at a time.
-- Models: Opus 5.5 high for kernel and Stage-3 tasks (SK, T2a, T2b, T3, T5, T6, T7, contract
-  edits); Sonnet 5.5 high for T0b, T0c, T0d, T4a, T4b, T8, T10. Graders: Opus 5.5 xhigh.
-- Worktrees `/home/user/wt/<task>` on `task/<task>`. A chain's next task branches from the
-  previous accepted branch. Shared files (contract §4): a task edits one only when the earlier tasks
-  in its row are merged into its base; otherwise it records the exact edit as `deferred`, applied as
-  its last commit at J2.
-- Testing: GNU Octave 8.4 (`bash tools/install_toolchain.sh` in a fresh container), suite
-  `octave --no-gui --quiet tests/run_tests.m` (24 pass, ~210 s). Owner: no whole-pipeline run before
-  J2; `MWEC_REGRESSION=1` enables the pipeline regression (24–94 min per mode in Octave).
-- A workflow runs at most 2 agents at once (4 CPUs − 2); run several workflows for parallelism.
-- **Owner (16:35 UTC): one Octave process per core, never shared, never spread across CPUs.**
-  `docs/plans/orchestration/octave_one_core.sh` is installed as `/usr/bin/octave` (original moved to
-  `/usr/bin/octave.real`): each run takes a free core (lock `/tmp/octave-core-<k>.lock`, held until it
-  exits), is pinned there with `taskset`, runs single-threaded BLAS, and waits while all 4 cores are
-  busy. Check it after a container restart (`taskset -cp` on a running `octave-cli`). Lane rule 16.
-  Bitwise tests recorded under multi-threaded BLAS: if one fails only now, check the thread count first.
+Last full suite on main (Octave, after T4a): 30 passed, 0 failed, 2 skipped (the two pipeline
+regressions, which run only with `MWEC_REGRESSION=1`).
 
-## 4. Decisions not yet in the merged contract
+### 2.2 Task branches (not merged)
 
-- spec2 (general kernel, owner: "No it needs to be generalized"): exact path where an entity
-  converts exactly and z depends on one parameter (F1 orders it as u), monotone; otherwise faces
-  refitted through exact points with z as a parameter, split at z-turning rows and C0 seams,
-  untrimmed; the only number is ε = 0.01·t_min (fit share ε/4 derived); one closed loop per section.
-  Orchestrator decisions O1–O7 (OD3 wording; F1 swaps u/v; T2 → T2a + T2b; SK2; shared-edge
-  equality = same degree, bitwise control points and weights, knots equal after the affine map to
-  [0, 1]; column splits at patch-corner heights; split_wall_box scope). Parser facts: unknown entity
-  types are skipped silently and an unknown mirror plane is read as y = 0 with a warning.
-- Contract errata to apply right after spec2 merges (SK grader): F3 exempt from `NotAnalytic`; F9
-  stand-in identifies the fixture by `geo.analytic` or `hull_name`, F10 by `props.analytic`; a file-map
-  row for `tests/standin_kit/*` (J1, J2 owners); thin shell: `z_ballast` equal to the inner `z_lo`
-  cuts the inner set (no zero-thickness layer); S4: precast joint faces take precedence over inner
-  ends on a module edge; `tests/README.md` folders table → T12.
-- Orchestrator decisions of 14:40 UTC (contract errata to apply at J2 through an author agent and
-  grader): F10 `pass` = the four metrics and flotation; the GM equality residual is reported beside
-  the check (AGENTS item 27 and §5 item 11 clarified on main from the owner's items 4.4 and 32; the
-  SK stand-in F10 still counts the GM row and must be aligned). F11 `out_dir` = the type folder
-  (`export_stage3` adds `step`). Thin-shell floors live in `config.per_strip_density_lb` (T4b).
-  t_max,i per UHPC module = F2b on the module's hollow z-range − ε/2 (contract "Bounds" line).
-  Kernel errors (VoidClosed, JointNotNested, FitNotConverged) are failed evaluations in T6. F6
-  integral caching is internal to T3 (F5/F6 signatures unchanged). A module whose t_min shell
-  exceeds its split is reported in the Stage-3 log (no S8 field).
-- T2a round-1 decisions (21:35 UTC; contract errata at J1): standin_kit failures caused only by
-  shadowing are outside T2a/T2b/T3 gates (J1 adapts them); fold trimming tested on folding decks, C1
-  tests VoidClosed at d ≥ 0.1; patch end rows take the parser's exact heights (C1 keel −3.25); F2
-  offsets the F1 NURBS as written; F1 owns rules 1a/1b, fit_z_faces makes mirrors; rounding: bitwise
-  where construction allows, else a bound derived from magnitudes and operation count.
-- T6 round-1 decisions (21:50 UTC): inner sets keyed by t and z-range; t_max,i over the module's
-  whole range (fixed, conservative); closest fail ranks flotation-holding points first (item 32);
-  solver must establish the equalities before optimising and keep feasible phase-2 progress; draft
-  released only when flotation cannot hold at the Stage-2 draft; fmincon shim edit accepted (test-only).
-- T4a decision (22:00 UTC): between the two Stage-2 starts, one that holds the constraints beats one
-  that does not; then the lower objective; if none holds them, the smallest violation (item 26 read
-  with item 32; owner informed).
-- SK2 spec issues for J1/T3 (contract errata with the batch above): whether a void end (constant-z
-  end piece of an inner set) counts as a flat part for F6b `side` (stand-in: yes); name the error
-  for a bad `side` (stand-in `mwecmass:solid:BadSide`); a row cut at a plane takes that height
-  bitwise (F3b, F5; the stand-in does); J1 adapts `test_sk_outer_nurbs` (asserts that
-  `force_general` is ignored). The SK stand-in F10 still counts the GM row in `pass` (align at J1).
-  T5 edited `tests/standin_kit/test_sk_not_analytic.m` and `test_sk_realised.m` (merge with SK2 clean).
-- Carry-overs: `build_config` time after T0c (T0d prints it); `METHODS_ENGINE.md` lines 205–208 and
-  `_graph/CODE_MAP.md` regeneration → T12; T0b deferrals for T5 (`rho_UHPC`/`t_UHPC` capitals,
-  `config.rho_steel` in precast `solve.m`). The old names stay only in `tools/`,
-  `tests/baseline/*.json`, `Output/`, `docs/plans/` and AGENTS' rename statements.
+| Task | Branch | Status at the pause | What it holds |
+|---|---|---|---|
+| T5 | `task/T5` `31f470f` | **accepted** (9) | UHPC Stage 3 part a: split V_UHPC,i = V_i(ρ_i − ρ_air)/(ρ_UHPC − ρ_air), shells at t_min in k*, ballast for flotation, F9 properties on the exact body, F10 check, S8 record, `final_props` = realised design; pre-check D16 deleted |
+| T7 | `task/T7` `4c310df` | **accepted** (8 + quick check) | thin-shell Stage 3 rebuilt: one t, `z_ballast` free across module edges, flotation and GM = GM_Stage2 equalities, item-27 objective, draft last, t_max = d_close − ε/2, closest fail |
+| T8 | `task/T8` `3b0a0be` | **accepted** (9) | figures from the realised solid: `realised_section_data` (F12) with exact y = 0 crossings, void outlines with holes, joint steps, ballast level; `plot_modular_precast`, `plot_steel_solve`, `plot_optimised_cross_section` |
+| T10 | `task/T10` `07856a2` | **accepted** (9) | `export_stage3` (F11): UHPC per-module and fused STEP, steel ballast/shell/combined STEP |
+| T2a | `task/T2a` (head §9) | round 2 at 5, round-3 fixes in progress | exact geometry kernel: F1 `outer_nurbs`, F2 `offset_surface` + `trim_fold` + `fit_bspline_surface` (normal offset, fold trimming, adaptive fit, metrics M1–M3), F2b `void_closing_distance`, F3/F3b/F4 B-spline evaluate/split/slice |
+| T3 | `task/T3` (head §9) | implementing (base T2a; merges T2a's fixes) | F5 `build_body`, F6 `body_properties`, F6b `body_section`, F7 `hydrostatics_at_draft`; C1 tests; shared C1 kernel cache `tests/c1_kernel_cache.m` (in progress) |
+| T6 | `task/T6` (head §9) | round 1 at 5, fixes in progress (base T5) | UHPC Stage 3 part b: optimisation from the split, spill, draft last, closest fail, report |
+| T4b | `task/T4b` (head §9) | round 1 at 6, fixes in progress (base T4a) | Stage-2 floors from the kernel (F8 `density_floors`), floors in Stage 1 and 2 for both modes; deletes `compute_perpendicular_shell_volume` (D1) |
+| T2b | — | not started | general path (`fit_z_faces`) for hull patches that do not convert exactly (not needed for C1) |
+| T11–T13 | — | not started | cleanup, docs (`METHODS_ENGINE`, `RUNTIME_GUIDE`, `RESULT_SCHEMA`, code map), final review |
 
-## 5. What worked
+Every checker verdict is saved in `docs/plans/orchestration/pause/` (`<task>_verdict_r<n>.json`:
+summary, required fixes with file, line, issue, fix and how to verify), next to the implementers'
+reports and `launch_inputs.json` (every task's brief).
 
-- The grader loop finds real defects every round (e.g. a STEP checker that dropped sheet bodies,
-  NaN directions in STEP, a parser fixture with absolute paths, unbuildable stepped decks).
-- Contract plus stand-ins let lanes U, S, O, P run in parallel against closed-form bodies.
-- Checking claims on the exact deck: the C1 curvature figure (smallest convex radius 0.100 m; no fold
-  at 25.4 or 76.2 mm) corrected a spec error.
-- Pushing main only after a green suite, or when the merged tree equals an already graded tree.
+### 2.3 What already works on C1 (measured on the real kernel, in branch joins)
 
-## 6. What did not work (do not repeat)
+- Normal-offset shells, checked with the independent Python evaluator on 16 000 random points per
+  thickness: t_local 76.208–76.917 mm at t = 76.2 mm and 25.419–25.654 mm at t = 25.4 mm, inside the
+  fitting band t ≤ t_local ≤ t + ε (ε = 0.01 t_min; the shell is built at t + ε/2).
+- Neck closing distance d_close = 0.100 m.
+- Stage-2 floors from the kernel (T4b), kg/m³, module 1 at the keel:
 
-- Container restarts (7 Oct 00:18, 04:02, 15:54, ~20:50, 23:59, 8 Oct 01:08 UTC) kill every background job and workflow; only committed and
-  pushed work survives. After a restart: recover each run's launch input from the session transcript,
-  check every worktree (delete `octave-workspace` crash dumps), and relaunch each lane from its last
-  verdict with a generated `mwec-lane-<lane>-restart.js` (args embedded) and a note to continue from
-  the committed state. Workflow resume reuses only the longest unchanged prefix of agent calls;
-  editing an early prompt reruns everything after it.
-- Whole-pipeline runs in Octave (24–94 min) die in restarts; the Octave `fmincon` stand-in fails the
-  v1.0 modular Stage 2 (exitflag −2). Do not compare Octave with MATLAB v1.0 numbers (owner).
-- Spec errors made by the orchestrator: the 40 mm shoulder radius (sampling artefact), the 80 %
-  height band, the same file assigned to two tasks, KG used for Z_CG, an incomplete quick fix of the
-  amendment. Verify claims on the code and the exact deck before writing them.
-- Deleting remote branches returns HTTP 403 (policy): do not retry.
-- 15:12–15:21 UTC: every `git push` and GitHub API write returned HTTP 500 (reads worked,
-  githubstatus.com reported no incident); it cleared by itself. `scratchpad/push_retry.sh` retries
-  main and fast-forwards lagging task branches. A grader that requires origin = HEAD may reject only
-  for an outage like this; discount such rejections.
-- Reading a workflow's result from the notification text can mislead; read its `journal.jsonl`.
-- Hand edits of the dense contract by the orchestrator were rejected twice: route every contract
-  change through an author agent and the grader.
-- T8 round 4: I sent the owner rendered pictures of stand-in figures instead of the metric the
-  grader had already measured: dashed void boundaries with no face of the solid behind them at the
-  3 interior module edges of the thin-shell cylinder stand-in. The owner had asked from the start
-  for judgement by metrics; the handoff did not state it as a rule. It is now AGENTS rule 12.
+  | Mode | 1 | 2 | 3 | 4 | 5 |
+  |---|---|---|---|---|---|
+  | UHPC, t_min 76.2 mm | 610.4 | 285.7 | 212.1 | 612.8 | 2500 (wall module) |
+  | Thin shell, t_min 25.4 mm | 725.1 | 269.2 | 454.6 | 2018.2 | 2228.7 |
 
-## 7. Resumed (owner: "continue", 20:51 UTC)
+  v1.0's circle floors were 437 / 227 / 175 / 369 for the UHPC hollow modules. V_solid + V_air = V
+  per module exactly. Hull volume 21.1784 m³ on the exact surfaces (hydrostatic table: 21.1608 m³).
 
-Lanes relaunched with `mwec-lane-<k>-cont.js` (args from `docs/plans/orchestration/pause/`; `lane.js`
-now supports `resume: {grade_first, r0, rounds, impl}`): K1 T2a grading (`wf_03f5e016-d64`), U T6
-grading (`wf_fdb0a7b0-368`), S T7 round 7 grading (`wf_d466e341-871`), P T4a fix round 1 then T4b
-(`wf_9fb5bf27-d13`). When T2a is accepted: T2b ∥ T3, then J1 and the owner checkpoint.
+## 3. Working locally in MATLAB
 
-## 8. Next steps
+1. `git clone https://github.com/VKotzamanis/MWEC_Mass.git`, `git checkout claude/lucid-cray-7o9442`,
+   `git fetch origin 'refs/heads/task/*:refs/remotes/origin/task/*'`.
+2. Run the suite from the repository root: `run('tests/run_tests.m')` at the prompt, or
+   `matlab -batch "run('tests/run_tests.m')"`. The environment variable `TESTS_FILTER` restricts it,
+   e.g. `setenv('TESTS_FILTER','tests/solid')`. Under MATLAB the Octave shims stay off the path.
+   The tests were written and run under Octave 8.4; this is their first MATLAB run, so a failure can
+   be a MATLAB/Octave difference in the test itself.
+3. Production code targets MATLAB R2022b. Figures were never rendered in the container (Octave
+   lacks `tiledlayout` and others); their data (F12) is tested, the drawing is yours to confirm.
+4. `build_config` cache: `Output/cache/` (or `in.files.geometry_cache_dir`). It rebuilds by itself
+   when the deck, a keyed input or a keyed source file changes; delete it to force a rebuild.
+5. Python is needed only for `tests/step_check.py` (gmsh 4.15) and the reference evaluator.
+6. The pipeline regressions (`MWEC_REGRESSION=1`) compare with Octave baselines that are stale by
+   design (regenerated once at J2); do not use them as a gate before then.
 
-1. When T2a is accepted: launch T3 and T2b in parallel from `task/T2a` (lane script, mode parallel).
-2. As lanes return: merge T0d and T4a when accepted; T4b after J1; T5–T10 wait for J2.
-3. **Owner (14:50 UTC): "When you get the first REAL cross sections for UHPC, show me the figure and
-   pause your work."** The first is the J1 checkpoint: a C1 UHPC body built by the real kernel
-   (T2a, T2b, T3), XZ (y = 0) and YZ (x = 0) sections with the rule-12 metrics printed beside them.
-   Then stop every running workflow (work is pushed per commit), launch and merge nothing, and wait
-   for the owner's reply.
-   J1, owner checkpoint after T3 (measured numbers), then J2 with the first whole-pipeline runs,
-   the baseline regenerated once, owner checkpoints after T6 and T10; then G.
-4. Session resources: the 7-day rate limit was at warning level at 12:20 UTC (reset 21:00 UTC);
-   context 688k of 1M used.
+## 4. Merge plan (what remains, in order)
+
+1. **Finish T2a** (§5) and **T3**, then **J1**: merge `task/T2a`, then `task/T3` (T3 already holds
+   T2a's commits). For C1, T2b is not needed: C1 takes the exact path everywhere. At J1:
+   - retire or adapt the 6 tests in `tests/standin_kit` that fail only because the real F1–F4 now
+     shadow the stand-ins (they pass at the base);
+   - **owner checkpoint**: real C1 UHPC XZ (y = 0) and YZ (x = 0) sections from the real kernel with
+     the rule-12 metrics beside them (every drawn boundary has a face of the solid behind it, drawn
+     areas equal the body's section areas, the drawn ballast level equals `z_ballast`).
+2. **T4b** after J1 (it needs the real kernel on main).
+3. **J2**, in this order: T5, T6, T7, T8, T10. Each task recorded "deferred" edits to shared files it
+   could not edit on its base; apply them as that task's last commit when it merges (exact files,
+   lines and text in its last report). Known ones:
+   - T5: `optim/report_assemble_results.m` (drop `constructability`, `steel_data`; add
+     `results.stage3 = []`), `optim/run.m` (drop the matching variables), `build_config.m` lines
+     325–334 (`uhpc_t_init`, `uhpc_max_slope_factor`, `uhpc_n_z_grid`), `WEC_User_Input.m` 53–56.
+   - T7: d1–d3, d6 in `WEC_User_Input.m` (43–46, 53–56: one thin-shell t_min input, t_init removed)
+     and `build_config.m` (275, 277–278, 306–309), plus its test lines 33–35 and 187–188.
+   - T8: `output/dispatch.m` line 24 becomes
+     `mwecmass.output.figures.plot_optimised_cross_section(final_props, config, x_opt, results.stage3);`
+     (`config.shell = []` in `build_config.m` goes to T11; `_graph/CODE_MAP.md` to T12).
+   - T10: the `validate_save_flags` edit in `dispatch.m`.
+   - T6: the `tests/octave_shims/fmincon.m` change (empty multipliers when Octave's QP fails) is
+     test-only and accepted.
+   Line numbers refer to each task's base; check them against the merged file before applying.
+   After J2: the first whole-pipeline runs of both modes on C1 (Stage 1 → Stage 3, STEP, figures),
+   the Octave baseline regenerated once, owner checkpoints after T6 and T10.
+4. **G**: T11 (cleanup: the `config.shell` assignment; dead files `empty_realised_properties.m`,
+   `thin_shell/integrate_split.m`, `build_realised_properties.m` per contract §4), T12 (docs,
+   `METHODS_ENGINE.md` lines 205–208, code map, `tests/README.md` folders table; delete this file and
+   `docs/plans/orchestration/`), T13 (final review).
+
+## 5. Open work per task
+
+**T2a** (round 2: 5; the C1 results are correct, general hulls not yet):
+- F1 must give every patch end row the height MS2Parser gives exactly (C1 keel −3.25, not
+  −3.2500000000000004), so bitwise module-edge comparisons never cut a sliver.
+- F2b misses a void that closes at the hull's own end face without a double normal (test deck: an
+  inverted frustum); it must find opposite offset layers that meet there.
+- Minor: a comment calls the inner profile's largest axis distance "the void's half-width".
+- The round-1 fixes (general decks reach `fit_z_faces`, decimal arcs, fold trimming on a fillet
+  deck, derived rounding bounds, M3 at every check height) are in and were verified in round 2.
+
+**T3**: F5–F7 committed; remaining: C1 tests through the shared kernel cache, volume closure per
+module and for the hull with the ballast inside module 2, at a module edge and spilled; C1 CG
+x = y = 0; `step_check` import of the C1 STEP.
+
+**T6** (round 1: 5). The optimiser must:
+1. establish both equalities (flotation, GM = GM_Stage2) before optimising (e.g. Newton steps on the
+   two equalities, or a restart from the best feasible evaluated point);
+2. keep phase-2 progress whenever it holds the equalities (it was discarded);
+3. release the draft only when no point at the Stage-2 draft can hold flotation (item 31), never
+   because one rebuild failed;
+4. call F7 once while the draft is fixed (contract §7 item 3);
+5. have tests that assert the outcome: case C must reach a design at least as good as the
+   checker's feasible one (objective 0.0084, T_pitch deviation 9.2 %); case D must float (it ended
+   submerged, flotation residual 0.29, although the lightest design floats at vs = 0.937 m).
+
+**T4b** (round 1: 6; the floors are correct):
+- thin-shell Stage 2 with the new floors crashes under Octave at the bottom-filled start (Octave
+  `sqp` returns empty multipliers when its QP subproblem is unbounded; MATLAB's `fmincon` is not
+  affected): Stage 2 must treat such a start as failed, as Stage 1 already does;
+- solid modules must return ρ_solid exactly (assign it; (ρ·V)/V is not always ρ in floating point);
+- rule 10: in thin-shell mode do not store the shell density in a field named `ballast`;
+- minor: a docstring claim; Stage-1 `sweep` mode still screens without the floors.
+
+**T2b**: not started (`fit_z_faces`, general path, mirrors); needed only for hulls that are not
+exact-path like C1.
+
+## 6. Decisions not yet written into the contract (apply them)
+
+- F10 `pass` = the four metrics within `mass_acceptable_pct` and flotation; the GM equality residual
+  is reported beside the check without entering it (AGENTS §3 item 27, §5 item 11).
+- F11 `out_dir` is the type folder; `export_stage3` writes into its `step` subfolder.
+- Thin-shell floors live in `config.per_strip_density_lb`, like the UHPC ones.
+- t_max,i per UHPC module = d_close over the module's whole range − ε/2 (fixed, conservative);
+  inner sets are keyed by t and z-range.
+- Kernel errors (`VoidClosed`, `JointNotNested`, `FitNotConverged`) are failed evaluations in the
+  Stage-3 optimisation, never an abort.
+- Closest fail: points that hold flotation rank first, by the item-27 objective; if none holds it,
+  the smallest equality violation wins.
+- Stage-2 start choice: a start that holds the constraints beats one that does not; then the lower
+  objective; if none holds them, the smallest violation (owner agreed).
+- A module whose t_min shell holds more UHPC than its V_UHPC split is reported in the Stage-3 log.
+- Kernel: patch end rows take the parser's exact heights; on the exact path F2 offsets the F1 NURBS
+  as written; F1 owns the classification rules 1a/1b and `fit_z_faces` makes the mirrors; rounding is
+  bitwise wherever the construction makes values identical, otherwise a bound derived in one comment
+  line from the coordinate magnitudes and the operation count.
+- Fold trimming is tested on decks that fold; C1 cannot fold before its neck closes (smallest convex
+  radius 0.100 m = d_close), so C1 tests that d ≥ 0.1 raises `VoidClosed`.
+- From the stand-in kit: a void end counts as a flat part for F6b `side`; the bad-side error is
+  `mwecmass:solid:BadSide`; a row cut at a plane takes that height bitwise.
+
+## 7. Octave-only behaviour (ignore in MATLAB)
+
+- Octave's `sqp` is weaker than MATLAB's `fmincon` SQP: v1.0's precast Stage 2 stops at exitflag −2
+  (vs 0.409 against MATLAB's 0.983), and `sqp` can return empty multipliers (the shim handles it).
+- Octave builds C1's geometry in 6–7 min.
+- One Octave process per core was enforced in the container with a wrapper (owner rule,
+  `docs/plans/orchestration/octave_one_core.sh`); not needed locally.
+
+## 8. How the work was run (only if agents continue it)
+
+Scripts: `docs/plans/orchestration/lane.js` (implementer → Opus xhigh checker → fixer; minor findings
+go to a quick check instead of a full round; targeted tests while working and the whole suite once
+before acceptance; one Octave per core; judge by metrics, rule 12) and `merge.js` (merge `--no-ff`,
+suite, push, checker). Lessons: commit and push at least every 30 min (the container restarted about
+every 4 h); report measured numbers to the owner, never pictures of test shapes; verify a claim on
+the code and the exact deck before writing it into a spec.
+
+## 9. Branch heads at the pause (2026-10-08 ~01:40 UTC; all pushed, nothing running)
+
+| Branch | Head | Last commits since its last verdict |
+|---|---|---|
+| `claude/lucid-cray-7o9442` (main) | this commit | T0, T1, T9, T0c, T0b, SK, SK2, T0d, T4a merged; MATLAB-safe `run_tests.m` |
+| `task/T5` | `31f470f` | accepted |
+| `task/T7` | `4c310df` | accepted |
+| `task/T8` | `3b0a0be` | accepted |
+| `task/T10` | `07856a2` | accepted |
+| `task/T2a` | `270d0a6` | `57e87e0` keel row at −3.25 bitwise (fix 1 of round 2, done); `270d0a6` unverified work in progress on the F2b end-face closing (fix 2) — review before keeping |
+| `task/T3` | `3b9fb6b` | `tests/c1_kernel_cache.m` added (folder `/home/user/geomcache`; set the environment variable `MWEC_GEOMCACHE` to a local folder) |
+| `task/T6` | `d56c817` | outcome assertions for cases C, S, D, G and a known-optimum test (`81bff4c`, written but not yet run), keep the step's start when the chosen point ranks worse (`2b67fef`), solve returns the evaluation behind `solver(end)` (`d56c817`); not yet graded |
+| `task/T4b` | `1023873` | round-1 fixes: shim survives a core-sqp QP failure, solid-module floors set by definition, thin-shell floors take the real ballast density, Stage-1 screen respects the floors (`a359046`), shim test (`1023873`); not yet graded |
+
+Commits titled "work in progress ... (unverified)" hold an agent's edits saved when it was stopped
+(container restart or this pause); review them before building on them.
